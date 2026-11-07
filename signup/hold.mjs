@@ -26,8 +26,16 @@ const HELD = 'This message looks like spam, so it is held for review. An adminis
 /** The message as Stalwart hands it to a hook: headers ([name, " value\r\n"]) plus the body. */
 export const rawOf = (m) => m.headers.map(([n, v]) => `${n}:${v}`).join('') + '\r\n' + m.contents;
 const header = (m, name) => m.headers.find(([n]) => n.toLowerCase() === name)?.[1].trim() ?? '';
-/** The address in a From/Sender value ("Ann <ann@x.org>" or "ann@x.org"); the first one if there are several. */
-export const addressOf = (v) => (/<([^<>@\s]+@[^<>\s]+)>/.exec(v)?.[1] ?? /[^\s<>,;:"]+@[^\s<>,;:"]+/.exec(v)?.[0] ?? '').toLowerCase();
+/**
+ * The one address in a From/Sender value, or '' when it holds none or several. Quoted display names and (comments)
+ * are dropped first, so `"you@ok.org" <boss@x.org>` is boss@x.org, never you@ok.org.
+ */
+export const addressOf = (v) => {
+  const bare = String(v).replace(/"(?:[^"\\]|\\.)*"/g, ' ').replace(/\((?:[^()\\]|\\.)*\)/g, ' ');
+  const found = [...new Set(bare.match(/[^\s<>,;:"()]+@[^\s<>,;:"()]+/g) ?? [])].map((a) => a.toLowerCase());
+  return found.length === 1 ? found[0] : '';
+};
+const headers = (m, name) => m.headers.filter(([n]) => n.toLowerCase() === name).map(([, v]) => v.trim());
 
 /** Score from ClassifySpam's tags, counting only tags about the content; reasons = the tags that added to it. */
 export function outboundScore(tags = {}) {
@@ -150,8 +158,10 @@ export function holdRoutes({ cfg, jmap, getDomainId, send, fail, readJson, abuse
     // Stalwart checks only the envelope sender; the From line people see is checked here, or anyone could send as a
     // colleague. Allowed: your own addresses, a team mailbox you're in, or (delegation) an owner who let you send on
     // their behalf, with Sender: naming you.
-    const fromAddr = addressOf(header(body.message, 'from'));
-    if (!(await mayUseFrom(login, fromAddr, addressOf(header(body.message, 'sender'))).catch((e) => { console.error('hold: From check failed:', e.message); return false; })))
+    // Exactly one From (and at most one Sender) with one address each: what we check is what mail apps show.
+    const froms = headers(body.message, 'from'), senders = headers(body.message, 'sender');
+    const fromAddr = froms.length === 1 ? addressOf(froms[0]) : '';
+    if (senders.length > 1 || !(await mayUseFrom(login, fromAddr, senders.length ? addressOf(senders[0]) : '').catch((e) => { console.error('hold: From check failed:', e.message); return false; })))
       return send(res, 200, { action: 'reject', response: { status: 550, enhancedStatus: '5.7.1',
         message: `5.7.1 You can't send as ${fromAddr || 'that address'}. Use one of your own addresses, or ask its owner to let you send on their behalf.` } });
     const raw = rawOf(body.message);

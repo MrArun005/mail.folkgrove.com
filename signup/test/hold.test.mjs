@@ -12,7 +12,7 @@ import { Invites } from '../lib.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { outboundScore, rawOf, holdStore } from '../hold.mjs';
+import { outboundScore, rawOf, holdStore, addressOf } from '../hold.mjs';
 
 const STALWART = process.env.STALWART_URL || 'http://localhost:8080';
 const SMTP_PORT = Number(process.env.SMTP_PORT || 1465);
@@ -22,6 +22,11 @@ const reachable = await fetch(`${STALWART}/.well-known/jmap`, { redirect: 'manua
 const skip = !reachable ? `Stalwart not reachable at ${STALWART}` : !existsSync(ADMIN_FILE) ? 'no deploy/.dev-admin.json' : false;
 const GTUBE = 'XJS*C4JDBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test('From parsing: one address, never one hidden in a display name or comment', () => {
+  for (const [v, want] of [['Ann <Ann@X.org>', 'ann@x.org'], ['"you@ok.org" <boss@x.org>', 'boss@x.org'], ['"Doe, Jane" <jane@x.org>', 'jane@x.org'],
+    ['a@x.org, b@y.org', ''], ['(you@ok.org) boss@x.org', 'boss@x.org'], ['<a@x.org> b@y.org', ''], ['', '']]) assert.equal(addressOf(v), want, v);
+});
 
 test('outbound score counts the message, not the connection', () => {
   const { score, reasons } = outboundScore({
@@ -133,6 +138,8 @@ test('outgoing spam is held for review; release delivers it; repeated holds paus
   const forged = await smtpSend(S, pass, R, msg('Forged', 'Hi').replace(`From: <${S}>`, `From: Boss <${R}>`));
   assert.equal(forged.code, 550, JSON.stringify(forged));
   assert.match(forged.text, /can't send as/);
+  const twoFroms = await smtpSend(S, pass, R, msg('Two Froms', 'Hi').replace(`From: <${S}>`, `From: <${S}>\r\nFrom: <${R}>`));
+  assert.equal(twoFroms.code, 550, JSON.stringify(twoFroms));
   assert.ok(await arrives('Lunch on Friday'));
   if (!hookCalls) return t.skip(`Stalwart couldn't reach the hook at ${HOOK_HOST}:${port} (set HOOK_HOST)`);
 
