@@ -1,4 +1,5 @@
 import qrcode from 'qrcode-generator';
+import { confirmIt } from './Dialog';
 import { useEffect, useState } from 'react';
 import { Button } from './Button';
 import { Jmap, type AppPassword } from './jmap';
@@ -133,7 +134,7 @@ function AppPasswords({ sec, list, onChange }: { sec: Jmap; list: AppPassword[];
             <li key={a.id}>
               <span>{a.description}{a.createdAt && <span className="fine"> · added {new Date(a.createdAt).toLocaleDateString()}</span>}</span>
               <Button variant="quiet" size="sm" icon="trash" label={`Revoke ${a.description}`}
-                onClick={async () => { if (confirm(`Revoke “${a.description}”? Apps using it will be signed out.`)) { await sec.deleteAppPassword(a.id); onChange(); } }} />
+                onClick={async () => { if (await confirmIt({ title: `Revoke “${a.description}”?`, body: 'Apps using it are signed out.', confirm: 'Revoke', danger: true })) { await sec.deleteAppPassword(a.id); onChange(); } }} />
             </li>
           ))}
         </ul>

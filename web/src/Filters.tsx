@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
 import type { Jmap, Mailbox } from './jmap';
 import { describeRule, parseScript, toSieve, validateRule, type Rule, type RuleAction, type ScriptData } from './rules';
@@ -120,12 +121,12 @@ export function FoldersSection({ client, boxes, onChanged }: { client: Jmap; box
             <li key={b.id}>
               <span>{b.name}</span>
               <span className="row-btns">
-                <Button variant="quiet" size="sm" icon="compose" label={`Rename ${b.name}`} onClick={() => {
-                  const name = prompt('New name', b.name)?.trim();
+                <Button variant="quiet" size="sm" icon="compose" label={`Rename ${b.name}`} onClick={async () => {
+                  const name = await promptIt({ title: `Rename “${b.name}”`, label: 'New name', value: b.name, confirm: 'Rename' });
                   if (name && name !== b.name) run(() => client.renameMailbox(b.id, name));
                 }} />
-                <Button variant="quiet" size="sm" icon="trash" label={`Delete ${b.name}`} onClick={() => {
-                  if (confirm(`Delete the folder “${b.name}”? Messages that are only in this folder will be deleted too.`)) run(() => client.deleteMailbox(b.id));
+                <Button variant="quiet" size="sm" icon="trash" label={`Delete ${b.name}`} onClick={async () => {
+                  if (await confirmIt({ title: `Delete the folder “${b.name}”?`, body: 'Messages that are only in this folder are deleted too.', confirm: 'Delete folder', danger: true })) run(() => client.deleteMailbox(b.id));
                 }} />
               </span>
             </li>

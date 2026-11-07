@@ -1,4 +1,5 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
 import { Icon, roleIcon } from './icons';
@@ -224,7 +225,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   async function act(a: BulkAction, tids = targets()) {
     if (!tids.length || !source) return;
     const n = tids.length, many = n > 1 ? `${n} conversations` : 'Conversation';
-    if (a === 'trash' && role === 'trash' && !confirm(`Delete ${n > 1 ? `${n} conversations` : 'this conversation'} forever? This can’t be undone.`)) return;
+    if (a === 'trash' && role === 'trash' && !(await confirmIt({ title: `Delete ${n > 1 ? `${n} conversations` : 'this conversation'} forever?`, body: 'This can’t be undone.', confirm: 'Delete forever', danger: true }))) return;
     const inList = (id: string) => list?.find((x) => x.threadId === id);
 
     if (a === 'star') {
@@ -249,7 +250,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       label = a.label;
       target = a.moveTo;
       if (!target) {
-        const name = prompt('Name for the new folder')?.trim();
+        const name = await promptIt({ title: 'New folder', label: 'Folder name', placeholder: 'e.g. Receipts', confirm: 'Create folder' });
         if (!name) return;
         try { target = await client.createMailbox(name); } catch (e) { return fail(e); }
       }
@@ -290,7 +291,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     const plan = unsubscribePlan(m.unsubscribe);
     if (!plan) { say({ text: `This message doesn’t include a safe way to unsubscribe from ${who}.` }, 6000); return false; }
     const where = plan.kind === 'mail' ? `by sending an email to ${plan.to}` : plan.kind === 'post' ? `via ${plan.host}` : `on ${plan.host} (opens in a new tab)`;
-    if (!confirm(`Unsubscribe from ${who} ${where}?`)) return false;
+    if (!(await confirmIt({ title: `Unsubscribe from ${who}?`, body: `This is done ${where}.`, confirm: 'Unsubscribe' }))) return false;
     try {
       if (plan.kind === 'post') {
         // RFC 8058 one-click: a plain form POST. no-cors because we never need to read the reply.
@@ -310,13 +311,13 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
   async function deleteAllFrom(s: Subscription) {
     const who = displayName(s.from);
-    if (!confirm(`Move every message from ${who} (${s.from.email}) to Deleted Items?`)) return;
+    if (!(await confirmIt({ title: `Delete everything from ${who}?`, body: `Every message from ${s.from.email} moves to Deleted Items. Sent mail and drafts are kept.`, confirm: 'Move to Deleted Items', danger: true }))) return;
     try { const n = await client.trashFrom(s.from.email, boxes); say({ text: `Moved ${n} messages from ${who} to Deleted Items` }); refresh(); }
     catch (e) { fail(e); }
   }
 
   async function saveSearch() {
-    const name = prompt('Name this search', query)?.trim();
+    const name = await promptIt({ title: 'Save this search', body: 'It appears in the sidebar, one click away.', label: 'Name', value: query, confirm: 'Save search' });
     if (!name) return;
     try {
       const { data } = await loadScript(client);
@@ -361,7 +362,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         say({ text: `Added ${name || sender} to contacts` }); loadContacts();
       } else if (what === 'block') {
         if (!parseAddresses(sender).list.length) return say({ text: 'This sender’s address can’t be blocked safely. Use a filter instead.' });
-        if (!confirm(`Block ${sender}? Messages from exactly this address will go straight to Junk. You can undo this in Settings → Filters.`)) return;
+        if (!(await confirmIt({ title: `Block ${sender}?`, body: 'Messages from exactly this address go straight to Junk. You can undo this in Settings → Filters.', confirm: 'Block', danger: true }))) return;
         await addRule(client, boxes, { id: crypto.randomUUID(), from: sender, fromExact: true, action: 'block' });
         await act('junk', [m.threadId]);
         say({ text: `Blocked ${sender}` });
@@ -479,7 +480,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   }
 
   async function editScheduled(s: Scheduled) {
-    if (!confirm(`Cancel sending “${s.email.subject || '(no subject)'}” on ${describe(new Date(s.sendAt))} and edit it?`)) return;
+    if (!(await confirmIt({ title: 'Edit this scheduled message?', body: `“${s.email.subject || '(no subject)'}” won’t go out on ${describe(new Date(s.sendAt))} until you schedule or send it again.`, confirm: 'Edit message' }))) return;
     try {
       await client.undoSend(s.submissionId, s.email.id, boxes);
       const draft = (await client.thread(s.email.threadId)).find((m) => m.id === s.email.id);
@@ -594,16 +595,22 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       <nav className="rail" aria-label="Folders">
         <p className="wordmark">OpenMail</p>
         <Button variant="primary" size="lg" icon="compose" className="compose-btn" onClick={newMessage} title="Compose (c)">Compose</Button>
-        <ul>
-          {navItems.map((b) => (
-            <li key={b.id}>
-              <button className={`nav-item${b.id === current ? ' active' : ''}`} aria-current={b.id === current ? 'page' : undefined} onClick={() => openFolder(b.id)}>
-                <Icon name={roleIcon(b.role)} /><span className="name">{b.name}</span>
-                {b.unreadEmails > 0 && !['trash', 'sent', 'drafts'].includes(b.role ?? '') && <span className="count">{b.unreadEmails}</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
+        {/* Mail places first, then the folders you made, under their own label. */}
+        {[navItems.filter((b) => b.role), navItems.filter((b) => !b.role)].map((group, gi) => group.length > 0 && (
+          <div key={gi} className="rail-group">
+            {gi === 1 && <p className="rail-label">Folders</p>}
+            <ul>
+              {group.map((b) => (
+                <li key={b.id}>
+                  <button className={`nav-item${b.id === current ? ' active' : ''}`} aria-current={b.id === current ? 'page' : undefined} onClick={() => openFolder(b.id)}>
+                    <Icon name={roleIcon(b.role)} /><span className="name">{b.name}</span>
+                    {b.unreadEmails > 0 && !['trash', 'sent', 'drafts'].includes(b.role ?? '') && <span className="count">{b.unreadEmails}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
         {saved.length > 0 && (
           <div className="saved">
             <p className="rail-label">Saved searches</p>
@@ -741,7 +748,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
               onEdit={() => setEditingPerson(true)} onCancel={() => setEditingPerson(false)}
               onSave={async (c) => { const id = await client.saveContact(c); setEditingPerson(false); setPersonId(id); say({ text: 'Contact saved' }); refresh(); loadContacts(); }}
               onDelete={async (c) => {
-                if (!confirm(`Delete ${fullName(c) || c.emails[0]} from your contacts?`)) return;
+                if (!(await confirmIt({ title: `Delete ${fullName(c) || c.emails[0]}?`, body: 'They’re removed from your contacts. Their mail stays.', confirm: 'Delete contact', danger: true }))) return;
                 try { await client.deleteContact(c.id!); setPersonId(null); say({ text: 'Contact deleted' }); refresh(); loadContacts(); } catch (e) { fail(e); }
               }}
               onEmail={(c) => setCompose(withSignature({ ...EMPTY_DRAFT, to: [{ name: fullName(c) || null, email: c.emails[0] }] }))} />

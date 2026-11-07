@@ -17,7 +17,7 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     const c = await login();
     const boxes = await c.mailboxes();
     expect(boxes[0].role).toBe('inbox');
-    const welcome = (await c.threads({ inMailbox: boxes[0].id })).find((e) => e.subject === 'Welcome to OpenMail')!;
+    const welcome = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: boxes[0].id }, { subject: 'Welcome to OpenMail' }] })).find((e) => e.subject === 'Welcome to OpenMail')!;
     expect(welcome).toBeTruthy();
     const [msg] = await c.thread(welcome.threadId);
     expect(msg.text).toContain('delivery and the web client both work');
@@ -42,12 +42,12 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     const boxes = await c.mailboxes();
     const inbox = boxes.find((b) => b.role === 'inbox')!.id;
     const archive = await c.mailboxFor('archive', 'Archive', boxes);
-    const t = (await c.threads({ inMailbox: inbox })).find((e) => e.subject === 'Lunch on Friday?')!;
+    const t = (await c.threads({ inMailbox: inbox }, 500)).find((e) => e.subject === 'Lunch on Friday?')!;
     await c.move(t.threadId, inbox, archive);
     expect((await c.threads({ inMailbox: archive })).some((e) => e.threadId === t.threadId)).toBe(true);
-    expect((await c.threads({ inMailbox: inbox })).some((e) => e.threadId === t.threadId)).toBe(false);
+    expect((await c.threads({ inMailbox: inbox }, 500)).some((e) => e.threadId === t.threadId)).toBe(false);
     await c.move(t.threadId, archive, inbox);
-    expect((await c.threads({ inMailbox: inbox })).some((e) => e.threadId === t.threadId)).toBe(true);
+    expect((await c.threads({ inMailbox: inbox }, 500)).some((e) => e.threadId === t.threadId)).toBe(true);
   });
 
   it('autosaved drafts replace each other and keep rich text + attachments', async () => {
@@ -115,7 +115,7 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     const c = await login();
     let boxes = await c.mailboxes();
     const inbox = boxes.find((b) => b.role === 'inbox')!.id;
-    const t = (await c.threads({ inMailbox: inbox })).find((e) => e.subject === 'Your November statement is ready')!;
+    const t = (await c.threads({ inMailbox: inbox }, 500)).find((e) => e.subject === 'Your November statement is ready')!;
     await c.snooze(t.threadId, inbox, new Date(Date.now() + 1000), boxes);
     boxes = await c.mailboxes();
     const snoozed = boxes.find((b) => b.role === 'snoozed')!.id;
@@ -123,7 +123,7 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     expect(await c.wakeSnoozed(boxes)).toBe(0); // not yet
     await new Promise((r) => setTimeout(r, 1500));
     await c.wakeSnoozed(boxes); // an open app tab may already have woken it (push → refresh); either way it must be back
-    const back = (await c.threads({ inMailbox: inbox })).find((e) => e.threadId === t.threadId)!;
+    const back = (await c.threads({ inMailbox: inbox }, 500)).find((e) => e.threadId === t.threadId)!;
     expect(back.keywords.$seen).toBeUndefined(); // comes back unread, like Gmail
     expect(Object.keys(back.keywords).some((k) => k.startsWith('$snoozed-'))).toBe(false);
     await c.setSeen(t.threadId, true);
@@ -428,15 +428,18 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
   it('answers an invitation: sends an iTIP REPLY to the organizer and remembers the answer', async () => {
     const c = await login();
     const boxes = await c.mailboxes();
-    const t = (await c.threads({ text: 'Quarterly design review' })).find((e) => e.subject === 'Invitation: Quarterly design review')!;
-    const [m] = await c.thread(t.threadId);
+    // Find the invitation itself (answers from earlier runs may share or start conversations with it).
+    const [, found] = await c.call([['Email/query', { accountId: c.accountId, filter: { subject: 'Invitation: Quarterly design review' } }, 'q'],
+      ['Email/get', { accountId: c.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: ['threadId', 'subject'] }, 'g']]);
+    const t = (found.list as { threadId: string; subject: string }[]).find((e) => e.subject === 'Invitation: Quarterly design review')!;
+    const m = (await c.thread(t.threadId)).find((x) => x.subject === 'Invitation: Quarterly design review')!;
     const ics = m.attachments.find((a) => a.type.startsWith('text/calendar'))!;
     const inv = await c.rsvp(m.id, ics, 'ACCEPTED', boxes);
     expect(inv.organizerEmail).toBe('priya@example.org');
-    expect((await c.thread(t.threadId))[0].keywords).toMatchObject({ '$rsvp-accepted': true });
+    expect((await c.thread(t.threadId)).find((x) => x.id === m.id)!.keywords).toMatchObject({ '$rsvp-accepted': true });
     // The reply is in Sent with the calendar part attached.
     const sent = boxes.find((b) => b.role === 'sent')!.id;
-    const reply = (await c.threads({ inMailbox: sent })).find((e) => e.subject === 'Accepted: Quarterly design review')!;
+    const reply = (await c.threads({ inMailbox: sent }, 500)).find((e) => e.subject === 'Accepted: Quarterly design review')!;
     const [r] = await c.thread(reply.threadId);
     const part = r.attachments.find((a) => a.type.startsWith('text/calendar'))!;
     const body = await (await c.download(part)).text();
@@ -445,7 +448,7 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     expect(body).toContain('UID:seed-review@openmail.test');
     // Changing the answer replaces the old one.
     await c.rsvp(m.id, ics, 'DECLINED', boxes);
-    const kw = (await c.thread(t.threadId))[0].keywords;
+    const kw = (await c.thread(t.threadId)).find((x) => x.id === m.id)!.keywords;
     expect(kw['$rsvp-declined']).toBe(true);
     expect(kw['$rsvp-accepted']).toBeUndefined();
   }, 20_000);
@@ -458,14 +461,14 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     void submissionId;
     const inbox = boxes.find((b) => b.role === 'inbox')!.id;
     let got;
-    for (let i = 0; i < 60 && !got; i++) { await new Promise((r) => setTimeout(r, 500)); got = (await c.threads({ inMailbox: inbox })).find((e) => e.subject === subject); }
+    for (let i = 0; i < 60 && !got; i++) { await new Promise((r) => setTimeout(r, 500)); got = (await c.threads({ inMailbox: inbox }, 500)).find((e) => e.subject === subject); }
     expect(got, 'message arrives (after the 10-second undo hold)').toBeTruthy();
     const m = (await c.thread(got!.threadId)).find((x) => x.mailboxIds[inbox])!;
     expect(m.receiptTo?.[0]?.email).toBe('alice@openmail.test');
     await c.sendReadReceipt(m, boxes);
     expect((await c.thread(got!.threadId)).find((x) => x.id === m.id)!.keywords['$mdnsent']).toBe(true);
     let mdn;
-    for (let i = 0; i < 30 && !mdn; i++) { await new Promise((r) => setTimeout(r, 300)); mdn = (await c.threads({ inMailbox: inbox })).find((e) => e.subject === `Read: ${subject}`); }
+    for (let i = 0; i < 30 && !mdn; i++) { await new Promise((r) => setTimeout(r, 300)); mdn = (await c.threads({ inMailbox: inbox }, 500)).find((e) => e.subject === `Read: ${subject}`); }
     expect(mdn, 'the receipt is delivered').toBeTruthy();
   }, 45_000);
 

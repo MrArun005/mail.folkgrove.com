@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { confirmIt } from './Dialog';
 import { Button } from './Button';
 import type { Jmap, MaskedAlias } from './jmap';
 
@@ -29,7 +30,7 @@ export function AddressesSection({ client, onChanged }: { client: Jmap; onChange
     const n = await client.updateAlias(a.id, p);
     setList((l) => (Array.isArray(l) ? l.map((x) => (x.id === a.id ? n : x)) : l));
   });
-  const remove = (a: MaskedAlias) => confirm(`Delete ${a.email}? Mail sent to it will bounce, and it can't be brought back.`)
+  const remove = async (a: MaskedAlias) => await confirmIt({ title: `Delete ${a.email}?`, body: 'Mail sent to it will bounce, and it can’t be brought back. To pause it instead, switch it off.', confirm: 'Delete address', danger: true })
     && run(async () => { await client.deleteAlias(a.id); setList((l) => (Array.isArray(l) ? l.filter((x) => x.id !== a.id) : l)); });
   async function copy(email: string) {
     try { await navigator.clipboard.writeText(email); setCopied(email); setTimeout(() => setCopied(''), 2000); } catch { /* the address is on screen anyway */ }

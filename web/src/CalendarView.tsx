@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { confirmIt } from './Dialog';
 import { Button } from './Button';
 import {
   addDays, allDayOn, durationMinutes, fromLocal, layoutDay, localZone, sameDay, span, timeLabel, toDuration, toLocal, weekStart, type CalEvent,
@@ -38,7 +39,7 @@ export function CalendarView({ client, say }: { client: Jmap; say: (text: string
     setEditing(null); say(e.id ? 'Event updated' : 'Event added'); load();
   }
   async function remove(e: CalEvent) {
-    if (!e.id || !confirm(`Delete “${e.title || 'Untitled event'}”?`)) return;
+    if (!e.id || !(await confirmIt({ title: `Delete “${e.title || 'Untitled event'}”?`, confirm: 'Delete event', danger: true }))) return;
     await client.deleteEvent(e.id);
     setEditing(null); say('Event deleted'); load();
   }

@@ -1,22 +1,32 @@
-/* OpenMail styles. Rules and rationale: DESIGN.md. Components use tokens only; no raw sizes or colours below the tokens. */
-@import '@fontsource-variable/schibsted-grotesk/wght.css';
+/* Hallmark · genre: modern-minimal (app) · concept: letter paper + one ink · theme: custom
+ * paper oklch(99.2% 0.004 85) warm · accent oklch(47% 0.17 266) ultramarine ink · Geist + Newsreader (roman) + Geist Mono
+ * OpenMail styles. Rules and rationale: DESIGN.md. Components use tokens only; no raw colours below the tokens. */
+@import '@fontsource-variable/geist/wght.css';
+@import '@fontsource-variable/geist-mono/wght.css';
 @import '@fontsource-variable/newsreader/opsz.css';
 
 /* ═══ Tokens ═══════════════════════════════════════════ */
 :root {
-  /* colour */
-  --paper: #ffffff; --list: #f7f8fa; --rail: #eef1f5; --rule: #dde2e9; --hover: #e7ebf1; --field: #f3f5f8;
-  --ink: #18202b; --ink-2: #445063; --muted: #6b7587;
-  --accent: #2340c4; --accent-hover: #1c35a6; --accent-ink: #ffffff; --accent-wash: #e8ecfb;
-  --star: #c98a00; --safe: #1f8a5b; --danger: #b3261e;
-  --toast: #18202b; --toast-ink: #f4f6fa; --toast-link: #a9b8ff;
-  --scrim: rgb(10 14 20 / .45);
-  --lift: 0 18px 50px -12px rgb(16 24 40 / .28), 0 2px 6px rgb(16 24 40 / .08);
-  --lift-sm: 0 1px 2px rgb(16 24 40 / .12);
-  /* type */
-  --ui: 'Schibsted Grotesk Variable', system-ui, sans-serif;
+  /* colour: warm paper neutrals (hue 85, near-zero chroma) and one ink accent. Never pure black or white. */
+  --paper: oklch(99.2% 0.004 85); --list: oklch(97.6% 0.006 85); --rail: oklch(95.6% 0.008 85);
+  --rule: oklch(89.5% 0.009 85); --hover: oklch(93.4% 0.009 85); --field: oklch(96.4% 0.007 85);
+  --ink: oklch(22% 0.012 265); --ink-2: oklch(40% 0.014 265); --muted: oklch(54% 0.012 265);
+  --accent: oklch(47% 0.17 266); --accent-hover: oklch(41% 0.16 266); --accent-ink: oklch(99% 0.004 85); --accent-wash: oklch(94% 0.03 266);
+  --star: oklch(70% 0.15 70); --safe: oklch(52% 0.12 155); --danger: oklch(52% 0.19 27);
+  --toast: oklch(22% 0.012 265); --toast-ink: oklch(96% 0.006 85); --toast-link: oklch(80% 0.09 266);
+  --scrim: oklch(20% 0.01 265 / .42);
+  --on-tint: oklch(98.5% 0.004 85); /* text on coloured avatars */
+  --white: oklch(100% 0 0); /* only behind HTML email and QR codes, which are drawn for white */
+  --lift: 0 18px 50px -12px oklch(20% 0.02 265 / .26), 0 2px 6px oklch(20% 0.02 265 / .07);
+  --lift-sm: 0 1px 2px oklch(20% 0.02 265 / .12);
+  /* type: Geist for the interface (tabular figures, clear at 13px), Newsreader for reading (always roman), Geist Mono for addresses and keys */
+  --ui: 'Geist Variable', system-ui, sans-serif;
   --read: 'Newsreader Variable', Georgia, serif;
+  --mono: 'Geist Mono Variable', ui-monospace, monospace;
   --t-xs: 12px; --t-sm: 13px; --t-md: 14px; --t-read: 17px; --t-h2: 24px; --t-h1: 30px;
+  /* motion: three named easings, short durations; nothing bounces */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur: 140ms;
   /* space (4px scale) */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px; --s10: 40px;
   /* size */
@@ -29,33 +39,37 @@
 
   color-scheme: light;
   font: 400 var(--t-md)/1.45 var(--ui); color: var(--ink);
+  font-feature-settings: "ss01", "cv11"; /* Geist: simpler a, single-storey alternates off by default */
   -webkit-font-smoothing: antialiased;
 }
-/* Dark values: for the device setting (unless Light is chosen), or when Dark is chosen in Settings. */
+/* Dark: warm charcoal paper, the ink accent lifted for contrast. For the device setting (unless Light is chosen), or Dark in Settings. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #151a21; --list: #12161c; --rail: #0e1116; --rule: #262d37; --hover: #1f2631; --field: #1a2029;
-    --ink: #e7ebf1; --ink-2: #b9c1cd; --muted: #8b95a5;
-    --accent: #93a6ff; --accent-hover: #aebcff; --accent-ink: #0c1433; --accent-wash: #1d2650;
-    --star: #e9b43c; --safe: #4cc38a; --danger: #ff8a80;
-    --toast: #e7ebf1; --toast-ink: #12161c; --toast-link: #2340c4;
-    --lift: 0 18px 50px -12px rgb(0 0 0 / .6), 0 2px 6px rgb(0 0 0 / .3); --lift-sm: 0 1px 2px rgb(0 0 0 / .4);
+    --paper: oklch(19% 0.006 80); --list: oklch(17% 0.006 80); --rail: oklch(15% 0.006 80);
+    --rule: oklch(28% 0.008 80); --hover: oklch(24% 0.008 80); --field: oklch(21.5% 0.007 80);
+    --ink: oklch(93% 0.006 85); --ink-2: oklch(80% 0.008 85); --muted: oklch(64% 0.01 85);
+    --accent: oklch(76% 0.11 268); --accent-hover: oklch(82% 0.09 268); --accent-ink: oklch(18% 0.04 268); --accent-wash: oklch(27% 0.05 268);
+    --star: oklch(80% 0.14 80); --safe: oklch(74% 0.13 155); --danger: oklch(72% 0.15 25);
+    --toast: oklch(93% 0.006 85); --toast-ink: oklch(18% 0.006 80); --toast-link: oklch(47% 0.17 266);
+    --lift: 0 18px 50px -12px oklch(0% 0 0 / .6), 0 2px 6px oklch(0% 0 0 / .3); --lift-sm: 0 1px 2px oklch(0% 0 0 / .4);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --paper: #151a21; --list: #12161c; --rail: #0e1116; --rule: #262d37; --hover: #1f2631; --field: #1a2029;
-  --ink: #e7ebf1; --ink-2: #b9c1cd; --muted: #8b95a5;
-  --accent: #93a6ff; --accent-hover: #aebcff; --accent-ink: #0c1433; --accent-wash: #1d2650;
-  --star: #e9b43c; --safe: #4cc38a; --danger: #ff8a80;
-  --toast: #e7ebf1; --toast-ink: #12161c; --toast-link: #2340c4;
-  --lift: 0 18px 50px -12px rgb(0 0 0 / .6), 0 2px 6px rgb(0 0 0 / .3); --lift-sm: 0 1px 2px rgb(0 0 0 / .4);
+  --paper: oklch(19% 0.006 80); --list: oklch(17% 0.006 80); --rail: oklch(15% 0.006 80);
+  --rule: oklch(28% 0.008 80); --hover: oklch(24% 0.008 80); --field: oklch(21.5% 0.007 80);
+  --ink: oklch(93% 0.006 85); --ink-2: oklch(80% 0.008 85); --muted: oklch(64% 0.01 85);
+  --accent: oklch(76% 0.11 268); --accent-hover: oklch(82% 0.09 268); --accent-ink: oklch(18% 0.04 268); --accent-wash: oklch(27% 0.05 268);
+  --star: oklch(80% 0.14 80); --safe: oklch(74% 0.13 155); --danger: oklch(72% 0.15 25);
+  --toast: oklch(93% 0.006 85); --toast-ink: oklch(18% 0.006 80); --toast-link: oklch(47% 0.17 266);
+  --lift: 0 18px 50px -12px oklch(0% 0 0 / .6), 0 2px 6px oklch(0% 0 0 / .3); --lift-sm: 0 1px 2px oklch(0% 0 0 / .4);
   color-scheme: dark;
 }
 
 /* ═══ Base ═════════════════════════════════════════════ */
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+html, body { overflow-x: clip; }
 body { margin: 0; background: var(--paper); }
 button, input, textarea, select { font: inherit; color: inherit; }
 button { background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
@@ -67,11 +81,12 @@ kbd {
   font: 500 var(--t-xs)/1 var(--ui); color: var(--ink-2);
   border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: var(--r-sm); background: var(--paper);
 }
+code, kbd, .key { font-family: var(--mono); }
 code { font-size: var(--t-xs); background: var(--hover); padding: 1px var(--s1); border-radius: var(--s1); }
 .fine { color: var(--muted); font-size: var(--t-sm); }
 .error { color: var(--danger); font-size: var(--t-sm); }
 .empty { color: var(--muted); padding: var(--s6) var(--gutter-list); }
-.wordmark { font: italic 600 24px/1 var(--read); letter-spacing: -.01em; color: var(--ink); }
+.wordmark { font: 600 23px/1 var(--read); font-style: normal; letter-spacing: -.02em; color: var(--ink); }
 
 /* Text inputs share one look and the md height. */
 .input {
@@ -86,7 +101,7 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
   display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); flex: none;
   height: var(--h-md); padding: 0 var(--s4); border-radius: var(--r-full);
   font-weight: 600; font-size: var(--t-md); white-space: nowrap; color: var(--ink-2);
-  transition: background-color .12s, color .12s, border-color .12s;
+  transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
 }
 .btn--sm { height: var(--h-sm); padding: 0 var(--s3); font-size: var(--t-sm); gap: 6px; }
 .btn--lg { height: var(--h-lg); padding: 0 var(--s5); font-size: 15px; }
@@ -100,7 +115,8 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 .btn--secondary { border: 1px solid var(--rule); background: var(--paper); }
 .btn--secondary:hover:not(:disabled) { background: var(--hover); border-color: var(--muted); color: var(--ink); }
 .btn--quiet { color: inherit; }
-.btn--quiet:hover:not(:disabled) { background: rgb(127 127 127 / .16); }
+.btn--quiet:hover:not(:disabled) { background: color-mix(in oklch, var(--ink) 9%, transparent); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
 .btn--quiet.is-on { color: var(--star); }
 .btn--link { height: auto; padding: 0; color: var(--accent); border-radius: var(--s1); }
 .btn--link:hover { text-decoration: underline; }
@@ -128,6 +144,7 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 .rail .wordmark { padding: 0 var(--s3); height: var(--h-md); display: flex; align-items: center; }
 .rail .compose-btn { width: 100%; justify-content: flex-start; padding: 0 var(--s3); box-shadow: var(--lift-sm); }
 .rail ul { display: grid; gap: 2px; overflow: auto; }
+.rail-group + .rail-group { margin-top: calc(-1 * var(--s1)); }
 .nav-item {
   width: 100%; height: var(--h-md); display: flex; align-items: center; gap: var(--s3);
   padding: 0 var(--s3); border-radius: var(--r-full); color: var(--ink-2);
@@ -165,13 +182,16 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 
 .check { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; flex: none; }
 
-/* Row: [checkbox][content]; unread bar pinned to the pane edge; actions float top-right. */
+/* Row: [checkbox][content]; unread = weight + a dot in the checkbox column (no side stripe); actions float top-right. */
 .row {
   position: relative; display: grid; grid-template-columns: 16px 1fr; gap: var(--s3); align-items: start;
   padding: var(--s3) var(--gutter-list); border-bottom: 1px solid var(--rule); cursor: pointer;
 }
-.row::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
-.row.unread::before { background: var(--accent); }
+.row.unread::before {
+  content: ''; position: absolute; left: calc(var(--gutter-list) + 4px); top: calc(var(--s3) + 7px);
+  width: 8px; height: 8px; border-radius: var(--r-full); background: var(--accent);
+}
+.row.unread:hover::before, .rows.selecting .row.unread::before, .row.unread.selected::before { display: none; }
 .row:hover { background: var(--hover); }
 .row.active, .row.selected { background: var(--accent-wash); }
 .row .check { margin-top: 2px; opacity: 0; }
@@ -182,7 +202,7 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 .row .subject { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; color: var(--ink-2); }
 .row .preview { grid-column: 1 / -1; color: var(--muted); font-size: var(--t-sm); }
 .row time { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
-.row.unread .from, .row.unread .subject { color: var(--ink); font-weight: 650; }
+.row.unread .from, .row.unread .subject { color: var(--ink); font-weight: 620; }
 .row.unread time, .row time.sends { color: var(--accent); font-weight: 600; }
 .starmark { display: inline-flex; color: var(--star); }
 .row-actions {
@@ -219,7 +239,7 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 .message > header.foldable { cursor: pointer; }
 .avatar {
   width: var(--avatar); height: var(--avatar); border-radius: 50%; display: grid; place-items: center;
-  font: 600 15px/1 var(--ui); color: #fff; background: hsl(var(--h) 45% 42%);
+  font: 600 15px/1 var(--ui); color: var(--on-tint); background: oklch(52% 0.1 var(--h));
 }
 .addr { display: grid; gap: 2px; min-width: 0; }
 .addr .who { font-weight: 650; }
@@ -231,7 +251,7 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 /* Everything in a message after the header starts on the text column. */
 .message > :not(header) { margin-left: var(--text-col); }
 .letter { font: 400 var(--t-read)/1.62 var(--read); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 70ch; }
-.message iframe { display: block; width: calc(100% - var(--text-col)); height: 60vh; min-height: 320px; border: 1px solid var(--rule); border-radius: var(--r-md); background: #fff; }
+.message iframe { display: block; width: calc(100% - var(--text-col)); height: 60vh; min-height: 320px; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--white); }
 .banner {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3);
   margin-bottom: var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-sm); font-size: var(--t-sm); color: var(--ink-2);
@@ -379,6 +399,7 @@ button.chip:hover { background: var(--hover); border-color: var(--muted); }
   .rail { flex-direction: row; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); overflow-x: auto; }
   .rail .wordmark, .me { display: none; }
   .rail ul { display: flex; overflow: visible; }
+  .rail-group { display: contents; } .rail-group .rail-label { display: none; }
   .nav-item { white-space: nowrap; }
   .rail .compose-btn { position: fixed; right: var(--s4); bottom: var(--s4); z-index: 5; width: auto; padding: 0 var(--s5); box-shadow: var(--lift); }
   .app.reading .list, .app:not(.reading) .reader { display: none; }
@@ -499,7 +520,7 @@ select.input { appearance: auto; }
 .cal-col:hover { background: color-mix(in srgb, var(--accent-wash) 35%, transparent); }
 .cal-event {
   position: absolute; display: grid; align-content: start; gap: 1px; overflow: hidden; cursor: pointer; text-align: left;
-  padding: 3px var(--s2); border-radius: var(--r-sm); border-left: 3px solid var(--accent);
+  padding: 3px var(--s2); border-radius: var(--r-sm); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--accent) 35%, transparent);
   background: var(--accent-wash); color: var(--ink); font-size: var(--t-xs); line-height: 1.3;
 }
 .cal-event:hover { filter: brightness(.97); }
@@ -558,7 +579,7 @@ select.input { appearance: auto; }
 .pill { display: inline-flex; align-items: center; height: 20px; padding: 0 var(--s2); border-radius: var(--r-full); background: var(--hover); color: var(--ink-2); font-size: var(--t-xs); font-weight: 600; }
 .pill.on { background: color-mix(in srgb, var(--safe) 18%, transparent); color: var(--safe); }
 .totp-setup { display: grid; grid-template-columns: 168px 1fr; gap: var(--s4); align-items: start; }
-.totp-setup .qr { width: 168px; height: 168px; image-rendering: pixelated; border: 1px solid var(--rule); border-radius: var(--r-md); background: #fff; padding: var(--s1); }
+.totp-setup .qr { width: 168px; height: 168px; image-rendering: pixelated; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--white); padding: var(--s1); }
 .totp-setup .steps { display: grid; gap: var(--s3); }
 .totp-setup .actions { display: flex; gap: var(--s2); }
 code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
@@ -599,3 +620,17 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .att-preview-body img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .att-preview-body iframe { width: 100%; height: 100%; border: 0; }
 .att-preview-body pre { align-self: start; justify-self: stretch; margin: 0; padding: var(--s4); white-space: pre-wrap; font: var(--t-sm)/1.5 ui-monospace, monospace; color: var(--ink); }
+
+/* ═══ Dialog (confirm / prompt): the app's own, never the browser's ═══ */
+.dialog {
+  width: min(440px, 100%); display: grid; gap: var(--s4); padding: var(--s6);
+  background: var(--paper); border-radius: var(--r-lg); box-shadow: var(--lift);
+  animation: dialog-in var(--dur) var(--ease-out);
+}
+.dialog h2 { font: 500 20px/1.3 var(--read); color: var(--ink); overflow-wrap: anywhere; }
+.dialog p { color: var(--ink-2); line-height: 1.5; }
+.dialog label { display: grid; gap: 6px; color: var(--ink-2); font-weight: 500; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s1); }
+.btn--primary.btn--danger { background: var(--danger); color: var(--on-tint); }
+.btn--primary.btn--danger:hover:not(:disabled) { background: color-mix(in oklch, var(--danger) 86%, var(--ink)); }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(4px) scale(.985); } }

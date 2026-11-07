@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { confirmIt, promptIt } from './Dialog';
 import type { Address, Attachment, Draft, Template } from './jmap';
 import { Button } from './Button';
 import { Icon, type IconName } from './icons';
@@ -135,7 +136,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
 
   async function discard() {
     const hasContent = htmlToText(editor.current!.innerHTML).trim() || subject.trim() || files.length;
-    if (hasContent && !confirm('Discard this draft?')) return;
+    if (hasContent && !(await confirmIt({ title: 'Discard this draft?', body: 'What you wrote will be deleted.', confirm: 'Discard', danger: true }))) return;
     await saving.current;
     if (draftId.current) await api.discard(draftId.current).catch(() => {});
     onClose('discarded');
@@ -148,14 +149,18 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
     if (!t.list.length && !c.list.length && !b.list.length) return setError('Add at least one recipient');
     if (uploading) return setError('Wait for attachments to finish uploading');
     const text = htmlToText(editor.current!.innerHTML);
-    if (!files.length && /\battach(ed|ment|ing)\b/i.test(text.split('\n> ')[0]) && !confirm('You mention an attachment, but nothing is attached. Send anyway?')) return;
-    if (!subject.trim() && !confirm('Send without a subject?')) return;
+    if (!files.length && /\battach(ed|ment|ing)\b/i.test(text.split('\n> ')[0]) && !(await confirmIt({ title: 'Forgot the attachment?', body: 'You mention an attachment, but nothing is attached.', confirm: 'Send anyway' }))) return;
+    if (!subject.trim() && !(await confirmIt({ title: 'Send without a subject?', body: 'Messages with a subject are easier to find and less likely to look like spam.', confirm: 'Send anyway' }))) return;
     await saving.current;
     onSend(snapshot(), sendAt);
   }
 
-  function link() {
-    const url = prompt('Link address (https://…)');
+  async function link() {
+    // The dialog takes focus, so remember where the cursor (or selection) was and put it back before inserting.
+    const sel = getSelection(), range = sel?.rangeCount && editor.current?.contains(sel.anchorNode) ? sel.getRangeAt(0).cloneRange() : null;
+    const url = await promptIt({ title: 'Add a link', label: 'Address', placeholder: 'https://…', confirm: 'Add link' });
+    editor.current?.focus();
+    if (range) { sel!.removeAllRanges(); sel!.addRange(range); }
     if (!url) return;
     if (!/^(https?:\/\/|mailto:)/i.test(url.trim())) return setError('Links must start with https://, http:// or mailto:');
     if (getSelection()?.isCollapsed) exec('insertHTML', `<a href="${encodeURI(url.trim())}">${url.trim().replace(/[<>&"]/g, '')}</a>`);
@@ -317,7 +322,7 @@ function TemplatesMenu({ api, close, onInsert, onSave }: {
             <Icon name="templates" size={16} /><span className="grow">{t.subject || 'Untitled template'}</span>
           </button>
           <Button variant="quiet" size="sm" icon="trash" label={`Delete template ${t.subject}`}
-            onClick={async () => { if (confirm(`Delete the template “${t.subject}”?`)) { await api.deleteTemplate(t.id); setList((l) => l?.filter((x) => x.id !== t.id) ?? l); } }} />
+            onClick={async () => { if (await confirmIt({ title: `Delete the template “${t.subject}”?`, confirm: 'Delete template', danger: true })) { await api.deleteTemplate(t.id); setList((l) => l?.filter((x) => x.id !== t.id) ?? l); } }} />
         </div>
       ))}
       <button className="menu-item menu-sep" role="menuitem" onClick={() => { close(); onSave(); }}><Icon name="compose" size={16} />Save this message as a template</button>

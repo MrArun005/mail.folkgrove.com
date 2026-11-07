@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { notify } from './Dialog';
 import { createPortal } from 'react-dom';
 import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
 import { Button } from './Button';
@@ -170,7 +171,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
         <ul className="chips" aria-label="Attachments">
           {files.map((a) => (
             <li key={a.blobId + a.name}>
-              <button className="chip" onClick={() => (previewKind(a) ? setPreview(a) : save(client, a).catch(() => alert(`Couldn’t download ${a.name ?? 'the file'}. Try again.`)))}
+              <button className="chip" onClick={() => (previewKind(a) ? setPreview(a) : save(client, a).catch(() => notify(`Couldn’t download ${a.name ?? 'the file'}`, 'Check your connection and try again.')))}
                 title={previewKind(a) ? `Preview ${a.name ?? 'file'}` : `Download ${a.name ?? 'file'}`}>
                 <Icon name="file" size={16} /><span className="fname">{a.name ?? 'Untitled file'}</span>
                 <span className="fsize">{fileSize(a.size)}</span><Icon name={previewKind(a) ? 'search' : 'download'} size={16} />

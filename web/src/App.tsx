@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
 import { Jmap, JmapError, SESSION_EXPIRED } from './jmap';
 import { Mail } from './Mail';
+import { DialogHost } from './Dialog';
 import { forgetSession, Session, signIn } from './oauth';
 import { applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
@@ -44,7 +45,7 @@ export default function App() {
 
   if (booting) return <div className="reader-loading" aria-busy="true" />;
   if (!client) return <Login key={error} initialError={error} onLogin={(c, s) => { session.current = s; setError(''); setClient(c); }} />;
-  return <Mail client={client} onLogout={signOut} />;
+  return <><Mail client={client} onLogout={signOut} /><DialogHost /></>;
 }
 
 function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: Jmap, s: Session) => void }) {
