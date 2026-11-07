@@ -656,3 +656,8 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 
 /* Priority Inbox section labels inside the list */
 .list-section { padding: var(--s4) var(--gutter-list) var(--s2); color: var(--muted); font-size: var(--t-xs); font-weight: 600; letter-spacing: .02em; border-bottom: 1px solid var(--rule); background: var(--list); }
+
+/* On-device translate / summarize */
+.assist-links { display: flex; align-items: center; gap: var(--s4); margin-left: var(--text-col); font-size: var(--t-sm); }
+.assist .assist-text { display: block; margin-top: var(--s1); white-space: pre-wrap; color: var(--ink); }
+.assist-note { margin-left: var(--text-col); }

@@ -23,7 +23,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Show original / headers | ✅ | ✅ | |
 | Print | ✅ | ✅ | Prints with trackers removed |
 | Read receipts (request) | ✅ | ✅ | Request from compose; when asked, you choose Send or Ignore (standard MDN), never automatic |
-| Translate | ✅ (Zia) | ⬜ | Optional, local model where possible |
+| Translate | ✅ (Zia) | ✅ | On this device (browser's built-in model): the message never leaves your computer |
 | Inbox categories (Updates / Promotions) | 🟡 | ✅ | Primary / Updates, sorted on the server as mail arrives; one switch in Settings |
 
 ## 2. Writing
@@ -117,14 +117,14 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 | 150+ recipients from mail apps | ✅ | ✅ | 500 per message for signed-in senders (was 100) |
 | Priority Inbox / important | ✅ | ✅ | Unread mail from people you write to comes first; no scanning, no AI: it uses your own Sent mail |
 | Search chips + typeahead | ✅ | ✅ | One-click filters (unread, starred, attachments, last 7 days, sent) and “From <person>” as you type |
-| AI (summarise, smart reply) | ✅ | ⬜ | Opt-in, your own key or a local model |
+| AI (summarise, smart reply) | ✅ | 🟡 | Summaries on this device; smart reply and writing help next |
 | Offline mail | ✅ | ⬜ | Installable today; mail offline later |
 | Large files as links | ✅ | ⬜ | |
 
 ## Score today
 
 Counting rows a typical Zoho Mail user touches (sections 1–4 plus calendar, contacts and the web app):
-**45 of 50 at parity or better (90%), 1 partial.**
+**46 of 50 at parity or better (92%), 1 partial.**
 Phase 2.5 (calendar, contacts UI, categories, multiple signatures, multi-account, E2E, OAuth/2FA) takes it past 90%;
 shared mailboxes and import close the rest of the 95%.
 

@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom';
 import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
 import { Button } from './Button';
 import { Icon } from './icons';
-import { displayName, fileSize, formatAddresses, type ReplyMode } from './mailutil';
+import { displayName, fileSize, formatAddresses, htmlToText, type ReplyMode } from './mailutil';
+import { canSummarize, canTranslate, languageName, summarize, translate } from './ai';
 import { buildSrcdoc } from './safeHtml';
 import { span, type CalEvent } from './calendar';
 import type { PartStat } from './ics';
@@ -118,6 +119,20 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
   const [showImages, setShowImages] = useState(false);
   const [inline, setInline] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<Attachment | null>(null);
+  const [assist, setAssist] = useState<{ kind: 'translation' | 'summary'; text: string; note: string } | null>(null);
+  const [assisting, setAssisting] = useState('');
+  const plain = (m.text || (m.html ? htmlToText(m.html) : '')).trim();
+  async function help(kind: 'translation' | 'summary') {
+    setAssisting(kind === 'translation' ? 'Translating on this device…' : 'Summarising on this device…');
+    try {
+      if (kind === 'summary') setAssist({ kind, text: await summarize(plain), note: 'Summary made on this device' });
+      else {
+        const t = await translate(plain);
+        setAssist(t ? { kind, text: t.text, note: `Translated from ${languageName(t.from)} on this device` } : { kind: 'summary', text: '', note: 'This message is already in your language.' });
+      }
+    } catch (e) { setAssist({ kind: 'summary', text: '', note: (e as Error).message }); }
+    finally { setAssisting(''); }
+  }
   // Images embedded in the message (cid:) are fetched with our credentials and handed to the frame as data: URLs.
   const embedded = useMemo(() => m.attachments.filter((a) => a.cid && m.html?.includes(`cid:${a.cid}`)), [m]);
   useEffect(() => {
@@ -144,6 +159,19 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
           <time dateTime={m.receivedAt} title={new Date(m.receivedAt).toLocaleString()}>{longDate(m.receivedAt)}</time>
         </span>
       </header>
+      {plain.length > 40 && (canTranslate() || canSummarize()) && (
+        <p className="assist-links">
+          {canTranslate() && assist?.kind !== 'translation' && <Button variant="link" disabled={!!assisting} onClick={() => help('translation')}>Translate</Button>}
+          {canSummarize() && plain.length > 600 && <Button variant="link" disabled={!!assisting} onClick={() => help('summary')}>Summarize</Button>}
+          {assisting && <span className="fine">{assisting}</span>}
+        </p>
+      )}
+      {assist?.kind === 'summary' && (
+        <div className="banner banner--info assist" role="status">
+          <span className="grow"><span className="fine">{assist.note}</span>{assist.text && <span className="assist-text">{assist.text}</span>}</span>
+          <Button variant="quiet" size="sm" icon="close" label="Close" onClick={() => setAssist(null)} />
+        </div>
+      )}
       <Invitation client={client} m={m} onRsvp={onRsvp} />
       {m.receiptTo?.length && !m.keywords.$mdnsent && m.from?.[0]?.email.toLowerCase() !== me.toLowerCase() ? (
         <p className="banner banner--info">
@@ -164,7 +192,12 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
           <Button variant="link" onClick={() => setShowImages(true)}>Load images</Button>
         </p>
       )}
-      {html
+      {assist?.kind === 'translation' ? (
+        <>
+          <p className="fine assist-note">{assist.note} · <Button variant="link" onClick={() => setAssist(null)}>Show original</Button></p>
+          <div className="letter">{assist.text}</div>
+        </>
+      ) : html
         ? <iframe title={`Message from ${displayName(sender)}`} sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={html.srcdoc} />
         : <div className="letter">{m.text}</div>}
       {files.length > 0 && (
