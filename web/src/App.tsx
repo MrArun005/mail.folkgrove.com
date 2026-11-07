@@ -50,7 +50,9 @@ export default function App() {
     if (session.current) cache.clear(`${session.current.username}:`); // their mail leaves this tab now, not later
     // While still signed in: stop this account's background notifications on this browser.
     if (client) await signOutPush(client, signedInAccounts().length > 1);
-    if (session.current) await offlineStore.clear(`${session.current.username}:`); // saved mail leaves with them
+    if (client) client.offline = false; // a request still in flight can't save again after the wipe
+    // Saved mail leaves with them. Both names: the session's (sign-in) and the server's (cache keys).
+    for (const u of new Set([session.current?.username, client?.username])) if (u) await offlineStore.clear(`${u}:`);
     await session.current?.signOut();
     session.current = null;
     const next = Session.resume();

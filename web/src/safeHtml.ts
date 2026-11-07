@@ -1,5 +1,5 @@
 // Email HTML is hostile. Defence in depth, using browser features instead of a sanitizer library:
-//  1. It renders in <iframe sandbox> without allow-scripts / allow-same-origin (no JS, no access to our app).
+//  1. It renders in <iframe sandbox> without allow-scripts (no JS). allow-same-origin only so the reader can size it and check links; with no scripts the message can't use that access.
 //  2. A CSP <meta> blocks scripts, network requests and (by default) remote images, which defeats tracking pixels.
 //  3. DOMParser strips the few things CSP and sandbox don't cover: meta refresh (iframe navigation) and <base>.
 // Inline (cid:) images arrive as data: URLs, so the CSP never has to allow a network fetch.

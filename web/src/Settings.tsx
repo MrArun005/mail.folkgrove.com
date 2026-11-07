@@ -24,9 +24,10 @@ export const DISPLAY = {
   text: { label: 'Text size', options: [['small', 'Small'], ['default', 'Default'], ['large', 'Large'], ['larger', 'Larger']] },
   density: { label: 'Density', options: [['comfortable', 'Comfortable'], ['default', 'Default'], ['compact', 'Compact']] },
   reading: { label: 'Message font', options: [['sans', 'Sans'], ['serif', 'Serif']] },
+  pane: { label: 'Reading pane', options: [['full', 'Full screen'], ['split', 'Beside the list']] },
 } as const;
 export type DisplayKey = keyof typeof DISPLAY;
-const DEFAULTS: Record<DisplayKey, string> = { palette: 'clean', text: 'default', density: 'default', reading: 'sans' };
+const DEFAULTS: Record<DisplayKey, string> = { palette: 'clean', text: 'default', density: 'default', reading: 'sans', pane: 'full' };
 export const displayPref = (k: DisplayKey) => { try { return localStorage.getItem(`om:${k}`) || DEFAULTS[k]; } catch { return DEFAULTS[k]; } };
 export function setDisplayPref(k: DisplayKey, v: string) {
   if (v === DEFAULTS[k]) document.documentElement.removeAttribute(`data-${k}`); else document.documentElement.setAttribute(`data-${k}`, v);

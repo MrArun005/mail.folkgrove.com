@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { notify } from './Dialog';
+import { confirmIt, notify } from './Dialog';
 import { createPortal } from 'react-dom';
 import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
 import { Button } from './Button';
@@ -201,7 +201,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
           <div className="letter">{assist.text}</div>
         </>
       ) : html
-        ? <iframe title={`Message from ${displayName(sender)}`} sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={html.srcdoc} />
+        ? <MessageFrame title={`Message from ${displayName(sender)}`} srcdoc={html.srcdoc} />
         : <div className="letter">{m.text}</div>}
       {files.length > 0 && (
         <ul className="chips" aria-label="Attachments">
@@ -338,3 +338,37 @@ function SmartReplies({ m, me, onPick }: { m: EmailFull; me: string; onPick: (te
     </div>
   );
 }
+
+/** The message, sized to its content (no scroll inside a scroll). allow-same-origin without allow-scripts: the message
+ *  still can't run anything (sandbox + CSP), but we can measure it and check its links. */
+function MessageFrame({ title, srcdoc }: { title: string; srcdoc: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    const f = ref.current!;
+    let ro: ResizeObserver | undefined;
+    const onClick = async (e: MouseEvent) => {
+      const a = (e.target as Element).closest?.('a[href]') as HTMLAnchorElement | null;
+      const claimed = a && claimedHost(a.textContent ?? '');
+      if (!a || !claimed || sameSite(claimed, a.hostname)) return;
+      e.preventDefault();
+      if (await confirmIt({ title: 'This link isn’t what it says', danger: true, confirm: 'Open anyway',
+        body: `It shows ${claimed} but goes to ${a.hostname}. Scam emails do this to steal passwords.` })) window.open(a.href, '_blank', 'noopener');
+    };
+    const setup = () => {
+      const d = f.contentDocument; if (!d) return;
+      const fit = () => { f.style.height = `${d.documentElement.scrollHeight}px`; };
+      ro?.disconnect(); ro = new ResizeObserver(fit); ro.observe(d.documentElement); fit();
+      d.addEventListener('click', onClick);
+    };
+    f.addEventListener('load', setup);
+    return () => { f.removeEventListener('load', setup); ro?.disconnect(); };
+  }, [srcdoc]);
+  return <iframe ref={ref} title={title} sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" srcDoc={srcdoc} />;
+}
+/** The site a link's text names ("https://bank.com/login", "www.bank.com"), if it names one. */
+export function claimedHost(text: string) {
+  const m = /^\s*(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[\/:?#]\S*)?\s*$/i.exec(text);
+  return m?.[1].toLowerCase();
+}
+const site = (h: string) => h.toLowerCase().replace(/^www\./, '');
+export const sameSite = (a: string, b: string) => { const x = site(a), y = site(b); return x === y || y.endsWith('.' + x) || x.endsWith('.' + y); };

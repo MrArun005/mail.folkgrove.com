@@ -152,3 +152,13 @@ it('AI input is only what a reader can see: hidden text is dropped', async () =>
   expect(t).toContain('Thanks');
   expect(t).not.toMatch(/Ignore|secret|wire/);
 });
+
+import { claimedHost, sameSite } from './Reader';
+it('deceptive link text', () => {
+  expect(claimedHost('https://northwind.example/account')).toBe('northwind.example');
+  expect(claimedHost('www.Bank.com')).toBe('www.bank.com');
+  expect(claimedHost('Check in online')).toBeUndefined();
+  expect(sameSite('www.bank.com', 'bank.com')).toBe(true);
+  expect(sameSite('bank.com', 'login.bank.com')).toBe(true);
+  expect(sameSite('northwind.example', 'evil.example')).toBe(false);
+});

@@ -273,7 +273,7 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 /* Everything in a message after the header starts on the text column. */
 .message > :not(header) { margin-left: var(--text-col); }
 .letter { font: 400 var(--t-read)/1.62 var(--read); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 70ch; }
-.message iframe { display: block; width: calc(100% - var(--text-col)); height: 60vh; min-height: 320px; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--white); }
+.message iframe { display: block; width: calc(100% - var(--text-col)); height: 320px; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--white); }
 .banner {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3);
   margin-bottom: var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-sm); font-size: var(--t-sm); color: var(--ink-2);
@@ -755,3 +755,12 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 @media (max-width: 860px) { .notes { grid-template-columns: 1fr; } .note-editor { padding: var(--s4); } }
 
 .offline-banner { margin: 0; }
+
+/* Reading pane "Full screen" (default, like Gmail): an open conversation takes the whole width; Back returns to the list. */
+@media (min-width: 861px) {
+  :root:not([data-pane="split"]) .app.reading:not(.calendar-mode) { grid-template-columns: var(--rail-w) 1fr; }
+  :root:not([data-pane="split"]) .app.reading:not(.calendar-mode) .list { display: none; }
+  :root:not([data-pane="split"]) .app.reading .reader { border-radius: var(--r-lg); }
+  :root:not([data-pane="split"]) .app.reading .only-mobile { display: inline-flex; margin-left: calc((18px - var(--h-md)) / 2); }
+  :root:not([data-pane="split"]) .app.reading .toolbar > .only-mobile + * { margin-left: 0; }
+}

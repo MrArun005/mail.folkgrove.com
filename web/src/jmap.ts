@@ -192,7 +192,7 @@ export class Jmap {
   private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
     if (!this.offline) return load();
     const k = `${this.username}:${key}`;
-    try { const v = await load(); offlineStore.set(k, v); return v; }
+    try { const v = await load(); if (this.offline) offlineStore.set(k, v); return v; } // not after sign-out turned it off
     catch (e) {
       const saved = isOffline(e) ? await offlineStore.get<T>(k) : undefined;
       if (saved === undefined) throw e;
