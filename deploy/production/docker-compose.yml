@@ -27,6 +27,8 @@ services:
       # Smarthost password (only used if a relay is configured). Stalwart reads it from
       # the environment so it is never stored in the database.
       RELAY_PASSWORD: ${RELAY_PASSWORD:-}
+      # Only with single sign-on (install.sh --oidc-issuer): internal passwords stop working, so admin tasks use this.
+      STALWART_RECOVERY_ADMIN: ${RECOVERY_ADMIN:-}
     ports:
       - "${SMTP_PORT:-25}:25"               # inbound mail (STARTTLS)
       - "${SUBMISSIONS_PORT:-465}:465"      # mail apps sending, implicit TLS
@@ -74,6 +76,13 @@ services:
       ADMINS: ${ADMINS:-}   # who may use the admin console at /admin (usernames, comma-separated)
       CLIENT_IP_HEADER: x-real-ip
       RETIRED_FILE: /data/retired-names.txt  # names of deleted accounts: never given out again (backup.sh copies it)
+      RETENTION_FILE: /data/retention.json   # retention rules (signup/retention.mjs)
+      # Single sign-on (install.sh --oidc-*); empty = off.
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_SECRET: ${OIDC_SECRET:-}
+      OIDC_NAME: ${OIDC_NAME:-}
+      PUBLIC_URL: ${PUBLIC_URL}
     env_file:
       - path: ./.system-mail.env   # system sender for sign-up codes (install.sh creates it)
         required: false

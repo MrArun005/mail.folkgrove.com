@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Button } from './Button';
 import { confirmIt, notify, promptIt } from './Dialog';
 import type { Jmap } from './jmap';
+import { RetentionAdmin } from './Retention';
 
 /**
  * Admin console (/admin): users, blocked addresses and new-account limits, and the outgoing queue. Every call goes
  * to the account service (signup/admin.mjs), which checks that the signed-in account is on its ADMINS list.
  */
-type Tab = 'overview' | 'users' | 'limits' | 'queue';
-const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['limits', 'Blocked & limits'], ['queue', 'Message trace']];
+type Tab = 'overview' | 'users' | 'limits' | 'queue' | 'retention';
+const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['limits', 'Blocked & limits'], ['queue', 'Message trace'], ['retention', 'Retention']];
 
 interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; admin: boolean; newAccount: boolean }
 interface Blocked { id: string; address: string; reason: string; createdAt: string; expiresAt: string | null }
@@ -51,6 +52,7 @@ export function Admin({ client }: { client: Jmap }) {
         {tab === 'users' && <Users client={client} />}
         {tab === 'limits' && <><BlockedIps client={client} /><NewAccounts client={client} /></>}
         {tab === 'queue' && <Queue client={client} />}
+        {tab === 'retention' && <RetentionAdmin client={client} />}
       </main>
     </div>
   );

@@ -9,6 +9,8 @@ import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
 import { accountRoutes } from './account.mjs';
 import { adminRoutes } from './admin.mjs';
+import { ssoRoutes } from './sso.mjs';
+import { policyStore, retentionRoutes, sweep } from './retention.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
@@ -21,6 +23,8 @@ export function configFromEnv(env = process.env) {
     : { user: adminText.slice(0, adminText.indexOf(':')), pass: adminText.slice(adminText.indexOf(':') + 1) };
   if (!admin.user || !admin.pass) throw new Error('Set ADMIN_USER and ADMIN_PASS, or ADMIN_FILE (JSON {"user","pass"})');
   if (!env.DOMAIN) throw new Error('Set DOMAIN (the mail domain new accounts are created in)');
+  if (env.OIDC_ISSUER && !(env.OIDC_CLIENT_ID && (env.OIDC_SECRET || env.OIDC_SECRET_FILE) && env.PUBLIC_URL))
+    throw new Error('Single sign-on (OIDC_ISSUER) also needs OIDC_CLIENT_ID, OIDC_SECRET (or OIDC_SECRET_FILE) and PUBLIC_URL');
   // SIGNUP=off: an account service for an existing server (masked aliases) with public sign-up switched off.
   const signupEnabled = env.SIGNUP !== 'off';
   const inviteRequired = env.INVITE_REQUIRED !== 'false';
@@ -56,6 +60,10 @@ export function configFromEnv(env = process.env) {
     // Admin console (/admin): usernames on DOMAIN allowed to use it. Empty = console off.
     admins: (env.ADMINS || '').split(',').map((s) => s.trim().toLowerCase().replace(/@.*$/, '')).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+    retentionFile: env.RETENTION_FILE || null, // retention rules (retention.mjs)
+    // Single sign-on (sso.mjs): an outside OpenID Connect provider. PUBLIC_URL is the webmail address (callback).
+    oidc: env.OIDC_ISSUER ? { issuer: env.OIDC_ISSUER, clientId: env.OIDC_CLIENT_ID, name: env.OIDC_NAME || 'your organisation',
+      secret: env.OIDC_SECRET_FILE ? readFileSync(env.OIDC_SECRET_FILE, 'utf8').trim() : env.OIDC_SECRET, publicUrl: (env.PUBLIC_URL || '').replace(/\/$/, '') } : null,
   };
 }
 
@@ -81,7 +89,7 @@ export function createApp(cfg) {
     const res = await fetch(`${cfg.stalwartUrl}/jmap/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: auth },
-      body: JSON.stringify({ using: ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap'], methodCalls }),
+      body: JSON.stringify({ using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:stalwart:jmap'], methodCalls }),
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`Stalwart JMAP HTTP ${res.status}`);
@@ -265,8 +273,16 @@ export function createApp(cfg) {
     setTimeout(run, 60_000).unref(); setInterval(run, 3600e3).unref();
   }
   const account = accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
-  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
-  const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const retentionStore = policyStore(cfg.retentionFile);
+  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)), retention: retentionStore });
+  const retention = retentionRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)), store: retentionStore });
+  // The retention job: daily, first run a few minutes after start. Only does work when a rule is set.
+  if (cfg.retentionJob !== false) {
+    const run = () => sweep({ jmap, policy: retentionStore.get(), dryRun: false, log: console.log }).catch((e) => console.error('retention:', e.message));
+    setTimeout(run, 5 * 60e3).unref(); setInterval(run, 86400e3).unref();
+  }
+  const sso = cfg.oidc ? ssoRoutes({ cfg, send, fail, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) }) : null;
+  const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)), sso });
 
   return createServer(async (req, res) => {
     try {
@@ -275,6 +291,8 @@ export function createApp(cfg) {
       if (url.pathname === '/api/account' && await account(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
       if (url.pathname.startsWith('/api/admin/') && await admin(req, res, url)) return;
+      if (url.pathname === '/api/retention' && await retention(req, res, url)) return;
+      if (sso && url.pathname.startsWith('/api/sso') && await sso.handle(req, res, url)) return;
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);

@@ -650,6 +650,13 @@ export class Jmap {
     return out;
   }
 
+  /** Your own retention rule (signup/retention.mjs): read it, or set Trash/Junk auto-empty (null = server default). */
+  async retention(trashDays?: number | null): Promise<{ trashDays: number | null; serverTrashDays: number | null; maxAgeDays: number | null; held: boolean } | null> {
+    const r = await this.fetch(`${this.base}/api/retention`, trashDays === undefined ? {} : { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashDays }) });
+    if (r.status === 404 || r.status === 502 || r.status === 503) return null; // no account service here
+    return aliasReply(r);
+  }
+
   /** Admin console API (signup/admin.mjs); only accounts listed in the service's ADMINS get answers. */
   async admin<T = any>(path: string, method = 'GET', body?: object): Promise<T> {
     const r = await this.fetch(`${this.base}/api/admin/${path}`, { method, ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { RetentionSection } from './Retention';
 import type { Jmap, Mailbox } from './jmap';
 import { FiltersSection, FoldersSection, loadScript, saveScript } from './Filters';
 import type { Rule, Vacation } from './rules';
@@ -149,6 +150,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         <FoldersSection client={client} boxes={boxes} onChanged={onFoldersChanged} />
         <ImportSection client={client} onDone={onFoldersChanged} />
         <ExportSection client={client} />
+        <RetentionSection client={client} />
 
         {notifySupported() && (
           <section>

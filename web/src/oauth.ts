@@ -95,6 +95,28 @@ export async function canRememberDevice(): Promise<boolean> {
   return !!r && (r.status === 400 || r.status === 401); // it answered: present (404/502: not running)
 }
 
+// ── Single sign-on (signup/sso.mjs) ──────
+// The account service runs the provider's sign-in and keeps its refresh token in the HttpOnly cookie, exactly like
+// "Keep me signed in"; it sends the browser back to /?sso=<username>. This device then only remembers the name.
+
+/** The provider's name when this server signs in through one ("Google", "Contoso"), else null. */
+export async function ssoProvider(): Promise<string | null> {
+  const r = await fetch('/api/sso').catch(() => null);
+  return r?.ok ? ((await r.json()).name as string) ?? null : null;
+}
+/** Back from the provider: make that account the active, device-remembered one. */
+export function adoptSso(username: string) {
+  device.set([...device.get(), username]); device.active(username); store.set('active', username);
+}
+const SSO_ERRORS: Record<string, string> = {
+  expired: 'That sign-in took too long or was already used. Please try again.',
+  cancelled: 'Sign-in was cancelled.',
+  refused: 'Your sign-in couldn’t be verified. Try again, or ask your administrator.',
+  no_account: 'That account can’t use this mail server. Sign in with your work address, or ask your administrator.',
+  rate_limited: 'Too many sign-in attempts. Wait a minute and try again.',
+};
+export const ssoError = (code: string) => SSO_ERRORS[code] ?? 'The sign-in service isn’t answering. Try again in a few minutes.';
+
 /** Usernames signed in here (this tab and remembered on this device), active first. */
 export function signedInAccounts(): string[] {
   const a = [...new Set([...Object.keys(saved()), ...device.get()])];

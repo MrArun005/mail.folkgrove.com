@@ -27,6 +27,8 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `CLIENT_IP_HEADER` | | Header that carries the real client IP when the service runs behind a proxy, for example `cf-connecting-ip` or `x-real-ip`. Set this **only** if the proxy overwrites that header, because otherwise clients can spoof it. If unset, the socket address is used. |
 | `ADMINS` | | Usernames on `DOMAIN` (comma-separated, e.g. `ann,raj`) who may use the admin console at `/admin`. Empty: the console is off and `/api/admin/*` answers 404. See [Admin console](#admin-console-apiadmin). |
 | `RESERVED_NAMES` | | Extra reserved usernames, comma-separated. They are added to the built-in list in `lib.mjs`. |
+| `RETENTION_FILE` | | JSON file for retention rules (`retention.mjs`). Without it rules last until restart. |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_SECRET` (or `OIDC_SECRET_FILE`), `OIDC_NAME`, `PUBLIC_URL` | | Single sign-on (`sso.mjs`). All but the name are needed together; `PUBLIC_URL` is the webmail address (callback `PUBLIC_URL/api/sso/callback`). Stalwart's OIDC directory must point at the same provider (`install.sh --oidc-*`). |
 | `RETIRED_FILE` | | File (one name per line) where the names of deleted accounts and their aliases are kept, so they are never given out again. Stalwart itself frees them on delete. Set it in production (`docker-compose.yml` does); without it the list lasts until restart. |
 
 Docker:
@@ -116,6 +118,20 @@ The web app's `/admin` screen calls these. Each request must carry the admin's o
 | `POST queue/:id/retry`, `DELETE queue/:id` | Retry now (next attempt due immediately) or cancel delivery |
 
 Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) and the caller's own account can't be changed or deleted here; names in `ADMINS` are also reserved at sign-up. Delivered or bounced mail leaves the queue; Stalwart's delivery history (`x:Trace`) needs its Enterprise edition, so it isn't shown.
+
+| `GET retention` | Trash/Junk auto-empty days (Stalwart `x:DataRetention.expungeTrashAfter`), server "older than" rule, accounts with their own rule or a hold |
+| `PUT retention` `{trashJunkDays?, maxAgeDays?}` | Set them. `trashJunkDays` 0 = never; `maxAgeDays` ≥ 30, 0/null = keep forever |
+| `POST retention/preview` `{maxAgeDays?}` or `{accountId, accountMaxAgeDays}` | Dry run of the saved rules, or of a proposed one: per account how many messages would go. Deletes nothing |
+| `POST retention/run` | Run the job now (it also runs daily) |
+| `PATCH retention/:id` `{maxAgeDays?, hold?}` | One account: own age limit (0 = keep forever, null = server rule), legal hold on/off (Stalwart permissions `jmapEmailDestroy`, `jmapMailboxDestroy`, `imapExpunge`, `imapDelete`, `pop3Dele` taken away). Held accounts can't be deleted (`409 on_hold`) |
+
+### `GET|PUT /api/retention`
+
+The caller's own rule (sign-in token): `{trashDays}` = empty my Trash and Junk after 1–365 days (null = server default). Answers `{trashDays, serverTrashDays, maxAgeDays, held}`.
+
+### Single sign-on: `GET /api/sso`, `/api/sso/start`, `/api/sso/callback`
+
+Only with `OIDC_ISSUER`. `GET /api/sso` → `{name}` (the login page shows "Sign in with {name}"). `start` redirects to the provider (authorization code + PKCE S256, `state` bound to an HttpOnly SameSite=Lax cookie, `nonce`). `callback` exchanges the code with the client secret, verifies the ID token (JWKS signature RS/PS/ES, `iss`, `aud`/`azp`, `exp`, `iat`, `nonce`), asks Stalwart which account it opens (Stalwart creates it on first sign-in, only in local domains), puts the provider's refresh token in the `/api/session` cookie, and redirects to `/?sso=<address>` (or `/?sso_error=expired|cancelled|refused|no_account|unavailable|rate_limited`). `/api/session/refresh` then returns a fresh ID token as the access token; `forget` revokes at the provider's `revocation_endpoint`.
 
 ### `GET /healthz`
 

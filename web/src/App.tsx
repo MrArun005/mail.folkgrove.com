@@ -6,7 +6,7 @@ import { Admin } from './Admin';
 import { DialogHost } from './Dialog';
 import { signOutPush } from './notify';
 import { offlineStore } from './offline';
-import { canRememberDevice, forgetSession, Session, signedInAccounts, signIn } from './oauth';
+import { adoptSso, canRememberDevice, forgetSession, Session, signedInAccounts, signIn, ssoError, ssoProvider } from './oauth';
 import { applyDisplayPrefs, applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
@@ -24,6 +24,12 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
+        // Back from single sign-on (signup/sso.mjs): /?sso=<username> or /?sso_error=<code>.
+        const q = new URLSearchParams(location.search);
+        if (q.has('sso') || q.has('sso_error')) {
+          history.replaceState(null, '', location.pathname);
+          if (q.get('sso')) adoptSso(q.get('sso')!); else setError(ssoError(q.get('sso_error')!));
+        }
         // Resuming in this tab after a reload.
         const s = Session.resume();
         if (s) { session.current = s; const c = await Jmap.connect(s); c.offline = s.remembered; setClient(c); }
@@ -88,7 +94,8 @@ function Login({ initialError, onLogin, onCancel }: { initialError: string; onLo
   const [code, setCode] = useState('');
   const [canKeep, setCanKeep] = useState(false);
   const [keep, setKeep] = useState(true);
-  useEffect(() => { signupAvailable().then(setCanSignUp); canRememberDevice().then(setCanKeep); }, []);
+  const [sso, setSso] = useState<string | null>(null);
+  useEffect(() => { signupAvailable().then(setCanSignUp); canRememberDevice().then(setCanKeep); ssoProvider().then(setSso); }, []);
 
   if (signingUp) return <Signup onCancel={() => setSigningUp(false)}
     onDone={(addr) => { setSigningUp(false); setEmail(addr); setNotice(`Your mailbox ${addr} is ready. Sign in to start using it.`); }} />;
@@ -113,6 +120,13 @@ function Login({ initialError, onLogin, onCancel }: { initialError: string; onLo
         <p className="wordmark">OpenMail</p>
         <h1>{needCode ? 'Two-step verification' : onCancel ? 'Add another account' : 'Sign in to your mailbox'}</h1>
         {notice && <p className="banner banner--safe" role="status">{notice}</p>}
+        {sso ? <>
+          {/* With single sign-on the server takes no passwords at all (Stalwart's directory is server-wide). */}
+          <Button variant="primary" size="lg" onClick={() => location.assign('/api/sso/start')}>Sign in with {sso}</Button>
+          {error && <p className="error" role="alert">{error}</p>}
+          <p className="fine">You’ll sign in on {sso}’s page and come straight back. This device stays signed in until you sign out.</p>
+          {onCancel && <Button variant="link" className="alt" onClick={onCancel}>Back to your mail</Button>}
+        </> : <>
         {!needCode ? <>
           <label>Email address<input className="input" name="email" type="email" autoComplete="username" required autoFocus
             value={email} onChange={(e) => setEmail(e.target.value)} /></label>
@@ -130,6 +144,7 @@ function Login({ initialError, onLogin, onCancel }: { initialError: string; onLo
         {needCode && <Button variant="link" className="alt" onClick={() => { setNeedCode(false); setCode(''); setError(''); }}>Use a different account</Button>}
         {!needCode && canSignUp && <Button variant="link" className="alt" onClick={() => setSigningUp(true)}>Create an account</Button>}
         {onCancel && <Button variant="link" className="alt" onClick={onCancel}>Back to your mail</Button>}
+        </>}
         <p className="fine">No ads. No reading your mail. Open source.</p>
       </form>
     </main>

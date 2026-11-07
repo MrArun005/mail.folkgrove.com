@@ -94,7 +94,8 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Native mobile apps | ✅ | ⬜ | PWA first; native in Phase 5 |
 | Custom domains | ✅ | 🟡 | Self-hosting: yes. Hosted: Phase 2.5 |
 | Admin console (users, groups, aliases, policies) | ✅ | 🟡 | Ours at `/admin` (`ADMINS`): users, blocked IPs, new-account limits, outgoing queue. Groups, policies, audit log: Stalwart's admin UI (`/admin/`) |
-| SSO / SAML, eDiscovery, retention | ✅ | ⬜ | Phase 5 (business tier) |
+| SSO (OpenID Connect) | ✅ | 🟡 | `install.sh --oidc-issuer`: Google Workspace, Microsoft Entra, Okta, Keycloak; accounts made on first sign-in, own domains only. Webmail only, server-wide (no IMAP/SMTP for SSO users; per-domain is Stalwart Enterprise). SAML ⬜ |
+| Retention policies, legal hold | ✅ | 🟡 | Console → Retention: Trash/Junk auto-empty (Stalwart), delete-older-than per server or account with a dry-run count first, users' own Trash/Junk setting, legal hold (blocks every delete). Hold doesn't stop Stalwart's server-wide Trash auto-empty. eDiscovery ⬜ |
 | Public sign-up with abuse controls | n/a | ✅ | Invites, rate limits, quotas (signup/) |
 
 ## Toward Gmail (and past it)
