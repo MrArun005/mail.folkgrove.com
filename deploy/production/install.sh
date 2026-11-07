@@ -455,7 +455,7 @@ api "[[\"x:MtaStageAuth/set\",{\"update\":{\"singleton\":{\"mustMatchSender\":{\
 
 # Login abuse: Stalwart bans an IP after 100 failed sign-ins a day, by default forever. Forever locks out whole offices or
 # schools behind one shared IP (one phone with an old password is enough); an hour still stops password guessing.
-api '[["x:Security/set",{"update":{"singleton":{"authBanPeriod":3600000}}},"s"]]' >/dev/null
+api '[["x:Security/set",{"update":{"singleton":{"authBanPeriod":3600000,"abuseBanPeriod":86400000,"loiterBanPeriod":86400000}}},"s"]]' >/dev/null
 
 # Prometheus metrics at /metrics/prometheus (basic auth, password in .metrics-password); same shape as deploy/scale/setup.mjs.
 if [ "${MONITORING:-0}" = 1 ]; then
