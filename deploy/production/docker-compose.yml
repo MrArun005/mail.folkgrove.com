@@ -14,7 +14,7 @@
 # ponytail: IPv4-only container networking. Docker forwards inbound IPv6 through a
 # userland proxy, which hides the sender's real IP from Stalwart (breaking SPF checks
 # on inbound mail), so don't publish an AAAA record for the mail host. See docs/self-hosting.md.
-name: postwren
+name: openmail
 
 services:
   stalwart:

@@ -91,7 +91,7 @@ Internet ──80/443──▶ Caddy ── /, /assets/*  → web client (web/di
 Internet ──25/465/587/993──▶ Stalwart
 ```
 
-Caddy gets the HTTPS certificate. Stalwart needs the same certificate for its mail ports. It can't fetch one itself here, because its certificate check (ACME) needs port 443, which Caddy already uses. So a daily cron job, `install.sh --refresh-certs` in `/etc/cron.d/postwren-certs`, copies Caddy's current certificate into Stalwart and reloads it.
+Caddy gets the HTTPS certificate. Stalwart needs the same certificate for its mail ports. It can't fetch one itself here, because its certificate check (ACME) needs port 443, which Caddy already uses. So a daily cron job, `install.sh --refresh-certs` in `/etc/cron.d/openmail-certs`, copies Caddy's current certificate into Stalwart and reloads it.
 
 ## 3. DNS
 
@@ -174,10 +174,10 @@ Backups are encrypted with [age](https://age-encryption.org) to a key that lives
 1. On your computer, create the key pair. Install age with `brew install age` on macOS or `apt install age` on Linux, then run:
 
    ```sh
-   age-keygen -o postwren-backup.key
+   age-keygen -o openmail-backup.key
    ```
 
-   Keep `postwren-backup.key` safe, for example in your password manager. Without it, the backups can't be restored. The command prints a public key starting with `age1…`.
+   Keep `openmail-backup.key` safe, for example in your password manager. Without it, the backups can't be restored. The command prints a public key starting with `age1…`.
 
 2. On the server, save that public key:
 
@@ -190,10 +190,10 @@ Backups are encrypted with [age](https://age-encryption.org) to a key that lives
 3. Schedule a nightly backup:
 
    ```sh
-   echo "30 3 * * * root $PWD/backup.sh >> /var/log/postwren-backup.log 2>&1" | sudo tee /etc/cron.d/postwren-backup
+   echo "30 3 * * * root $PWD/backup.sh >> /var/log/openmail-backup.log 2>&1" | sudo tee /etc/cron.d/openmail-backup
    ```
 
-**Making a backup:** run `sudo ./backup.sh`. It writes `backups/postwren-<date>.tar.gz.age` and keeps the newest 14. Stalwart's database can't be copied while it runs, so Stalwart pauses for a few seconds while the copy is made. Other servers retry delivery, so no mail is lost.
+**Making a backup:** run `sudo ./backup.sh`. It writes `backups/openmail-<date>.tar.gz.age` and keeps the newest 14. Stalwart's database can't be copied while it runs, so Stalwart pauses for a few seconds while the copy is made. Other servers retry delivery, so no mail is lost.
 
 **Keep copies somewhere else.** A backup on the same disk doesn't survive losing the server. For example:
 
@@ -208,8 +208,8 @@ rclone copy backups/ remote:mail-backups/
 
 ```sh
 git clone https://github.com/<you>/openmail.git && cd openmail/deploy/production
-# copy the backup file and your postwren-backup.key to the server, then:
-sudo ./backup.sh --restore postwren-20260101-033000.tar.gz.age --identity postwren-backup.key
+# copy the backup file and your openmail-backup.key to the server, then:
+sudo ./backup.sh --restore openmail-20260101-033000.tar.gz.age --identity openmail-backup.key
 sudo ./install.sh --yes --ip <this server's IP>     # builds webmail, starts everything, re-checks settings
 ```
 

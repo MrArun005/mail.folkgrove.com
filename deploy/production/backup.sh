@@ -3,11 +3,11 @@
 # settings, DKIM keys, certificate copy) plus .env and .admin-credentials.
 #
 #   ./backup.sh --recipient age1...      first time: save the public key backups are encrypted to
-#   ./backup.sh                          make backups/postwren-<date>.tar.gz.age (keeps the newest 14)
+#   ./backup.sh                          make backups/openmail-<date>.tar.gz.age (keeps the newest 14)
 #   ./backup.sh --restore FILE --identity KEYFILE
 #
 # Encryption is age (apt install age) to a public key. Make the key pair on your own computer
-# (age-keygen -o postwren-backup.key) and keep the private key off this server: then a stolen
+# (age-keygen -o openmail-backup.key) and keep the private key off this server: then a stolen
 # server or backup bucket can't read old backups.
 #
 # Stalwart's RocksDB can't be copied while running, so Stalwart stops for the few seconds the copy
@@ -34,7 +34,7 @@ case ${1:-} in
     [ "$ok" = yes ] || exit 1
     tmp=$(mktemp -d "$PWD/.restore.XXXXXX"); trap 'rm -rf "$tmp"' EXIT
     age -d -i "$key" "$file" | tar -xf - -C "$tmp"
-    [ -f "$tmp/volumes.tar.gz" ] || die "Not a postwren backup"
+    [ -f "$tmp/volumes.tar.gz" ] || die "Not a openmail backup"
     for f in .env .admin-credentials; do [ -f "$f" ] && cp -p "$f" "$f.before-restore"; cp -p "$tmp/$f" "$f"; done
     dc stop stalwart 2>/dev/null || true
     in_volumes 'find /etc/stalwart /var/lib/stalwart -mindepth 1 -delete && tar -xzf - --numeric-owner -C /' < "$tmp/volumes.tar.gz"
@@ -48,7 +48,7 @@ case ${1:-} in
     [ -f .env ] || die "Run ./install.sh first"
     [ -f backup-recipient.txt ] || die "First run: ./backup.sh --recipient age1... (see the top of this file)"
     mkdir -p backups
-    out=backups/postwren-$(date +%Y%m%d-%H%M%S).tar.gz.age
+    out=backups/openmail-$(date +%Y%m%d-%H%M%S).tar.gz.age
     tmp=$(mktemp -d "$PWD/.backup.XXXXXX"); trap 'rm -rf "$tmp"; dc start stalwart >/dev/null 2>&1' EXIT
     dc stop stalwart
     in_volumes 'tar -czf - --numeric-owner -C / etc/stalwart var/lib/stalwart' > "$tmp/volumes.tar.gz"
@@ -57,7 +57,7 @@ case ${1:-} in
     tar -cf - -C "$tmp" volumes.tar.gz .env .admin-credentials | age -R backup-recipient.txt > "$out.part"
     mv "$out.part" "$out"
     # ponytail: local rotation only; copy backups/ off this server (see docs/self-hosting.md).
-    find backups -name 'postwren-*.tar.gz.age' | sort -r | tail -n +$((KEEP + 1)) | xargs rm -f
+    find backups -name 'openmail-*.tar.gz.age' | sort -r | tail -n +$((KEEP + 1)) | xargs rm -f
     echo "Backup: $PWD/$out ($(du -h "$out" | cut -f1))" ;;
 
   *) sed -n '2,15p' "$0"; exit 1 ;;

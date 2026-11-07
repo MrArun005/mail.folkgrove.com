@@ -39,7 +39,7 @@ Usage: ./install.sh [options]
   --yes                 never ask; use flags, saved answers and defaults
   --refresh-certs       only copy Caddy's certificate into Stalwart and reload it
   --dns                 only print the DNS records
-  --local-test          test stack: project postwren-test, ports 10025/10465/10587/10993/10080/10443,
+  --local-test          test stack: project openmail-test, ports 10025/10465/10587/10993/10080/10443,
                         admin API on 127.0.0.1:18080, self-signed certificates, no cron
 EOF
 }
@@ -229,7 +229,7 @@ fi
 [[ "${RELAY_PASSWORD:-}" != *"'"* ]] || die "Relay password can't contain a single quote (')"
 
 if [ "$LOCAL_TEST" = 1 ]; then
-  COMPOSE_PROJECT_NAME=postwren-test CADDY_CERT_ISSUER=internal ADMIN_PORT=18080
+  COMPOSE_PROJECT_NAME=openmail-test CADDY_CERT_ISSUER=internal ADMIN_PORT=18080
   HTTP_PORT=10080 HTTPS_PORT=10443 SMTP_PORT=10025 SUBMISSIONS_PORT=10465 SUBMISSION_PORT=10587 IMAPS_PORT=10993
   PUBLIC_URL=https://$MAIL_HOSTNAME:$HTTPS_PORT ACME_EMAIL=${ACME_EMAIL:-test@example.com}
   SERVER_IP=${SERVER_IP:-203.0.113.10}
@@ -389,9 +389,9 @@ say "Webmail sign-in (OAuth) registered for $PUBLIC_URL/"
 # ---------------------------------------------------------------------------------------------
 # Daily certificate hand-over from Caddy to Stalwart.
 if [ "$LOCAL_TEST" = 0 ]; then
-  line="17 4 * * * root $HERE/install.sh --refresh-certs >> /var/log/postwren-certs.log 2>&1"
+  line="17 4 * * * root $HERE/install.sh --refresh-certs >> /var/log/openmail-certs.log 2>&1"
   if [ -w /etc/cron.d ]; then
-    echo "$line" > /etc/cron.d/postwren-certs
+    echo "$line" > /etc/cron.d/openmail-certs
   else
     warn "Can't write /etc/cron.d (not root). Add this to root's crontab so certificate renewals reach Stalwart:"
     echo "  ${line/ root / }"
