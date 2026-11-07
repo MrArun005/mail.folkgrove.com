@@ -33,6 +33,9 @@ export type Filter = Record<string, unknown>;
 
 export class JmapError extends Error {}
 
+export const TEMPLATES = 'Templates';
+export interface Template { id: string; subject: string; html: string; attachments: Attachment[] }
+
 const clean = (a: Address) => (a.name ? { name: a.name, email: a.email } : { email: a.email });
 const pathOnly = (url: string) => url.replace(/^https?:\/\/[^/]+/, ''); // keep {placeholders} intact
 
@@ -102,10 +105,12 @@ export class Jmap {
     return methodResponses.map(([, args]: [string, unknown]) => args);
   }
 
-  async mailboxes(): Promise<Mailbox[]> {
+  /** Folders, Inbox first. The Templates folder is app storage, so it's hidden unless asked for. */
+  async mailboxes(includeHidden = false): Promise<Mailbox[]> {
     const [r] = await this.call([['Mailbox/get', {
       accountId: this.accountId, properties: ['name', 'role', 'unreadEmails', 'sortOrder'],
     }, 'm']]);
+    if (!includeHidden) r.list = (r.list as Mailbox[]).filter((b) => b.role || b.name !== TEMPLATES);
     const order = ['inbox', 'snoozed', 'drafts', 'sent', 'archive', 'junk', 'trash'];
     const rank = (b: Mailbox) => (b.role && order.includes(b.role) ? order.indexOf(b.role) : 99);
     return (r.list as Mailbox[]).sort((a, b) => rank(a) - rank(b) || a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
@@ -311,7 +316,9 @@ export class Jmap {
       textBody: [{ partId: 't', type: 'text/plain' }],
       htmlBody: [{ partId: 'h', type: 'text/html' }],
       ...(d.attachments.length && {
-        attachments: d.attachments.map((a) => ({ blobId: a.blobId, type: a.type, name: a.name, disposition: 'attachment' })),
+        attachments: d.attachments.map((a) => (a.cid
+          ? { blobId: a.blobId, type: a.type, name: a.name, disposition: 'inline', cid: a.cid }
+          : { blobId: a.blobId, type: a.type, name: a.name, disposition: 'attachment' })),
       }),
     };
   }
@@ -331,6 +338,30 @@ export class Jmap {
   }
 
   async deleteDraft(id: string) { await this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
+
+  // ── Templates: saved messages in a "Templates" folder (hidden from the folder list), so they sync everywhere ──
+
+  async templates(): Promise<Template[]> {
+    const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === TEMPLATES);
+    if (!box) return [];
+    const [, r] = await this.call([
+      ['Email/query', { accountId: this.accountId, filter: { inMailbox: box.id }, sort: [{ property: 'subject', isAscending: true }] }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' },
+        properties: ['subject', 'htmlBody', 'textBody', 'bodyValues', 'attachments'], fetchHTMLBodyValues: true, fetchTextBodyValues: true }, 'g'],
+    ]);
+    return (r.list as any[]).map((e) => {
+      const part = e.htmlBody?.find((p: { type: string }) => p.type === 'text/html') ?? e.textBody?.[0];
+      return { id: e.id, subject: e.subject ?? '', html: part ? e.bodyValues[part.partId]?.value ?? '' : '', attachments: e.attachments ?? [] };
+    });
+  }
+
+  async saveTemplate(d: Draft): Promise<void> {
+    const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === TEMPLATES)?.id ?? await this.createMailbox(TEMPLATES);
+    const email = await this.compose({ ...d, to: [], cc: [], inReplyTo: undefined, references: undefined }, box);
+    await this.call([['Email/set', { accountId: this.accountId, create: { t: { ...email, keywords: { $seen: true } } } }, 't']]);
+  }
+
+  async deleteTemplate(id: string) { await this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
 
   /**
    * Send with a server-side hold (SMTP FUTURERELEASE), so Undo works even if the tab closes.

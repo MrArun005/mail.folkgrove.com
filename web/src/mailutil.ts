@@ -42,6 +42,18 @@ export function cleanHtml(html: string): string {
   const walk = (node: Element) => {
     for (const el of [...node.children]) {
       walk(el);
+      if (el.tagName === 'IMG') {
+        // Only images that are part of the message itself (cid:), never remote ones. data-cid marks an embedded
+        // image the editor is showing from a temporary blob: URL; it's turned back into cid: on send.
+        const src = el.getAttribute('src') ?? '', cid = el.getAttribute('data-cid'), alt = el.getAttribute('alt');
+        const keep = /^cid:/i.test(src) ? src : cid && /^blob:/.test(src) ? src : null;
+        if (!keep) { el.remove(); continue; }
+        for (const attr of [...el.attributes]) el.removeAttribute(attr.name);
+        el.setAttribute('src', keep);
+        if (cid) el.setAttribute('data-cid', cid);
+        if (alt) el.setAttribute('alt', alt);
+        continue;
+      }
       if (!KEEP.has(el.tagName)) { el.replaceWith(...el.childNodes); continue; }
       const href = el.tagName === 'A' ? el.getAttribute('href') ?? '' : '';
       for (const attr of [...el.attributes]) el.removeAttribute(attr.name);
@@ -85,6 +97,9 @@ const withPrefix = (prefix: string, subject: string | null) => {
   return new RegExp(`^${prefix}:`, 'i').test(s) ? s : `${prefix}: ${s}`;
 };
 
+/** Inline images the message body actually shows (cid: references). */
+const embedded = (e: EmailFull) => e.attachments.filter((a) => a.cid && e.html?.includes(`cid:${a.cid}`));
+
 const originalHtml = (e: EmailFull) => (e.html ? cleanHtml(e.html) : textToHtml(e.text ?? ''));
 
 export type ReplyMode = 'reply' | 'replyAll' | 'forward';
@@ -97,7 +112,7 @@ export function draftFor(mode: ReplyMode, e: EmailFull, me: string): Draft {
     return {
       to: [], cc: [], subject: withPrefix('Fwd', e.subject), text: '',
       html: `<div><br></div><div>---------- Forwarded message ----------<br>${header}</div><br>${originalHtml(e)}`,
-      attachments: e.attachments.filter((a) => a.disposition !== 'inline'), // forwards keep their files
+      attachments: [...e.attachments.filter((a) => a.disposition !== 'inline'), ...embedded(e)], // forwards keep files + inline images
     };
   }
   const notMe = (a: Address) => a.email.toLowerCase() !== me.toLowerCase();
@@ -109,7 +124,7 @@ export function draftFor(mode: ReplyMode, e: EmailFull, me: string): Draft {
   if (!to.length) to.push({ name: null, email: me }); // a note to self: reply to self
   const extra = mode === 'replyAll' ? uniq([...(e.to ?? []), ...(e.cc ?? [])]) : [];
   return {
-    to, cc: extra, subject: withPrefix('Re', e.subject), text: '', attachments: [],
+    to, cc: extra, subject: withPrefix('Re', e.subject), text: '', attachments: embedded(e), // quoted images keep working
     html: `<div><br></div><div>On ${escapeHtml(when)}, ${escapeHtml(displayName(e.from?.[0]))} wrote:</div><blockquote>${originalHtml(e)}</blockquote>`,
     inReplyTo: e.messageId ?? undefined,
     references: [...(e.references ?? []), ...(e.messageId ?? [])],

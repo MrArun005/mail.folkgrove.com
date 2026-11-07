@@ -267,6 +267,10 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     upload: (f) => client.upload(f),
     save: (d) => client.saveDraft(d, boxes),
     discard: (id) => client.deleteDraft(id),
+    download: (a) => client.download(a),
+    templates: () => client.templates(),
+    saveTemplate: (d) => client.saveTemplate(d),
+    deleteTemplate: (id) => client.deleteTemplate(id),
   };
   function closeCompose(outcome: 'saved' | 'discarded' | 'closed') {
     setCompose(null);

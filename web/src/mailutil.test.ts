@@ -79,3 +79,20 @@ it('unsubscribe never targets private hosts and never takes the subject from the
   expect(unsubscribePlan({ urls: ['https://list.example.com/u'], oneClick: false })).toEqual({ kind: 'open', url: 'https://list.example.com/u', host: 'list.example.com' });
   expect(unsubscribePlan({ urls: ['javascript:alert(1)', 'mailto:not-an-address'], oneClick: true })).toBeNull();
 });
+
+it('editor HTML keeps embedded (cid:) images but never remote ones', () => {
+  const out = cleanHtml('<p>Map:</p><img src="cid:map@x" alt="Route" onerror="x()"><img src="https://tracker.example/p.gif"><img src="blob:http://localhost/abc" data-cid="map@x">');
+  expect(out).toContain('<img src="cid:map@x" alt="Route">');
+  expect(out).toContain('<img src="blob:http://localhost/abc" data-cid="map@x">');
+  expect(out).not.toContain('tracker.example');
+  expect(out).not.toContain('onerror');
+});
+
+it('replies and forwards carry the inline images their quoted text shows', () => {
+  const map = { blobId: 'm', name: 'map.svg', type: 'image/svg+xml', size: 9, disposition: 'inline', cid: 'map@x' };
+  const unused = { ...map, blobId: 'u', cid: 'unused@x' };
+  const e = mail({ html: '<p>Route:</p><img src="cid:map@x">', attachments: [map, unused] });
+  expect(draftFor('reply', e, 'me@o.test').attachments.map((a) => a.blobId)).toEqual(['m']);
+  expect(draftFor('forward', e, 'me@o.test').attachments.map((a) => a.blobId)).toEqual(['m']);
+  expect(draftFor('forward', e, 'me@o.test').html).toContain('src="cid:map@x"');
+});

@@ -207,6 +207,35 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     void boxes;
   }, 20_000);
 
+  it('saves, lists and deletes templates; the Templates folder stays hidden', async () => {
+    const c = await login();
+    const subject = `Template ${Date.now()}`;
+    await c.saveTemplate({ to: [ALICE], cc: [], subject, html: '<p>Thanks for reaching out — <b>here is our price list</b>.</p>', text: 'Thanks', attachments: [] });
+    const t = (await c.templates()).find((x) => x.subject === subject)!;
+    expect(t.html).toContain('<b>here is our price list</b>');
+    expect((await c.mailboxes()).some((b) => b.name === 'Templates')).toBe(false);
+    expect((await c.mailboxes(true)).some((b) => b.name === 'Templates')).toBe(true);
+    await c.deleteTemplate(t.id);
+    expect((await c.templates()).some((x) => x.id === t.id)).toBe(false);
+  });
+
+  it('forwarding keeps embedded images working for the recipient', async () => {
+    const c = await login();
+    const boxes = await c.mailboxes();
+    const orig = (await c.threads({ text: 'Offsite agenda and directions' })).find((e) => e.subject === 'Offsite agenda and directions')!;
+    const [m] = await c.thread(orig.threadId);
+    // What draftFor('forward') produces (unit-tested separately): the original HTML with its cid: image + all parts.
+    const id = await c.saveDraft({ to: [ALICE], cc: [], subject: 'Fwd: ' + m.subject, html: m.html!, text: 'fwd', attachments: m.attachments }, boxes);
+    const drafts = boxes.find((b) => b.role === 'drafts')!.id;
+    const saved = (await c.threads({ inMailbox: drafts })).find((e) => e.id === id)!;
+    const [copy] = await c.thread(saved.threadId);
+    const inline = copy.attachments.find((a) => a.cid === 'map@seed')!;
+    expect(inline, 'the image travels as an inline part with its Content-ID').toBeTruthy();
+    expect(copy.html).toContain('cid:map@seed');
+    expect(copy.attachments.filter((a) => !a.cid).map((a) => a.name).sort()).toEqual(['agenda.txt', 'budget.csv']);
+    await c.deleteDraft(id);
+  });
+
   it('suggests contacts, people I write to first, never me', async () => {
     const c = await login();
     const people = (await c.contacts()).map((a) => a.email);

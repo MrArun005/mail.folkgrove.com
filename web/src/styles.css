@@ -406,3 +406,11 @@ button.chip:hover { background: var(--hover); border-color: var(--muted); }
 .settings .btn.start { justify-self: start; }
 select.input { appearance: auto; }
 @media (max-width: 860px) { .rule-form .row3 { grid-template-columns: 1fr; } }
+
+/* Menu rows with a trailing action (templates) */
+.menu-row { display: flex; align-items: center; gap: var(--s1); padding-right: var(--s1); }
+.menu-row .menu-item { flex: 1; min-width: 0; }
+.menu-row > .btn { color: var(--muted); }
+.menu-item .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu-note { padding: var(--s2) var(--s3); color: var(--muted); font-size: var(--t-sm); max-width: 300px; white-space: normal; }
+.menu-sep { border-top: 1px solid var(--rule); border-radius: 0; margin-top: var(--s1); }

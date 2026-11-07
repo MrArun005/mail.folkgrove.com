@@ -32,14 +32,14 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 |---|---|---|---|
 | Rich text compose | ✅ | ✅ | Safe paste: formatting kept, scripts and trackers removed |
 | Attachments, drag-drop, paste | ✅ | ✅ | "You mentioned an attachment" check |
-| Inline images | ✅ | 🟡 | Shown when reading; not yet kept when forwarding |
+| Inline images | ✅ | ✅ | Kept in replies and forwards, shown inside the editor |
 | Drafts autosave | ✅ | ✅ | |
 | Undo send | ✅ | ✅ | Server-side hold: works even if the tab closes |
 | Schedule send | ✅ | ✅ | Scheduled view to edit or cancel |
 | Recipient autocomplete | ✅ | ✅ | Ranks people you write to above people who write to you |
 | Signatures | ✅ (many) | 🟡 (one) | Multiple signatures: Phase 2.5 |
 | Send-as / aliases | ✅ | ⬜ | Needs admin API: with masked aliases (below) |
-| Templates | ✅ | ⬜ | Next batch |
+| Templates | ✅ | ✅ | Synced to every device; insert, save, delete from compose |
 | Large file links (WorkDrive) | ✅ | ⬜ | Phase 5: integrate, don't rebuild |
 | Spell check | ✅ | ✅ | Browser's own, in the user's languages |
 | AI writing (Zia) | ✅ | ⬜ | Optional, user's own provider or local model, off by default |
@@ -100,14 +100,14 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 ## Score today
 
 Counting rows a typical Zoho Mail user touches (sections 1–4 plus calendar, contacts and the web app):
-**32 of 50 at parity or better (64%), 6 partial.** The "next batch" items below take that to roughly 70%;
+**34 of 50 at parity or better (68%), 5 partial.** The "next batch" items below take that to roughly 70%;
 Phase 2.5 (calendar, contacts UI, categories, multiple signatures, multi-account, E2E, OAuth/2FA) takes it past 90%;
 shared mailboxes and import close the rest of the 95%.
 
 ## Order of work
 
-1. **Next batch (small, high value):** templates, signatures (several), 2FA enrolment screen,
-   signup form in the client, inline images kept when forwarding.
+1. **Next batch (small, high value):** several signatures, 2FA enrolment screen, saved searches,
+   subscriptions manager.
 2. **Phase 2 security:** passkeys; branded sign-in page (today it is the mail server's own page).
 3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager, multiple signatures,
    multi-account, E2E (OpenPGP), saved searches, encryption-at-rest toggle.

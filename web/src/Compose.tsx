@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Address, Attachment, Draft } from './jmap';
+import type { Address, Attachment, Draft, Template } from './jmap';
 import { Button } from './Button';
 import { Icon, type IconName } from './icons';
 import { cleanHtml, fileSize, formatAddresses, htmlToText, parseAddresses } from './mailutil';
@@ -10,6 +10,11 @@ export interface ComposeApi {
   upload: (f: File) => Promise<Attachment>;
   save: (d: Draft) => Promise<string>;
   discard: (id: string) => Promise<void>;
+  /** Fetch an attachment's bytes (to show embedded images inside the editor). */
+  download: (a: Attachment) => Promise<Blob>;
+  templates: () => Promise<Template[]>;
+  saveTemplate: (d: Draft) => Promise<void>;
+  deleteTemplate: (id: string) => Promise<void>;
 }
 
 const AUTOSAVE_MS = 2500;
@@ -43,19 +48,37 @@ export function Compose({ initial, contacts, api, onSend, onClose }: {
   useEffect(() => {
     const ed = editor.current!;
     // The editor lives in our own origin, so it only ever receives sanitized HTML (an <img onerror> here would run as us).
-    ed.innerHTML = cleanHtml(initial.html) || '<div><br></div>';
+    // Embedded images (cid:) can't be loaded by the browser directly. Move the reference to data-cid before the
+    // HTML reaches the page (so nothing tries to fetch cid:), then show each from a temporary blob: URL fetched with
+    // our credentials. snapshot() turns them back into cid: references.
+    const doc = new DOMParser().parseFromString(cleanHtml(initial.html), 'text/html');
+    doc.querySelectorAll('img[src^="cid:" i]').forEach((img) => {
+      img.setAttribute('data-cid', img.getAttribute('src')!.slice(4).replace(/^<|>$/g, ''));
+      img.removeAttribute('src');
+    });
+    ed.innerHTML = doc.body.innerHTML || '<div><br></div>';
+    const urls: string[] = [];
+    for (const img of ed.querySelectorAll<HTMLImageElement>('img[data-cid]')) {
+      const a = initial.attachments.find((x) => x.cid === img.dataset.cid);
+      if (a) api.download(a).then((b) => { const u = URL.createObjectURL(b); urls.push(u); img.src = u; }, () => {});
+    }
     // Replies start in the body, above the quote; new messages and forwards start at To.
     if (initial.to.length) {
       ed.focus();
       const r = document.createRange(); r.setStart(ed, 0); r.collapse(true);
       getSelection()?.removeAllRanges(); getSelection()?.addRange(r);
     } else toRef.current?.focus();
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, []);
 
   const snapshot = (): Draft => {
-    const html = editor.current!.innerHTML;
+    // Back from blob: previews to cid: references; drop embedded images the user deleted from the text.
+    const copy = editor.current!.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('img[data-cid]').forEach((img) => { img.setAttribute('src', `cid:${img.getAttribute('data-cid')}`); img.removeAttribute('data-cid'); });
+    const html = copy.innerHTML;
+    const attachments = files.filter((a) => !a.cid || html.includes(`cid:${a.cid}`));
     return {
-      ...initial, id: draftId.current, subject: subject.trim(), html, text: htmlToText(html), attachments: files,
+      ...initial, id: draftId.current, subject: subject.trim(), html, text: htmlToText(html), attachments,
       to: parseAddresses(to).list, cc: parseAddresses(showCc ? cc : '').list,
     };
   };
@@ -163,9 +186,9 @@ export function Compose({ initial, contacts, api, onSend, onClose }: {
           if (html) exec('insertHTML', cleanHtml(html)); else exec('insertText', e.clipboardData.getData('text/plain'));
         }} />
 
-      {(files.length > 0 || uploading > 0) && (
+      {(files.some((f) => !f.cid) || uploading > 0) && (
         <ul className="chips" aria-label="Attachments">
-          {files.map((f) => (
+          {files.filter((f) => !f.cid).map((f) => ( /* embedded images live in the text, not here */
             <li key={f.blobId} className="chip">
               <Icon name="file" size={16} /><span className="fname">{f.name}</span><span className="fsize">{fileSize(f.size)}</span>
               <Button variant="quiet" size="sm" icon="close" label={`Remove ${f.name}`} onClick={() => { setFiles((fs) => fs.filter((x) => x !== f)); changed(); }} />
@@ -191,6 +214,22 @@ export function Compose({ initial, contacts, api, onSend, onClose }: {
           {tool('quote', 'Quote', () => exec('formatBlock', 'blockquote'))}
           {tool('clearFormat', 'Remove formatting', () => exec('removeFormat'))}
           <Button variant="quiet" icon="clip" label="Attach files" onClick={() => fileInput.current?.click()} />
+          <Menu label="Templates" up button={<Button variant="quiet" icon="templates" label="Templates" />}>
+            {(close) => <TemplatesMenu api={api} close={close}
+              onInsert={(t) => {
+                editor.current?.focus();
+                exec('insertHTML', cleanHtml(t.html));
+                if (!subject.trim()) setSubject(t.subject);
+                setFiles((fs) => [...fs, ...t.attachments.filter((a) => a.disposition !== 'inline')]);
+                changed();
+              }}
+              onSave={async () => {
+                const d = snapshot();
+                if (!htmlToText(d.html).trim()) return setError('Write something first, then save it as a template.');
+                await api.saveTemplate({ ...d, subject: d.subject || 'Untitled template' });
+                setStatus(`Saved “${d.subject || 'Untitled template'}” as a template`);
+              }} />}
+          </Menu>
           <input ref={fileInput} type="file" multiple hidden onChange={(e) => { if (e.target.files) attach(e.target.files); e.target.value = ''; }} />
         </div>
         <span className="status" role="status">{error ? <span className="error">{error}</span> : status}</span>
@@ -198,5 +237,30 @@ export function Compose({ initial, contacts, api, onSend, onClose }: {
       </footer>
       {dragging && <div className="dropzone">Drop files to attach</div>}
     </section>
+  );
+}
+
+/** Insert a saved template, save the current message as one, or delete one. */
+function TemplatesMenu({ api, close, onInsert, onSave }: {
+  api: ComposeApi; close: () => void; onInsert: (t: Template) => void; onSave: () => void;
+}) {
+  const [list, setList] = useState<Template[] | null>(null);
+  useEffect(() => { api.templates().then(setList, () => setList([])); }, []);
+  return (
+    <>
+      <p className="menu-title">Templates</p>
+      {list === null && <p className="menu-note">Loading…</p>}
+      {list?.length === 0 && <p className="menu-note">No templates yet. Write a message you send often, then save it here.</p>}
+      {list?.map((t) => (
+        <div key={t.id} className="menu-row">
+          <button className="menu-item" role="menuitem" onClick={() => { close(); onInsert(t); }}>
+            <Icon name="templates" size={16} /><span className="grow">{t.subject || 'Untitled template'}</span>
+          </button>
+          <Button variant="quiet" size="sm" icon="trash" label={`Delete template ${t.subject}`}
+            onClick={async () => { if (confirm(`Delete the template “${t.subject}”?`)) { await api.deleteTemplate(t.id); setList((l) => l?.filter((x) => x.id !== t.id) ?? l); } }} />
+        </div>
+      ))}
+      <button className="menu-item menu-sep" role="menuitem" onClick={() => { close(); onSave(); }}><Icon name="compose" size={16} />Save this message as a template</button>
+    </>
   );
 }
