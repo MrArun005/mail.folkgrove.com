@@ -636,3 +636,7 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(4px) scale(.985); } }
 .input--sm { height: var(--h-sm); width: 172px; flex: none; padding: 0 var(--s2); font-size: var(--t-sm); }
 .rule-list li > .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-progress { display: flex; align-items: center; gap: var(--s3); }
+.import-progress .bar { flex: 1; height: 6px; border-radius: var(--r-full); background: var(--hover); overflow: hidden; }
+.import-progress .bar span { display: block; height: 100%; background: var(--accent); transition: width var(--dur) var(--ease-out); }
+.import-progress .fine { font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -5,6 +5,7 @@ import type { Rule, Vacation } from './rules';
 import { Button } from './Button';
 import { SecuritySection } from './Security';
 import { AddressesSection } from './Addresses';
+import { ImportSection } from './Import';
 import { notifyOn, notifySupported, setNotify } from './notify';
 import { chooseSignature, textToHtml, type Signature } from './mailutil';
 
@@ -127,6 +128,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         <ScreenerSection client={client} boxes={boxes} />
         <FiltersSection client={client} boxes={boxes} prefill={prefillRule} />
         <FoldersSection client={client} boxes={boxes} onChanged={onFoldersChanged} />
+        <ImportSection client={client} onDone={onFoldersChanged} />
 
         {notifySupported() && (
           <section>

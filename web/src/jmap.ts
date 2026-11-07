@@ -411,6 +411,29 @@ export class Jmap {
     return { blobId: r.blobId, type: r.type, size: r.size, name: file.name ?? 'attachment' };
   }
 
+  /** Store one raw message (RFC 5322 bytes) in the given folders, keeping its original date. Returns the email id. */
+  async importMessage(raw: Uint8Array, mailboxIds: string[], keywords: Record<string, true>, receivedAt?: string): Promise<string> {
+    const blob = await this.upload(new Blob([raw.slice().buffer as ArrayBuffer], { type: 'message/rfc822' }));
+    const [r] = await this.call([['Email/import', { accountId: this.accountId, emails: { i: {
+      blobId: blob.blobId, mailboxIds: Object.fromEntries(mailboxIds.map((id) => [id, true])), keywords,
+      ...(receivedAt && { receivedAt }),
+    } } }, 'i']]);
+    return r.created.i.id;
+  }
+
+  /** The folder at this "A/B/C" path, creating any missing level. `known` caches path → id across calls. */
+  async folderPath(path: string, known: Map<string, string>, boxes: Mailbox[]): Promise<string> {
+    if (known.has(path)) return known.get(path)!;
+    for (const b of boxes) if (b.path && !b.role) known.set(b.path, b.id);
+    let parent: string | null = null, sofar = '';
+    for (const part of path.split('/').map((x) => x.trim()).filter(Boolean)) {
+      sofar = sofar ? `${sofar}/${part}` : part;
+      if (!known.has(sofar)) known.set(sofar, await this.createMailbox(part, parent));
+      parent = known.get(sofar)!;
+    }
+    return parent!;
+  }
+
   async download(a: Attachment): Promise<Blob> {
     const url = this.downloadUrl.replace('{accountId}', this.accountId).replace('{blobId}', a.blobId)
       .replace('{name}', encodeURIComponent(a.name ?? 'file')).replace('{type}', encodeURIComponent(a.type));
