@@ -10,12 +10,16 @@
 // would add a member list to the JSON and let the owner pick an account per address.
 import { createHmac } from 'node:crypto';
 import { Resolver } from 'node:dns/promises';
+import { randomBytes } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { callerOf, serial } from './aliases.mjs';
 import { retire } from './account.mjs';
 import { sendMail } from './mailer.mjs';
 
 const TAG = 'openmail-custom-domain ';
 export const GRACE_DAYS = 7; // TXT record gone this long: addresses on the domain are paused
+export const RELEASE_DAYS = 30; // paused (or its account deleted) this much longer: the domain is released for others
 const DOMAIN_RE = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/;
 const LOCAL_RE = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 
@@ -41,7 +45,7 @@ export const readMeta = (description) => {
   if (typeof description !== 'string' || !description.startsWith(TAG)) return null;
   try { return JSON.parse(description.slice(TAG.length)); } catch { return null; }
 };
-const writeMeta = (meta) => TAG + JSON.stringify(meta);
+export const writeMeta = (meta) => TAG + JSON.stringify(meta);
 
 /** Stalwart's zone text (dnsZoneFile) as rows; multi-part TXT values joined, as install.sh does. */
 export function parseZone(text = '') {
@@ -122,9 +126,24 @@ export async function adminDomainList(jmap) {
   });
 }
 
+/**
+ * The key for verification tokens: DOMAIN_SECRET, or a random one made on first start and kept next to RETIRED_FILE.
+ * Never derived from the admin password (a token in public DNS must not help anyone guess it).
+ */
+function domainSecret(cfg) {
+  if (cfg.domainSecret) return cfg.domainSecret;
+  if (!cfg.retiredFile) {
+    console.warn('domains: no DOMAIN_SECRET or RETIRED_FILE; verification records change when the service restarts');
+    return randomBytes(32).toString('hex');
+  }
+  const file = join(dirname(cfg.retiredFile), 'domain-secret');
+  if (!existsSync(file)) writeFileSync(file, randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' });
+  return readFileSync(file, 'utf8').trim();
+}
+
 export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf }) {
   const dns = cfg.resolver ?? makeResolver(cfg.dnsServers);
-  const secret = cfg.domainSecret ?? cfg.admin?.pass; // ponytail: changing the admin password changes tokens of domains still waiting
+  const secret = domainSecret(cfg);
   const caller = callerOf({ cfg, jmap, getDomainId });
   const badAuth = new RateLimiter(20, 15 * 60e3); // as in aliases.mjs
   const lookups = new RateLimiter(cfg.domainChecksPerHour ?? 60, 3600e3); // each one is a handful of DNS queries
@@ -155,8 +174,16 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
    * owner; back again: switch them on. A DNS timeout (null) changes nothing.
    */
   async function refresh(d, found, now = Date.now()) {
-    if (found === null) return d.meta;
     const m = { ...d.meta, checked: new Date(now).toISOString() };
+    // Released for someone else: its account is gone, or the record has been missing well past the pause.
+    const since = m.orphaned ?? (m.paused && m.missing ? new Date(Date.parse(m.missing) + GRACE_DAYS * 86400e3).toISOString() : null);
+    if (since && now - Date.parse(since) > RELEASE_DAYS * 86400e3 && (m.orphaned || found === false)) {
+      if (m.owner) await removeAddresses({ id: m.owner }, d, null);
+      await destroyDomain(d);
+      console.log(`domains: released ${d.name}`);
+      return null;
+    }
+    if (found === null || m.orphaned) { if (!m.orphaned) return d.meta; await setMeta(d, m); return (d.meta = m); }
     if (found) {
       if (m.paused) await switchAll(m.owner, d.id, true);
       Object.assign(m, { missing: null, paused: false });
@@ -221,6 +248,15 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     return gone.length;
   });
 
+  /** Its DKIM keys first (Stalwart refuses to destroy a domain they still point at), then the domain. */
+  async function destroyDomain(d) {
+    const keys = (await jmap([['x:DkimSignature/query', { filter: { domainId: d.id } }, 'q']])).ids;
+    const own = keys.length ? (await jmap([['x:DkimSignature/get', { ids: keys, properties: ['domainId'] }, 'g']])).list.filter((k) => k.domainId === d.id).map((k) => k.id) : [];
+    if (own.length) await jmap([['x:DkimSignature/set', { destroy: own }, 'k']]);
+    const r = await jmap([['x:Domain/set', { destroy: [d.id] }, 'x']]);
+    if (!r.destroyed?.includes(d.id)) throw Object.assign(new Error('domain destroy refused'), { detail: r.notDestroyed?.[d.id] });
+  }
+
   const handlers = {
     'GET ': async (who) => {
       const mine = (await customDomains(jmap)).filter((d) => d.meta.owner === who.id);
@@ -271,11 +307,7 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     },
     'DELETE domain': async (who, _req, d) => {
       await removeAddresses(who, d, null);
-      const keys = (await jmap([['x:DkimSignature/query', { filter: { domainId: d.id } }, 'q']])).ids;
-      const own = keys.length ? (await jmap([['x:DkimSignature/get', { ids: keys, properties: ['domainId'] }, 'g']])).list.filter((k) => k.domainId === d.id).map((k) => k.id) : [];
-      if (own.length) await jmap([['x:DkimSignature/set', { destroy: own }, 'k']]);
-      const r = await jmap([['x:Domain/set', { destroy: [d.id] }, 'x']]);
-      if (!r.destroyed?.includes(d.id)) throw Object.assign(new Error('domain destroy refused'), { detail: r.notDestroyed?.[d.id] });
+      await destroyDomain(d);
       console.log(`domains: ${who.name} removed ${d.name}`);
       return {};
     },

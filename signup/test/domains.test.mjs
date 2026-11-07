@@ -8,7 +8,7 @@ import { connect } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../server.mjs';
 import { Invites } from '../lib.mjs';
-import { checkDomain, checkLocal, cleanDomain, parseZone, wantedRecords, hasRecord, tokenFor, readMeta, adminDomainList } from '../domains.mjs';
+import { checkDomain, checkLocal, cleanDomain, parseZone, wantedRecords, hasRecord, tokenFor, readMeta, adminDomainList, RELEASE_DAYS } from '../domains.mjs';
 import { retireNames } from '../account.mjs';
 
 const STALWART = process.env.STALWART_URL || 'http://localhost:8080';
@@ -194,13 +194,21 @@ test('custom domain on the dev server: claim, DKIM, addresses, delivery, pause, 
   assert.equal(await rcptCode(`${user}@${domain}`), 250);
   assert.ok(v.addresses.every((a) => a.enabled));
 
-  // 7. Account deletion keeps its domain addresses as full addresses (the domain stays claimed by the dead account).
-  assert.ok((await retireNames({ cfg: { domain: 'openmail.test' }, jmap }, uid, user)).includes(`hello@${domain}`));
-
-  // 8. Remove the domain: addresses retired, DKIM keys and the domain gone from Stalwart.
+  // 7. Remove the domain: addresses retired, DKIM keys and the domain gone from Stalwart.
   assert.equal((await call(`/${domain}`, 'DELETE')).status, 200);
   assert.equal(await rcptCode(`hello@${domain}`), 550);
   assert.ok(!(await jmap([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).list.some((d) => d.name === domain));
   assert.ok(cfg.extraReserved.includes(`${user}@${domain}`) && cfg.extraReserved.includes(`hello@${domain}`));
   assert.deepEqual((await call()).domains, []);
+
+  // 8. Account deletion: its domain addresses are retired as full addresses, the domain loses its owner (a later
+  // account with the same id must not match), and after RELEASE_DAYS it's released for someone else.
+  assert.equal((await call('', 'POST', { domain })).domain.status, 'active'); // claim it again (TXT is still in the fake DNS)
+  await retireNames({ cfg: { domain: 'openmail.test' }, jmap }, uid, user); // (its address there was retired in step 7, so not given back)
+  const orphan = readMeta((await jmap([['x:Domain/get', { ids: null, properties: ['name', 'description'] }, 'd']])).list.find((d) => d.name === domain).description);
+  assert.deepEqual([orphan.owner, orphan.paused, !!orphan.orphaned], [null, true, true]);
+  assert.deepEqual((await call()).domains, []); // not theirs any more
+  await jmap([['x:Account/set', { destroy: [uid] }, 'x']]); // the deletion itself (account.mjs does this next)
+  await app.domains.recheckAll(Date.now() + (RELEASE_DAYS + 1) * 86400e3);
+  assert.ok(!(await jmap([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).list.some((d) => d.name === domain));
 });
