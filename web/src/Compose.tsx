@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { confirmIt, promptIt } from './Dialog';
-import type { Address, Attachment, Draft, Template } from './jmap';
+import { chooseIt, confirmIt, promptIt } from './Dialog';
+import type { Address, Attachment, Draft, SharedFile, Template } from './jmap';
 import { Button } from './Button';
 import { Icon, type IconName } from './icons';
-import { cleanHtml, fileSize, formatAddresses, htmlToText, parseAddresses, signatureHtml, type Signature } from './mailutil';
+import { cleanHtml, fileLinkHtml, fileSize, formatAddresses, htmlToText, parseAddresses, signatureHtml, type Signature } from './mailutil';
 import { RecipientInput } from './RecipientInput';
 import { canRewrite, rewrite, type RewriteStyle } from './ai';
 import { Menu, TimeChoices } from './Menu';
@@ -17,7 +17,14 @@ export interface ComposeApi {
   templates: () => Promise<Template[]>;
   saveTemplate: (d: Draft) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
+  /** Large files go to the sender's storage as a download link (absent: the server can't, so they're attached). */
+  share?: (f: File, expiresDays: 7 | 30 | 0) => Promise<SharedFile>;
+  /** Biggest attachment the server takes (session maxSizeUpload). */
+  maxUpload?: number;
 }
+
+// Most mail servers (Gmail, Outlook) refuse messages over 25 MB, and attachments grow by a third on the way.
+const LINK_OVER = 25 * 1024 * 1024;
 
 const AUTOSAVE_MS = 2500;
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -144,12 +151,33 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
   }, [edits]);
 
   async function attach(list: FileList | File[]) {
+    let total = files.reduce((n, a) => n + a.size, 0);
     for (const f of [...list]) {
+      if (api.share && f.size + total > Math.min(LINK_OVER, api.maxUpload ?? Infinity)) { await shareLink(f); continue; }
+      total += f.size;
       setUploading((n) => n + 1);
       try { const a = await api.upload(f); setFiles((fs) => [...fs, a]); changed(); }
       catch (e) { setError(`${f.name}: ${(e as Error).message}`); }
       finally { setUploading((n) => n - 1); }
     }
+  }
+
+  /** Too big to attach: upload it to the sender's storage and put a download link in the message instead. */
+  async function shareLink(f: File) {
+    const days = await chooseIt({ title: `${f.name} is too big to attach`, label: 'The link works for',
+      body: `It’s ${fileSize(f.size)}, and many mail servers refuse messages over 25 MB. Send a download link instead? The file is kept in your storage, and you can remove it any time in Settings → Shared files.`,
+      value: '30', options: [['7', '7 days'], ['30', '30 days'], ['0', 'Until I remove it']], confirm: 'Upload and add link' });
+    if (days === null) return;
+    setUploading((n) => n + 1);
+    try {
+      const t = document.createElement('template'); t.innerHTML = fileLinkHtml(await api.share!(f, Number(days) as 7 | 30 | 0));
+      // Above the signature and any quoted reply, like a line you'd type there.
+      const ed = editor.current!, stop = ed.querySelector('[data-sig], blockquote');
+      const at = stop?.previousElementSibling?.textContent?.startsWith('On ') ? stop.previousElementSibling : stop;
+      if (at) at.before(t.content); else ed.append(t.content);
+      changed();
+    } catch (e) { setError(`${f.name}: ${(e as Error).message}`); }
+    finally { setUploading((n) => n - 1); }
   }
 
   async function close() {

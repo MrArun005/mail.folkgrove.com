@@ -40,25 +40,26 @@ export function callerOf({ cfg, jmap, getDomainId }) {
   };
 }
 
+// ponytail: changes are "read the list, patch by position", so one account's changes run one at a time (shared with
+// domains.mjs, which edits the same list). Ceiling: one service instance; with replicas, two could still race (rare).
+const locks = new Map();
+export const serial = (id, fn) => {
+  const run = (locks.get(id) ?? Promise.resolve()).then(fn, fn);
+  locks.set(id, run.catch(() => {}));
+  run.finally(() => { if (locks.get(id) === run) locks.delete(id); }).catch(() => {});
+  return run;
+};
+
 export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf }) {
   const createLimit = new RateLimiter(cfg.aliasesPerHour ?? 30, 3600e3);
   // Failed sign-ins per IP: this endpoint must not become a way to guess passwords.
   const badAuth = new RateLimiter(20, 15 * 60e3);
-  // ponytail: changes are "read the list, patch by position", so one account's changes run one at a time.
-  // Ceiling: one service instance; with replicas, two could still race (rare: same user, same instant).
-  const locks = new Map();
-  const serial = (id, fn) => {
-    const run = (locks.get(id) ?? Promise.resolve()).then(fn, fn);
-    locks.set(id, run.catch(() => {}));
-    run.finally(() => { if (locks.get(id) === run) locks.delete(id); }).catch(() => {});
-    return run;
-  };
-
   const caller = callerOf({ cfg, jmap, getDomainId });
   const aliasesOf = async (id) => (await jmap([['x:Account/get', { ids: [id], properties: ['aliases'] }, 'g']])).list[0]?.aliases ?? {};
   const live = (a) => !(typeof a.description === 'string' && a.description.startsWith(RETIRED));
-  const list = async (id) => Object.values(await aliasesOf(id)).filter(live).map((a) => toView(a, cfg.domain));
-  const find = async (id, name) => Object.entries(await aliasesOf(id)).find(([, a]) => a.name === name) ?? [];
+  // Addresses on the user's own domains (domains.mjs) are listed there, not here.
+  const list = async (id) => { const d = await getDomainId(); return Object.values(await aliasesOf(id)).filter((a) => live(a) && a.domainId === d).map((a) => toView(a, cfg.domain)); };
+  const find = async (id, name) => { const d = await getDomainId(); return Object.entries(await aliasesOf(id)).find(([, a]) => a.name === name && a.domainId === d) ?? []; };
   const update = async (id, patch) => {
     const r = await jmap([['x:Account/set', { update: { [id]: patch } }, 'u']]);
     if (!r.updated || !(id in r.updated)) throw Object.assign(new Error('update refused'), { detail: r.notUpdated?.[id] });

@@ -1,10 +1,11 @@
 import { Fragment, Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { SendingBlocked } from './Sending';
 import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
 import { Icon, roleIcon } from './icons';
 import { Jmap, UNDO_SECONDS, type SharedAccount, type Attachment, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
-import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode, type Signature } from './mailutil';
+import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, fileSize, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode, type Signature } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { SubscriptionsList } from './Subscriptions';
@@ -18,6 +19,7 @@ import { NotesView } from './Notes';
 import { addRule, loadScript, saveScript } from './Filters';
 import { SCREENER, UPDATES, type Rule, type ScriptData } from './rules';
 import { enablePush, notifyOn, showMail } from './notify';
+import { setBadge, takeLaunch } from './launch';
 import { offlineStore } from './offline';
 import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
@@ -494,7 +496,26 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     templates: () => client.templates(),
     saveTemplate: (d) => client.saveTemplate(d),
     deleteTemplate: (id) => client.deleteTemplate(id),
+    share: (f, days) => client.shareFile(f, days),
+    maxUpload: client.maxUpload,
   };
+  // Opened from outside: the Compose shortcut, an email link or "Share to OpenMail" (launch.ts).
+  useEffect(() => {
+    takeLaunch().then(async (l) => {
+      if (!l) return;
+      // Shared files come from outside (any site can post to /share): attach them only when the person says so.
+      // Names are the sender's text: control/direction characters stripped, shortened, shown after the warning.
+      const label = (f: File) => `${f.name.replace(/[\p{Cc}\p{Cf}]/gu, '').slice(0, 60) || 'Untitled file'} (${fileSize(f.size)})`;
+      if (l.files.length && !(await confirmIt({ title: `Attach ${l.files.length === 1 ? 'a shared file' : `${l.files.length} shared files`}?`, danger: true,
+        body: `Only attach files you shared to OpenMail just now. ${l.files.slice(0, 5).map(label).join(' · ')}${l.files.length > 5 ? ' …' : ''}`, confirm: 'Attach' }))) l.files = [];
+      const attachments = await Promise.all(l.files.map((f) => client.upload(f))).catch((e) => { fail(e); return []; });
+      setCompose(withSignature({ ...EMPTY_DRAFT, to: l.to, cc: l.cc, bcc: l.bcc, subject: l.subject, html: l.body ? textToHtml(l.body) : '', text: l.body, attachments }));
+    });
+  }, [client]);
+  // Unread Inbox mail on the app icon.
+  // ponytail: the active account's Inbox only; other signed-in accounts don't add to it.
+  useEffect(() => setBadge(boxes.find((b) => b.role === 'inbox')?.unreadEmails ?? 0), [boxes]);
+  useEffect(() => () => setBadge(0), []); // signed out
   function closeCompose(outcome: 'saved' | 'discarded' | 'closed') {
     setCompose(null);
     if (outcome === 'saved') say({ text: 'Draft saved' });
@@ -774,6 +795,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         if (hasMore && el.scrollTop + el.clientHeight > el.scrollHeight - 600) loadMore();
       }}>
         <div className="list-head">
+        <SendingBlocked client={client} />
         {!online && <p className="banner banner--info offline-banner" role="status">You’re offline. {client.offline ? 'Showing saved mail' : 'Mail you haven’t opened isn’t available'}{outbox ? ` · ${outbox} waiting to send` : ''}.</p>}
         <div className="search">
           <Icon name="search" />
