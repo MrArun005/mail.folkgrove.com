@@ -5,6 +5,8 @@ deploy/.dev-admin.json
 .DS_Store
 deploy/production/.env
 deploy/production/.admin-credentials
+deploy/production/signup-data/
+retired-names.txt
 *.age
 deploy/production/.system-mail.env
 .claude/

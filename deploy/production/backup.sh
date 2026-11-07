@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Encrypted backup and restore of the whole mail server: Stalwart's two volumes (all mail, accounts,
-# settings, DKIM keys, certificate copy) plus .env and .admin-credentials.
+# settings, DKIM keys, certificate copy) plus .env, .admin-credentials and signup-data/ (retired usernames).
 #
 #   ./backup.sh --recipient age1...      first time: save the public key backups are encrypted to
 #   ./backup.sh                          make backups/openmail-<date>.tar.gz.age (keeps the newest 14)
@@ -36,6 +36,7 @@ case ${1:-} in
     age -d -i "$key" "$file" | tar -xf - -C "$tmp"
     [ -f "$tmp/volumes.tar.gz" ] || die "Not a openmail backup"
     for f in .env .admin-credentials; do [ -f "$f" ] && cp -p "$f" "$f.before-restore"; cp -p "$tmp/$f" "$f"; done
+    [ -d "$tmp/signup-data" ] && mkdir -p signup-data && cp -Rp "$tmp/signup-data/." signup-data/
     dc stop stalwart 2>/dev/null || true
     in_volumes 'find /etc/stalwart /var/lib/stalwart -mindepth 1 -delete && tar -xzf - --numeric-owner -C /' < "$tmp/volumes.tar.gz"
     # shellcheck disable=SC1091
@@ -54,7 +55,8 @@ case ${1:-} in
     in_volumes 'tar -czf - --numeric-owner -C / etc/stalwart var/lib/stalwart' > "$tmp/volumes.tar.gz"
     dc start stalwart
     cp -p .env .admin-credentials "$tmp/"
-    tar -cf - -C "$tmp" volumes.tar.gz .env .admin-credentials | age -R backup-recipient.txt > "$out.part"
+    mkdir -p signup-data && cp -Rp signup-data "$tmp/"
+    tar -cf - -C "$tmp" volumes.tar.gz .env .admin-credentials signup-data | age -R backup-recipient.txt > "$out.part"
     mv "$out.part" "$out"
     # ponytail: local rotation only; copy backups/ off this server (see docs/self-hosting.md).
     find backups -name 'openmail-*.tar.gz.age' | sort -r | tail -n +$((KEEP + 1)) | xargs rm -f

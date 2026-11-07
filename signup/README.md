@@ -26,6 +26,7 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `CHECKS_PER_MINUTE` | `30` | Username-availability checks allowed per client IP per minute. |
 | `CLIENT_IP_HEADER` | | Header that carries the real client IP when the service runs behind a proxy, for example `cf-connecting-ip` or `x-real-ip`. Set this **only** if the proxy overwrites that header, because otherwise clients can spoof it. If unset, the socket address is used. |
 | `RESERVED_NAMES` | | Extra reserved usernames, comma-separated. They are added to the built-in list in `lib.mjs`. |
+| `RETIRED_FILE` | | File (one name per line) where the names of deleted accounts and their aliases are kept, so they are never given out again. Stalwart itself frees them on delete. Set it in production (`docker-compose.yml` does); without it the list lasts until restart. |
 
 Docker:
 
@@ -93,6 +94,10 @@ Use this for live feedback while the user types. Debounce it (around 400 ms), be
 - `429` and `503` errors use the same shape as above.
 
 This endpoint checks account names only. An alias that collides is caught at sign-up time (`409 username_taken`).
+
+### `DELETE /api/account`
+
+Deletes the caller's own account and all its mail, contacts and calendars. Needs the caller's sign-in token (`Authorization: Bearer …`; passwords are refused as on `/api/aliases`) and a JSON body `{ "password": "…", "code": "123456", "confirm": "jane.doe@DOMAIN" }`: the current password (`code` only with two-factor sign-in on; checked through Stalwart's sign-in API, so an app password doesn't count) and the full address typed as confirmation. Before the account is destroyed, its username and every alias go into `RETIRED_FILE`, so sign-up and masked-address generation never hand them out again. Errors: `401 unauthorized`, `400 confirm_mismatch` / `password_required` / `code_required`, `403 wrong_password` (5 per account per hour, then `429`), `503 unavailable` (nothing removed).
 
 ### `GET /healthz`
 

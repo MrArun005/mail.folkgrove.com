@@ -264,6 +264,7 @@ umask 077
 umask 022
 
 say "Starting the stack"
+mkdir -p signup-data && chown 1000:1000 signup-data   # the account service runs as uid 1000 (node)
 dc up -d
 wait_for_stalwart
 
