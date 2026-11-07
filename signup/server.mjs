@@ -187,7 +187,7 @@ export function createApp(cfg) {
     send(res, 200, { ok: true, available: true, email: `${u}@${cfg.domain}` });
   }
 
-  const aliases = aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter });
+  const aliases = aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
   return createServer(async (req, res) => {
     try {

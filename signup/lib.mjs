@@ -48,6 +48,11 @@ export class RateLimiter {
   constructor(limit, windowMs, now = Date.now) {
     Object.assign(this, { limit, windowMs, now, hits: new Map() });
   }
+  /** Like take() but doesn't count: 0 if the key may still try, else seconds until it may. */
+  peek(key) {
+    const e = this.hits.get(key), t = this.now();
+    return e && e.resetAt > t && e.count >= this.limit ? Math.ceil((e.resetAt - t) / 1000) : 0;
+  }
   /** Counts one hit. Returns 0 if allowed, else seconds until the key may try again. */
   take(key) {
     const t = this.now();

@@ -270,6 +270,26 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     await c.saveRules(before.script || toSieve({ rules: [], vacation: { enabled: false } }, { trash: 'Deleted Items', junk: 'Junk Mail' }), (await c.getRules()).id);
   }, 20_000);
 
+  it('Bcc reaches the recipient without a Bcc header; the Sent copy keeps it', async () => {
+    const c = await login();
+    const boxes = await c.mailboxes();
+    const inbox = boxes.find((b) => b.role === 'inbox')!.id;
+    const subject = `bcc ${Date.now()}`;
+    await c.send({ to: [], cc: [], bcc: [{ name: null, email: 'alice@openmail.test' }], subject, html: '<div>x</div>', text: 'x', attachments: [] }, boxes);
+    let copies: any[] = [];
+    for (let i = 0; i < 60 && copies.length < 2; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const [, r] = await c.call([['Email/query', { accountId: c.accountId, filter: { subject } }, 'q'],
+        ['Email/get', { accountId: c.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: ['mailboxIds', 'header:Bcc'] }, 'g']]);
+      copies = r.list;
+    }
+    const received = copies.find((e) => e.mailboxIds[inbox]), sent = copies.find((e) => !e.mailboxIds[inbox]);
+    expect(received, 'delivered').toBeTruthy();
+    expect(received['header:Bcc']).toBeNull();
+    expect(sent['header:Bcc']).toContain('alice@openmail.test');
+    await c.call([['Email/set', { accountId: c.accountId, destroy: copies.map((e) => e.id) }, 'd']]);
+  }, 45_000);
+
   it('lists subscriptions grouped by sender with their unsubscribe links', async () => {
     const c = await login();
     const subs = await c.subscriptions();

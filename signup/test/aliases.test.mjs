@@ -21,6 +21,22 @@ test('alias helpers', () => {
   assert.equal(cleanLabel(' Shop\u0000ping '), 'Shopping');
 });
 
+test('failed sign-ins are rate limited per network', async () => {
+  const { aliasRoutes } = await import('../aliases.mjs');
+  const { RateLimiter } = await import('../lib.mjs');
+  const { createServer } = await import('node:http');
+  const stub = createServer((_q, r) => { r.statusCode = 401; r.end(); }); // Stalwart saying "wrong password"
+  await new Promise((r) => stub.listen(0, '127.0.0.1', r));
+  const sent = [];
+  const handle = aliasRoutes({ cfg: { stalwartUrl: `http://127.0.0.1:${stub.address().port}`, domain: 'x.test' }, jmap: null, getDomainId: null,
+    send: () => {}, fail: (_res, status) => sent.push(status), readJson: null, RateLimiter, ipOf: () => '203.0.113.0/24' });
+  const req = { headers: { authorization: 'Basic eDp5' }, method: 'GET' };
+  const url = new URL('http://x/api/aliases');
+  for (let i = 0; i < 21; i++) await handle(req, {}, url);
+  stub.close();
+  assert.deepEqual([sent[0], sent.at(-1)], [401, 429]);
+});
+
 /** Ask the dev MX whether it would take mail for this address (RCPT TO answer code). */
 function rcptCode(addr) {
   return new Promise((resolve, reject) => {

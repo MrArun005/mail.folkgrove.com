@@ -14,12 +14,14 @@ import type { PartStat } from './ics';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
 import { addRule, loadScript, saveScript } from './Filters';
 import { UPDATES, type Rule, type ScriptData } from './rules';
+import { notifyOn, showMail } from './notify';
 import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
 import { applyTheme, Settings } from './Settings';
 import { cache } from './store';
 import { describe } from './when';
 
+const PAGE = 50;
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
 const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
 // Virtual folders: views that aren't mailboxes on the server.
@@ -83,6 +85,12 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
   // ── Loading ────────────────────────────────────────────
 
+  // Paging: the list shows `limit` conversations and grows as you scroll. A ref, so growing it doesn't count as
+  // switching folders (which clears the selection).
+  // ponytail: each refresh re-reads the first `limit` rows; fine into the low thousands. Upgrade: Email/queryChanges.
+  const limit = useRef(PAGE);
+  const [hasMore, setHasMore] = useState(false);
+  const loadingMore = useRef(false);
   const refresh = useCallback(async () => {
     try {
       let b = await client.mailboxes();
@@ -98,15 +106,18 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       const filter: Filter = query ? parseSearch(query, b) : box === STARRED ? { hasKeyword: '$flagged' }
         : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box }, tab === 'updates' ? { hasKeyword: UPDATES } : { notKeyword: UPDATES }] }
         : { inMailbox: box };
-      const l = await client.threads(filter);
-      setList(l);
-      if (!query) cache.set(key(listKey(box)), l);
+      const l = await client.threads(filter, limit.current + 1); // one extra tells us whether there's more
+      setHasMore(l.length > limit.current);
+      const page = l.slice(0, limit.current);
+      setList(page);
+      if (!query) cache.set(key(listKey(box)), page.slice(0, PAGE));
     } catch (e) { say({ text: e instanceof Error ? e.message : String(e) }); }
   }, [client, view, query, tab, categories]);
 
   useEffect(() => {
     setList(query ? null : cache.get(key(listKey(view ?? inbox))));
     setSelected(new Set());
+    limit.current = PAGE;
     const t = setTimeout(refresh, query ? 300 : 0); // debounce typing in search
     const poll = setInterval(refresh, FALLBACK_POLL_MS);
     window.addEventListener('focus', refresh);
@@ -115,11 +126,26 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
   // Live updates: the server pushes a note whenever anything changes; coalesce bursts.
   const refreshRef = useRef(refresh); refreshRef.current = refresh;
+  async function loadMore() {
+    if (loadingMore.current) return;
+    loadingMore.current = true; limit.current += PAGE;
+    try { await refresh(); } finally { loadingMore.current = false; }
+  }
+  const inboxRef = useRef(inbox); inboxRef.current = inbox;
+  const openRef = useRef((_: string) => {});
   useEffect(() => {
-    let t = 0;
+    let t = 0, since = new Date().toISOString();
     return client.watch(() => {
       clearTimeout(t);
-      t = window.setTimeout(() => { refreshRef.current(); setThreadVersion((v) => v + 1); }, 400);
+      t = window.setTimeout(() => {
+        refreshRef.current(); setThreadVersion((v) => v + 1);
+        const box = inboxRef.current;
+        if (!box || !notifyOn()) return;
+        client.arrivedSince(box, since).then((l) => {
+          if (l[0]) since = l[0].receivedAt;
+          if (!document.hasFocus()) l.slice(0, 3).forEach((e) => showMail(e, () => openRef.current(e.threadId)));
+        }, () => {});
+      }, 400);
     });
   }, [client]);
 
@@ -179,6 +205,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   function openFolder(id: string) { setView(id); setQuery(''); setThreadId(null); }
 
   // In Drafts, opening a conversation resumes the draft in the editor.
+  openRef.current = (tid) => { setQuery(''); setView(null); openThread(tid); }; // from a notification: show it in the Inbox
   async function openThread(tid: string) {
     if (role !== 'drafts') return setThreadId(tid);
     try {
@@ -557,7 +584,10 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       </nav>
 
       {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : <>
-      <section className="list" aria-label="Conversations">
+      <section className="list" aria-label="Conversations" onScroll={(e) => {
+        const el = e.currentTarget;
+        if (hasMore && el.scrollTop + el.clientHeight > el.scrollHeight - 600) loadMore();
+      }}>
         <div className="list-head">
         <div className="search">
           <Icon name="search" />
@@ -645,6 +675,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
                 </li>
               ))}
             </ul>
+            {hasMore && <div className="list-more"><Button variant="link" onClick={loadMore}>Show more</Button></div>}
           </>
         )}
       </section>

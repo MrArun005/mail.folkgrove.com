@@ -583,3 +583,5 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .switch input:disabled + span { opacity: .5; }
 .alias-list .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alias-list li.off code { opacity: .55; }
+
+.list-more { display: flex; justify-content: center; padding: var(--s3) 0 var(--s6); }

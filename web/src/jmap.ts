@@ -173,6 +173,16 @@ export class Jmap {
     return r.list;
   }
 
+  /** Unread Primary-inbox mail received after `since`, newest first (for desktop notifications). */
+  async arrivedSince(inboxId: string, since: string): Promise<EmailSummary[]> {
+    const [, r] = await this.call([
+      ['Email/query', { accountId: this.accountId, sort: [{ property: 'receivedAt', isAscending: false }], limit: 5,
+        filter: { operator: 'AND', conditions: [{ inMailbox: inboxId }, { after: since }, { notKeyword: '$seen' }, { notKeyword: UPDATES }] } }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: SUMMARY }, 'g'],
+    ]);
+    return r.list;
+  }
+
   /** Every message in a conversation, oldest first. */
   async thread(threadId: string): Promise<EmailFull[]> {
     const [, r] = await this.call([

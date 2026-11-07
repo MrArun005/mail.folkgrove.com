@@ -5,6 +5,7 @@ import type { Rule, Vacation } from './rules';
 import { Button } from './Button';
 import { SecuritySection } from './Security';
 import { AddressesSection } from './Addresses';
+import { notifyOn, notifySupported, setNotify } from './notify';
 import { chooseSignature, textToHtml, type Signature } from './mailutil';
 
 export type Theme = 'system' | 'light' | 'dark';
@@ -28,6 +29,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
   const [sigReply, setSigReply] = useState<string | undefined>();
   const [vac, setVac] = useState<Vacation | null>(null);
   const [theme, setTheme] = useState<Theme>(savedTheme());
+  const [notify, setNotifyState] = useState(notifyOn());
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -117,6 +119,16 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         <CategoriesSection client={client} boxes={boxes} />
         <FiltersSection client={client} boxes={boxes} prefill={prefillRule} />
         <FoldersSection client={client} boxes={boxes} onChanged={onFoldersChanged} />
+
+        {notifySupported() && (
+          <section>
+            <h3>Notifications</h3>
+            <label className="inline"><input type="checkbox" className="check" checked={notify}
+              onChange={async (e) => { const on = await setNotify(e.target.checked); setNotifyState(on); if (e.target.checked && !on) setError('Your browser blocked notifications. Allow them for this site in the browser’s settings.'); }} />
+              Show a desktop notification when new mail arrives in Primary</label>
+            <p className="fine">Only on this device, and only while OpenMail isn’t the window you’re looking at.</p>
+          </section>
+        )}
 
         <section>
           <h3>Appearance</h3>
