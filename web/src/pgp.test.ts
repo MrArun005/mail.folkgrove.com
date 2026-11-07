@@ -107,3 +107,19 @@ describe('learning keys safely', () => {
     expect(securityLabel(true, null, 'Ann')).toMatchObject({ tone: 'safe', text: expect.stringContaining('not signed') });
   });
 });
+
+describe('sender authentication is bound to our server', () => {
+  const ours = 'mail.ours.test;\r\n\tdkim=pass header.d=example.org header.s=s1;\r\n\tdmarc=pass header.from=example.org';
+  const received = 'from x (x [1.2.3.4])\r\n\tby mail.ours.test (Stalwart SMTP) with ESMTP id 1';
+  it('trusts only a header naming the host that delivered it', () => {
+    expect(senderAuthenticated('ann@example.org', ours, 'ours.test', { received })).toBe(true);
+    expect(senderAuthenticated('ann@example.org', ours.replace('mail.ours.test', 'evil.test'), 'ours.test', { received })).toBe(false);
+    expect(senderAuthenticated('ann@example.org', ours, 'ours.test', { received: null })).toBe(false);
+  });
+  it('learns an Autocrypt key only when DKIM signed that header', () => {
+    const signed = ['v=1; a=rsa-sha256; d=example.org; s=s1; h=From:To:Subject:Autocrypt; bh=x; b=y'];
+    const unsigned = ['v=1; a=rsa-sha256; d=example.org; s=s1; h=From:To:Subject; bh=x; b=y'];
+    expect(senderAuthenticated('ann@example.org', ours, 'ours.test', { received, dkim: signed, needHeader: 'autocrypt' })).toBe(true);
+    expect(senderAuthenticated('ann@example.org', ours, 'ours.test', { received, dkim: unsigned, needHeader: 'autocrypt' })).toBe(false);
+  });
+});

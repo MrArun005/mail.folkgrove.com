@@ -66,17 +66,32 @@ export async function peerKeys(): Promise<PeerKey[]> {
  * ponytail: we don't check the header's authserv-id (the app doesn't know the server's name); a header forged by the
  * sender sits below the server's, and mail from our own users is trusted to be theirs.
  */
-export function senderAuthenticated(from: string, ar: string | null | undefined, ownDomain: string): boolean {
+/**
+ * Did our server authenticate this sender? From the topmost Authentication-Results header, which Stalwart adds on
+ * delivery, and only if it names the same host as the topmost Received line (also ours): a header the sender wrote
+ * themselves never counts. No such header at all: mail between accounts on this server.
+ * needHeader (e.g. "autocrypt"): also require an aligned DKIM signature that covers that header, so someone replaying
+ * a genuinely signed message can't add their own key header to it.
+ */
+export function senderAuthenticated(from: string, ar: string | null | undefined, ownDomain: string,
+  opts: { received?: string | null; dkim?: string[]; needHeader?: string } = {}): boolean {
   const domain = from.slice(from.lastIndexOf('@') + 1).toLowerCase();
   if (!ar) return domain === ownDomain.toLowerCase();
+  const authserv = ar.split(';')[0].trim().toLowerCase();
+  const by = /\bby\s+([^\s(;]+)/i.exec(opts.received ?? '')?.[1]?.toLowerCase();
+  if (opts.received !== undefined && (!by || by !== authserv)) return false;
   const aligned = (d?: string) => !!d && (d = d.toLowerCase().replace(/^@/, '').replace(/.*@/, ''), d === domain || domain.endsWith('.' + d) || d.endsWith('.' + domain));
-  return ar.split(';').slice(1).some((r) => {
+  const passes = ar.split(';').slice(1).map((r) => {
     const v = r.replace(/\([^)]*\)/g, ' ');
     const prop = (k: string) => new RegExp(`(?:^|\\s)${k.replace('.', '\\.')}=("?)([^\\s";]+)\\1`, 'i').exec(v)?.[2];
-    if (/^\s*dmarc=pass\b/i.test(v)) return aligned(prop('header.from'));
-    if (/^\s*dkim=pass\b/i.test(v)) return aligned(prop('header.d') ?? prop('header.i'));
-    return false;
+    return { dmarc: /^\s*dmarc=pass\b/i.test(v) && aligned(prop('header.from')), dkim: /^\s*dkim=pass\b/i.test(v) ? (prop('header.d') ?? prop('header.i')) : undefined };
   });
+  if (!opts.needHeader) return passes.some((p) => p.dmarc || aligned(p.dkim));
+  const covered = (d: string) => (opts.dkim ?? []).some((sig) => {
+    const tag = (t: string) => new RegExp(`(?:^|;)\\s*${t}=([^;]*)`, 'i').exec(sig.replace(/\s+/g, ' '))?.[1]?.trim().toLowerCase();
+    return tag('d') === d.toLowerCase().replace(/.*@/, '') && (tag('h') ?? '').split(':').map((h) => h.trim()).includes(opts.needHeader!.toLowerCase());
+  });
+  return passes.some((p) => aligned(p.dkim) && covered(p.dkim!));
 }
 
 // ── Passphrase wrapping (WebCrypto only) ────────────────

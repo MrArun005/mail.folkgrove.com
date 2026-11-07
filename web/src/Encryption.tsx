@@ -202,9 +202,12 @@ async function learnKeys(client: Jmap, m: EmailFull, me: string, inJunk: boolean
   const from = m.from?.[0]?.email;
   const att = m.attachments.find((a) => a.type.toLowerCase() === 'application/pgp-keys' && a.size < 100_000);
   if (!from || (!m.autocrypt && !att) || inJunk || m.keywords.$junk || from.toLowerCase() === me.toLowerCase()) return;
-  if (!senderAuthenticated(from, m.authResults?.[0], me.split('@')[1] ?? '')) return;
+  const own = me.split('@')[1] ?? '', ar = m.authResults?.[0], received = m.received ?? null;
+  if (!senderAuthenticated(from, ar, own, { received })) return;
   const p = await pgp();
-  let key = m.autocrypt ? await p.autocryptKey(from, m.autocrypt) : null, source: KeySource = 'autocrypt';
+  // An Autocrypt header counts only when the sender's DKIM signature covers it (an attached key is in the signed body).
+  const autocryptOk = !!m.autocrypt && senderAuthenticated(from, ar, own, { received, dkim: m.dkim, needHeader: 'autocrypt' });
+  let key = autocryptOk ? await p.autocryptKey(from, m.autocrypt!) : null, source: KeySource = 'autocrypt';
   if (!key && att) { key = (await p.readPublicKeys(await (await client.download(att)).text()).catch(() => [])).find(([e]) => e === from.toLowerCase())?.[1] ?? null; source = 'attached'; }
   if (key) await savePeerKey(await peer(from, key, source));
 }
