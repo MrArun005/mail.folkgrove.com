@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
 import { Jmap, JmapError, SESSION_EXPIRED } from './jmap';
 import { Mail } from './Mail';
-import { finishSignIn, isStepUpReturn, relayStepUp, Session, startSignIn } from './oauth';
+import { forgetSession, Session, signIn } from './oauth';
 import { applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
@@ -18,14 +18,11 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        // The security sign-in window: pass the result back to the app window and close.
-        if (isStepUpReturn()) { relayStepUp(); return; }
-        // Returning from the server's sign-in page, or resuming in this tab after a reload.
-        const fresh = await finishSignIn();
-        const s = fresh ? new Session(fresh) : Session.resume();
+        // Resuming in this tab after a reload.
+        const s = Session.resume();
         if (s) { session.current = s; setClient(await Jmap.connect(s)); }
       } catch (e) {
-        session.current = null;
+        session.current = null; forgetSession();
         setError(e instanceof Error ? e.message : String(e));
       } finally { setBooting(false); }
     })();
@@ -46,18 +43,20 @@ export default function App() {
   }
 
   if (booting) return <div className="reader-loading" aria-busy="true" />;
-  if (!client) return <Login key={error} initialError={error} onLogin={(c) => { setError(''); setClient(c); }} />;
+  if (!client) return <Login key={error} initialError={error} onLogin={(c, s) => { session.current = s; setError(''); setClient(c); }} />;
   return <Mail client={client} onLogout={signOut} />;
 }
 
-function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: Jmap) => void }) {
+function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: Jmap, s: Session) => void }) {
   const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
-  const [withPassword, setWithPassword] = useState(false);
+  const [needCode, setNeedCode] = useState(false);
   const [canSignUp, setCanSignUp] = useState(false);
   const [signingUp, setSigningUp] = useState(false);
   const [notice, setNotice] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   useEffect(() => { signupAvailable().then(setCanSignUp); }, []);
 
   if (signingUp) return <Signup onCancel={() => setSigningUp(false)}
@@ -65,32 +64,37 @@ function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: J
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const user = String(f.get('email')).trim();
     setBusy(true); setError('');
-    if (!withPassword) return startSignIn(user); // the server's page takes the password and any two-factor code
-    try { onLogin(await Jmap.login(user, String(f.get('password')))); } // fallback: not remembered across reloads
-    catch (err) { setError(err instanceof JmapError ? err.message : 'Can’t reach the mail server. Check your connection and try again.'); setBusy(false); }
+    try {
+      const s = await signIn(email.trim(), password, needCode ? code : undefined);
+      if (s === 'code') { setNeedCode(true); setBusy(false); return; }
+      onLogin(await Jmap.connect(s), s);
+    } catch (err) {
+      setError(err instanceof JmapError || err instanceof Error ? err.message : 'Can’t reach the mail server. Check your connection and try again.');
+      setBusy(false);
+    }
   }
 
   return (
     <main className="login">
       <form onSubmit={submit}>
         <p className="wordmark">OpenMail</p>
-        <h1>Sign in to your mailbox</h1>
+        <h1>{needCode ? 'Two-step verification' : 'Sign in to your mailbox'}</h1>
         {notice && <p className="banner banner--safe" role="status">{notice}</p>}
-        <label>Email address<input className="input" name="email" type="email" autoComplete="username" required autoFocus
-          value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-        {withPassword && <label>Password<input className="input" name="password" type="password" autoComplete="current-password" required /></label>}
+        {!needCode ? <>
+          <label>Email address<input className="input" name="email" type="email" autoComplete="username" required autoFocus
+            value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+          <label>Password<input className="input" name="password" type="password" autoComplete="current-password" required
+            value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+        </> : <>
+          <p className="fine">Enter the 6-digit code from your authenticator app for {email}.</p>
+          <label>Code<input className="input" name="code" inputMode="numeric" autoComplete="one-time-code" required autoFocus maxLength={7}
+            value={code} onChange={(e) => setCode(e.target.value)} /></label>
+        </>}
         {error && <p className="error" role="alert">{error}</p>}
-        <Button type="submit" variant="primary" size="lg" disabled={busy}>{busy ? 'Signing in…' : withPassword ? 'Sign in' : 'Continue'}</Button>
-        {!withPassword
-          ? <p className="fine">You’ll enter your password (and two-factor code, if you use one) on your mail server’s secure page.</p>
-          : <p className="fine">Password sign-in isn’t remembered: you’ll sign in again after a reload.</p>}
-        <Button variant="link" className="alt" onClick={() => { setWithPassword(!withPassword); setError(''); }}>
-          {withPassword ? 'Use secure sign-in instead' : 'Sign in with a password instead'}
-        </Button>
-        {canSignUp && <Button variant="link" className="alt" onClick={() => setSigningUp(true)}>Create an account</Button>}
+        <Button type="submit" variant="primary" size="lg" disabled={busy}>{busy ? 'Signing in…' : needCode ? 'Verify' : 'Sign in'}</Button>
+        {needCode && <Button variant="link" className="alt" onClick={() => { setNeedCode(false); setCode(''); setError(''); }}>Use a different account</Button>}
+        {!needCode && canSignUp && <Button variant="link" className="alt" onClick={() => setSigningUp(true)}>Create an account</Button>}
         <p className="fine">No ads. No reading your mail. Open source.</p>
       </form>
     </main>

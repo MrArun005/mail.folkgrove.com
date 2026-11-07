@@ -38,7 +38,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Schedule send | ✅ | ✅ | Scheduled view to edit or cancel |
 | Recipient autocomplete | ✅ | ✅ | Ranks people you write to above people who write to you |
 | Signatures | ✅ (many) | ✅ | Named signatures synced on the server; separate defaults for new messages and replies; switch or remove per message |
-| Send-as / aliases | ✅ | ⬜ | Needs admin API: with masked aliases (below) |
+| Send-as / aliases | ✅ | ✅ | From menu for every address you own; replies come from the address the mail was sent to |
 | Templates | ✅ | ✅ | Synced to every device; insert, save, delete from compose |
 | Large file links (WorkDrive) | ✅ | ⬜ | Phase 5: integrate, don't rebuild |
 | Spell check | ✅ | ✅ | Browser's own, in the user's languages |
@@ -69,7 +69,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | OAuth sign-in (no stored password) | ✅ | ✅ | PKCE, rotating refresh token, revoked at sign-out |
 | End-to-end encryption | 🟡 (S/MIME) | ⬜ | OpenPGP.js, Phase 2.5 |
 | Encryption at rest | ✅ | 🟡 | Stalwart supports per-account encryption at rest; expose in settings |
-| Masked / disposable aliases | ⬜ | ⬜ | Phase 4: unlimited, each can be turned off |
+| Masked / disposable aliases | ⬜ | ✅ | One per site, labelled, switch off any time (sender gets “no such mailbox”) |
 | Self-hosting / data ownership | ⬜ | ✅ | AGPL, one-command install (Phase 3) |
 | Open standards (IMAP, JMAP, CalDAV, CardDAV, Sieve) | 🟡 | ✅ | No lock-in; any client works |
 
@@ -97,18 +97,42 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | SSO / SAML, eDiscovery, retention | ✅ | ⬜ | Phase 5 (business tier) |
 | Public sign-up with abuse controls | n/a | ✅ | Invites, rate limits, quotas (signup/) |
 
+## Toward Gmail (and past it)
+
+From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
+
+| Feature | Gmail | Us | Notes |
+|---|---|---|---|
+| Bcc | ✅ | ✅ | Envelope only; recipients' copies carry no Bcc header (tested) |
+| Endless list (beyond 50) | ✅ | ✅ | Pages in as you scroll |
+| Desktop notifications | ✅ | ✅ | Opt-in, Primary only, only when the app isn't focused |
+| Follow-up reminders / nudges | ✅ | ✅ | “Remind me if nobody replies”: unanswered mail comes back marked “No reply yet” |
+| Mute conversation | ✅ | ✅ | New replies skip the Inbox (m) |
+| Attachment preview | ✅ | ✅ | Images, PDF, text; SVG always downloads (safety) |
+| Label chips in the list | ✅ | ✅ | |
+| Gmail shortcuts (g i, g s, z, ], m…) | ✅ | ✅ | |
+| Branded sign-in incl. 2FA | ✅ | ✅ | Our own page on the server's sign-in API; security changes re-ask in place (no pop-up) |
+| Screener (first-time senders wait) | ⬜ | ✅ | Server-side Sieve; spam still goes to Junk (spamtest, can't be forged) |
+| Masked addresses | ⬜ | ✅ | See above |
+| 150+ recipients from mail apps | ✅ | ✅ | 500 per message for signed-in senders (was 100) |
+| Priority Inbox / important | ✅ | ⬜ | Next |
+| Search chips + typeahead | ✅ | 🟡 | Operators work; chips next |
+| AI (summarise, smart reply) | ✅ | ⬜ | Opt-in, your own key or a local model |
+| Offline mail | ✅ | ⬜ | Installable today; mail offline later |
+| Large files as links | ✅ | ⬜ | |
+
 ## Score today
 
 Counting rows a typical Zoho Mail user touches (sections 1–4 plus calendar, contacts and the web app):
-**42 of 50 at parity or better (84%), 2 partial.** The "next batch" items below take that toward 85%;
+**43 of 50 at parity or better (86%), 2 partial.**
 Phase 2.5 (calendar, contacts UI, categories, multiple signatures, multi-account, E2E, OAuth/2FA) takes it past 90%;
 shared mailboxes and import close the rest of the 95%.
 
 ## Order of work
 
-1. **Next batch (small, high value):** branded sign-in page (today it is the mail server's own page); send-as / aliases.
-2. **Phase 2 security:** passkeys.
+1. **Next batch:** Priority Inbox, search chips, multiple accounts, import from Gmail (IMAP), tracking report.
+2. **Phase 2 security:** passkeys, E2E (OpenPGP).
 3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager,
    multi-account, E2E (OpenPGP), saved searches, encryption-at-rest toggle.
-4. **Phase 3–4:** installer, import, masked aliases, shared mailboxes, admin console.
+4. **Phase 3–4:** shared mailboxes, admin console. Scale: docs/research/scale.md (1 → 3 → N nodes).
 5. **Toward Gmail:** smart categorisation, offline-first sync, AI features (opt-in), native apps.

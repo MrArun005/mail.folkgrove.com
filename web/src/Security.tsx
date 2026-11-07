@@ -6,24 +6,31 @@ import { stepUp } from './oauth';
 import { newSecret, otpauthUrl, verifyTotp } from './totp';
 
 /**
- * Settings → Security. Nothing here works with the everyday session: "Manage security" opens a fresh sign-in
- * (password + code), and the security token it returns lives only in this component's memory.
+ * Settings → Security. Nothing here works with the everyday session: "Manage security" asks for the password
+ * (and two-factor code) again, and the security token it returns lives only in this component's memory.
  */
 export function SecuritySection({ username }: { username: string }) {
   const [sec, setSec] = useState<Jmap | null>(null);
   const [state, setState] = useState<{ twoFactor: boolean; appPasswords: AppPassword[] } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState<string | null>(null); // null until the server asks for one
 
   async function unlock() {
+    if (!password) return;
     setBusy(true); setError('');
     try {
-      const token = await stepUp(username);
+      const token = await stepUp(username, password, code ?? undefined);
+      if (token === 'code') { setCode(''); return; }
       const c = await Jmap.connect({ header: async () => `Bearer ${token}`, refresh: async () => { throw new Error('expired'); } });
+      setPassword(''); setCode(null);
       setSec(c); setState(await c.security());
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
+  const enter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); unlock(); } };
   const reload = async () => sec && setState(await sec.security());
 
   return (
@@ -31,8 +38,14 @@ export function SecuritySection({ username }: { username: string }) {
     <section onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }}>
       <h3>Security</h3>
       {!sec ? <>
-        <p className="fine">Two-factor sign-in, app passwords and your password. You’ll be asked to sign in again to change these.</p>
-        <Button size="sm" icon="shield" className="start" disabled={busy} onClick={unlock}>{busy ? 'Waiting for sign-in…' : 'Manage security'}</Button>
+        <p className="fine">Two-factor sign-in, app passwords and your password. You’ll be asked for your password again to change these.</p>
+        {!asking
+          ? <Button size="sm" icon="shield" className="start" onClick={() => setAsking(true)}>Manage security</Button>
+          : <div className="row2">
+              <label>Your password<input className="input" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={enter} /></label>
+              {code !== null && <label>Code from your app<input className="input" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={enter} /></label>}
+              <Button size="sm" variant="primary" className="start" disabled={busy || !password || code === ''} onClick={unlock}>{busy ? 'Checking…' : 'Continue'}</Button>
+            </div>}
       </> : state && <>
         <TwoFactor sec={sec} on={state.twoFactor} username={username} onChange={reload} />
         <AppPasswords sec={sec} list={state.appPasswords} onChange={reload} />

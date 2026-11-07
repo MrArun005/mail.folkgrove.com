@@ -1,5 +1,6 @@
-// Sign-in with OAuth 2.1 (authorization code + PKCE) against the mail server. The app never sees the password:
-// the server's own sign-in page handles it (and two-factor codes), then hands back a short-lived token.
+// Sign-in with OAuth 2.1 (authorization code + PKCE) against the mail server, from our own branded form: the
+// form posts the password (and two-factor code) to the server's sign-in API on this same origin, the server
+// answers with an authorization code, and we exchange it for tokens. The password is never stored.
 //
 // Storage: the access token lives only in memory. The refresh token is kept in sessionStorage so a reload doesn't
 // sign you out; closing the tab does. ponytail: a stolen refresh token works until it's used once (rotation) or
@@ -19,16 +20,41 @@ const store = {
   set(k: string, v: unknown) { try { v == null ? sessionStorage.removeItem(`${KEY}:${k}`) : sessionStorage.setItem(`${KEY}:${k}`, JSON.stringify(v)); } catch {} },
 };
 
-/** Step 1: send the browser to the server's sign-in page. */
-export async function startSignIn(loginHint?: string) {
+/** The server's answer to a sign-in attempt; 'code' means a second step (two-factor code) is needed. */
+export type SignInStep = { tokens: Tokens } | 'code';
+
+/**
+ * Sign in through the server's sign-in API (what its own sign-in page calls). Signing in to this app is the
+ * consent for this app, so the server's consent step is answered yes.
+ */
+async function authorize(user: string, pass: string, scope: string, otp?: string): Promise<Tokens | 'code'> {
   const verifier = random(48), state = random(16);
   const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
-  store.set('pkce', { verifier, state });
-  const q = new URLSearchParams({
-    response_type: 'code', client_id: CLIENT_ID, redirect_uri: redirectUri(), scope: SCOPE,
-    code_challenge: challenge, code_challenge_method: 'S256', state, ...(loginHint ? { login_hint: loginHint } : {}),
-  });
-  location.assign(`/login?${q}`);
+  const query = new URLSearchParams({ response_type: 'code', client_id: CLIENT_ID, redirect_uri: redirectUri(), scope,
+    code_challenge: challenge, code_challenge_method: 'S256', state }).toString();
+  const post = async (body: object) => {
+    const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`The mail server couldn’t sign you in right now (${r.status}). Try again in a moment.`);
+    return r.json() as Promise<{ type: string; location?: string; token?: string }>;
+  };
+  let r = await post({ type: 'authCode', accountName: user, accountSecret: pass, query, ...(otp && { mfaToken: otp.replace(/\s/g, '') }) });
+  if (r.type === 'consentRequired' && r.token) r = await post({ type: 'authConsent', token: r.token, query, consent: true });
+  if (r.type === 'mfaRequired') return 'code';
+  if (r.type === 'failure') throw new Error(otp ? 'That code didn’t work. Check your authenticator app and try the newest code.' : 'Wrong email or password.');
+  if (r.type === 'expired') throw new Error('Your password has expired. Ask your administrator to reset it.');
+  if (!r.location) throw new Error('The mail server sent an answer this app doesn’t understand.');
+  const back = new URL(r.location, location.origin).searchParams;
+  if (back.get('error')) throw new Error(back.get('error_description') || 'Sign-in was refused.');
+  if (back.get('state') !== state || !back.get('code')) throw new Error('That sign-in didn’t match. Please try again.');
+  return tokenRequest({ grant_type: 'authorization_code', code: back.get('code')!, redirect_uri: redirectUri(), code_verifier: verifier });
+}
+
+/** Everyday sign-in: mail, contacts and calendars, remembered in this tab. */
+export async function signIn(user: string, pass: string, otp?: string): Promise<Session | 'code'> {
+  const t = await authorize(user, pass, SCOPE, otp);
+  if (t === 'code') return t;
+  store.set('refresh', { token: t.refresh, username: t.username });
+  return new Session(t);
 }
 
 export interface Tokens { access: string; refresh: string; expiresAt: number; username: string }
@@ -38,23 +64,13 @@ async function tokenRequest(body: Record<string, string>): Promise<Tokens> {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: CLIENT_ID, ...body }),
   });
   const j = await res.json().catch(() => ({}));
+  if (j.error === 'invalid_grant') throw new Error('Your session has ended. Please sign in again.'); // expired, revoked or account gone
   if (!res.ok || !j.access_token) throw new Error(j.error_description || j.error || `Sign-in failed (${res.status})`);
   return { access: j.access_token, refresh: j.refresh_token, expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000, username: j.username ?? '' };
 }
 
-/** Step 2: back on our page with ?code=… — exchange it. Returns null when this isn't a sign-in return. */
-export async function finishSignIn(): Promise<Tokens | null> {
-  const params = new URLSearchParams(location.search);
-  if (!params.has('code') && !params.has('error')) return null;
-  history.replaceState(null, '', location.pathname); // never leave the code in the address bar or history
-  const pkce = store.get<{ verifier: string; state: string }>('pkce');
-  store.set('pkce', null);
-  if (params.get('error')) throw new Error(params.get('error_description') || 'Sign-in was cancelled.');
-  if (!pkce || params.get('state') !== pkce.state) throw new Error('This sign-in link is out of date. Please sign in again.');
-  const t = await tokenRequest({ grant_type: 'authorization_code', code: params.get('code')!, redirect_uri: redirectUri(), code_verifier: pkce.verifier });
-  store.set('refresh', { token: t.refresh, username: t.username });
-  return t;
-}
+/** Drop the remembered session (it can't be renewed). */
+export const forgetSession = () => store.set('refresh', null);
 
 /** A token source the JMAP client asks for headers; refreshes shortly before expiry or after a 401. */
 export class Session {
@@ -91,45 +107,13 @@ export class Session {
 // ── Step-up: a fresh sign-in for security settings ──────
 // Security changes (two-factor, app passwords, password) need a token with the security scope. The everyday
 // session never gets it: a stolen mail token must not be able to mint permanent app passwords. Instead a small
-// window asks for the password (and code) again; the resulting short-lived token lives only in memory.
+// prompt asks for the password (and code) again; the resulting short-lived token lives only in memory.
 
-const STEP_UP = 'stepup.';
 // ponytail: app passwords inherit the creating token's permissions, so the step-up token also carries the mail scopes.
 const SECURITY_SCOPE = 'openid urn:ietf:params:oauth:scope:mail urn:ietf:params:oauth:scope:contacts urn:ietf:params:oauth:scope:calendars urn:stalwart:oauth:scope:security';
 
-/** True in the step-up window when the server sends it back to us. */
-export function isStepUpReturn(): boolean {
-  return !!window.opener && (new URLSearchParams(location.search).get('state') ?? '').startsWith(STEP_UP);
-}
-
-/** In the step-up window: hand the result to the window that opened us (same origin only), then close. */
-export function relayStepUp() {
-  const p = new URLSearchParams(location.search);
-  window.opener?.postMessage({ type: 'om-stepup', code: p.get('code'), state: p.get('state'), error: p.get('error_description') || p.get('error') }, location.origin);
-  window.close();
-}
-
-/** In the app: open the sign-in window and resolve with a security-scoped access token. */
-export async function stepUp(loginHint: string): Promise<string> {
-  const verifier = random(48), state = STEP_UP + random(16);
-  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
-  const q = new URLSearchParams({
-    response_type: 'code', client_id: CLIENT_ID, redirect_uri: redirectUri(), scope: SECURITY_SCOPE,
-    code_challenge: challenge, code_challenge_method: 'S256', state, prompt: 'login', login_hint: loginHint,
-  });
-  const w = window.open(`/login?${q}`, 'om-stepup', 'width=480,height=680');
-  if (!w) throw new Error('Your browser blocked the sign-in window. Allow pop-ups for this site and try again.');
-  return new Promise((resolve, reject) => {
-    const done = () => { window.removeEventListener('message', onMessage); clearInterval(watch); };
-    const onMessage = async (e: MessageEvent) => {
-      if (e.origin !== location.origin || e.source !== w || e.data?.type !== 'om-stepup') return; // only our own window
-      done();
-      if (e.data.state !== state) return reject(new Error('That sign-in didn’t match. Please try again.'));
-      if (e.data.error || !e.data.code) return reject(new Error(e.data.error || 'Sign-in was cancelled.'));
-      try { resolve((await tokenRequest({ grant_type: 'authorization_code', code: e.data.code, redirect_uri: redirectUri(), code_verifier: verifier })).access); }
-      catch (err) { reject(err); }
-    };
-    const watch = setInterval(() => { if (w.closed) { done(); reject(new Error('The sign-in window was closed.')); } }, 500);
-    window.addEventListener('message', onMessage);
-  });
+/** Re-enter the password (and code) for a short-lived security token, kept only by the caller in memory. */
+export async function stepUp(user: string, pass: string, otp?: string): Promise<string | 'code'> {
+  const t = await authorize(user, pass, SECURITY_SCOPE, otp);
+  return t === 'code' ? t : t.access;
 }

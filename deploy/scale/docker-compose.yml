@@ -1,4 +1,5 @@
-# Multi-node reference stack (open-source features only). Not production: fixed dev passwords, no TLS
+# Multi-node reference stack (open-source features only). Not production: fixed dev passwords, no TLS,
+# so every published port is bound to 127.0.0.1 (this machine only)
 # certificates, everything on one Docker host. It exists to prove the moving parts fit together.
 #
 #   docker compose -f deploy/scale/docker-compose.yml up -d
@@ -66,7 +67,7 @@ services:
     restart: unless-stopped
     depends_on: [stalwart-1, stalwart-2]
     volumes: ["./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"]
-    ports: ["12525:25", "12465:465", "12993:993", "18081:8080"]
+    ports: ["127.0.0.1:12525:25", "127.0.0.1:12465:465", "127.0.0.1:12993:993", "127.0.0.1:18081:8080"]
     networks:
       # Fixed address: it is the only source Stalwart trusts to send PROXY protocol headers.
       mail: { ipv4_address: 172.30.0.10 }

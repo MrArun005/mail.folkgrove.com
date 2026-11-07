@@ -43,6 +43,13 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
     }, (e) => setError(e.message));
   }, [client]);
 
+  // Esc closes Settings wherever focus is (not only inside the sheet).
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) onClose(); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onClose]);
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (vac?.enabled && vac.from && vac.to && vac.to < vac.from) return setError('The out-of-office end date is before the start date.');
@@ -66,7 +73,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
   return (
     <div className="overlay" onMouseDown={onClose}>
       <form className="sheet settings" role="dialog" aria-label="Settings" onMouseDown={(e) => e.stopPropagation()} onSubmit={save}
-        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
+>
         <h2>Settings</h2>
 
         <section>
