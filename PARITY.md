@@ -54,7 +54,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Subscriptions manager | ⬜ | ✅ | Every newsletter in one list: unsubscribe or delete everything from a sender |
 | Vacation / out-of-office | ✅ | ✅ | Date range, once per sender |
 | Forwarding | ✅ | ✅ | Per-filter forwarding (keeps a copy) |
-| Folder management (rename, nest, delete) | ✅ | 🟡 | Create, rename, delete; nesting later |
+| Folder management (rename, nest, delete) | ✅ | ✅ | Folders inside folders, in the rail, menus and filters |
 
 ## 4. Privacy and security (where we must win clearly)
 
@@ -83,7 +83,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Streams (team comments on mail) | ✅ | ⬜ | Phase 5: shared mailboxes first |
 | Shared / group mailboxes, delegation | ✅ | ⬜ | Phase 4: Stalwart groups + JMAP sharing |
 | Multiple accounts in one app | ✅ | ⬜ | Phase 2.5 |
-| Import from Gmail / Zoho / IMAP | ✅ | ⬜ | Phase 3 (documented imapsync first, then built in) |
+| Import from Gmail / Zoho / IMAP | ✅ | ✅ | Gmail Takeout / any .mbox or .eml, in the browser, byte-exact; labels → folders, stars and unread kept |
 
 ## 6. Platform and admin
 
@@ -124,7 +124,7 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 ## Score today
 
 Counting rows a typical Zoho Mail user touches (sections 1–4 plus calendar, contacts and the web app):
-**43 of 50 at parity or better (86%), 2 partial.**
+**45 of 50 at parity or better (90%), 1 partial.**
 Phase 2.5 (calendar, contacts UI, categories, multiple signatures, multi-account, E2E, OAuth/2FA) takes it past 90%;
 shared mailboxes and import close the rest of the 95%.
 
