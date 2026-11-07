@@ -24,13 +24,18 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 // and it's a few lines instead of an editor framework. Swap for a real editor model if we need tables or images.
 const exec = (cmd: string, arg?: string) => document.execCommand(cmd, false, arg);
 
-export function Compose({ initial, contacts, api, signatures, onSend, onClose }: {
+export function Compose({ initial, contacts, api, signatures, identities, onSend, onClose }: {
   initial: Draft; contacts: Address[]; api: ComposeApi; signatures: Signature[];
+  /** Addresses this account can send from; the first is the main one. A From menu appears when there are several. */
+  identities: { name: string; email: string }[];
   onSend: (d: Draft, sendAt?: Date) => void; onClose: (outcome: 'saved' | 'discarded' | 'closed') => void;
 }) {
   const [to, setTo] = useState(formatAddresses(initial.to));
   const [cc, setCc] = useState(formatAddresses(initial.cc));
   const [showCc, setShowCc] = useState(initial.cc.length > 0);
+  const [bcc, setBcc] = useState(formatAddresses(initial.bcc ?? []));
+  const [showBcc, setShowBcc] = useState(!!initial.bcc?.length);
+  const [from, setFrom] = useState(initial.from ?? identities[0]?.email ?? '');
   const [subject, setSubject] = useState(initial.subject);
   const [files, setFiles] = useState<Attachment[]>(initial.attachments);
   const [receipt, setReceipt] = useState(!!initial.receipt);
@@ -93,7 +98,8 @@ export function Compose({ initial, contacts, api, signatures, onSend, onClose }:
     const attachments = files.filter((a) => !a.cid || html.includes(`cid:${a.cid}`));
     return {
       ...initial, id: draftId.current, subject: subject.trim(), html, text: htmlToText(html), attachments, receipt,
-      to: parseAddresses(to).list, cc: parseAddresses(showCc ? cc : '').list,
+      to: parseAddresses(to).list, cc: parseAddresses(showCc ? cc : '').list, bcc: parseAddresses(showBcc ? bcc : '').list,
+      from: from || undefined,
     };
   };
 
@@ -135,10 +141,10 @@ export function Compose({ initial, contacts, api, signatures, onSend, onClose }:
   }
 
   async function send(sendAt?: Date) {
-    const t = parseAddresses(to), c = parseAddresses(showCc ? cc : '');
-    const bad = [...t.invalid, ...c.invalid];
+    const t = parseAddresses(to), c = parseAddresses(showCc ? cc : ''), b = parseAddresses(showBcc ? bcc : '');
+    const bad = [...t.invalid, ...c.invalid, ...b.invalid];
     if (bad.length) return setError(`Check ${bad.length > 1 ? 'these addresses' : 'this address'}: ${bad.join(', ')}`);
-    if (!t.list.length) return setError('Add at least one recipient');
+    if (!t.list.length && !c.list.length && !b.list.length) return setError('Add at least one recipient');
     if (uploading) return setError('Wait for attachments to finish uploading');
     const text = htmlToText(editor.current!.innerHTML);
     if (!files.length && /\battach(ed|ment|ing)\b/i.test(text.split('\n> ')[0]) && !confirm('You mention an attachment, but nothing is attached. Send anyway?')) return;
@@ -177,14 +183,27 @@ export function Compose({ initial, contacts, api, signatures, onSend, onClose }:
         <Button variant="quiet" icon="close" label="Save draft and close" shortcut="Esc" onClick={close} />
       </header>
 
+      {identities.length > 1 && (
+        <label className="field"><span>From</span>
+          <select className="from-select" value={from} onChange={(e) => { setFrom(e.target.value); changed(); }}>
+            {identities.map((i) => <option key={i.email} value={i.email}>{i.name && !i.name.includes('@') ? `${i.name} <${i.email}>` : i.email /* Stalwart names alias identities after the account */}</option>)}
+          </select>
+        </label>
+      )}
       <label className="field">
         <span>To</span>
         <RecipientInput label="To" inputRef={toRef} value={to} onChange={(v) => { setTo(v); changed(); }} contacts={contacts} />
         {!showCc && <Button variant="link" onClick={() => setShowCc(true)}>Cc</Button>}
+        {!showBcc && <Button variant="link" onClick={() => setShowBcc(true)}>Bcc</Button>}
       </label>
       {showCc && (
         <label className="field"><span>Cc</span>
           <RecipientInput label="Cc" value={cc} onChange={(v) => { setCc(v); changed(); }} contacts={contacts} />
+        </label>
+      )}
+      {showBcc && (
+        <label className="field"><span>Bcc</span>
+          <RecipientInput label="Bcc" value={bcc} onChange={(v) => { setBcc(v); changed(); }} contacts={contacts} />
         </label>
       )}
       <label className="field"><span>Subject</span>

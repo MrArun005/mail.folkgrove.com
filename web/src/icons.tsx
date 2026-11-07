@@ -37,6 +37,7 @@ const paths = {
   next: 'M8 4l6 6-6 6',
   person: 'M10 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3.5 17a6.5 6.5 0 0 1 13 0',
   templates: 'M4 3.5h12v13H4zM7 7h6M7 10h6M7 13h3',
+  copy: 'M7 7h9.5v9.5H7zM13 7V3.5H3.5V13H7',
   signature: 'M3 13c2-5 4-8 5.5-6.5S6 13 8 13s3-5 5-5-.5 5 2 5h2M3 16.5h14',
   receipt: 'M3 10.5 7 14.5 13 6.5M9.5 14.5l.5.5 7-9',
   print: 'M6 7V3h8v4M6 14H4V8h12v6h-2M6 11h8v6H6z',

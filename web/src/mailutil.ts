@@ -106,7 +106,8 @@ const originalHtml = (e: EmailFull) => (e.html ? cleanHtml(e.html) : textToHtml(
 
 export type ReplyMode = 'reply' | 'replyAll' | 'forward';
 
-export function draftFor(mode: ReplyMode, e: EmailFull, me: string): Draft {
+/** mine: all addresses of this account (aliases too). Replies come from the one the message was sent to. */
+export function draftFor(mode: ReplyMode, e: EmailFull, me: string, mine: string[] = []): Draft {
   const when = new Date(e.receivedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   if (mode === 'forward') {
     const header = [`From: ${formatAddresses(e.from)}`, `Date: ${when}`, `Subject: ${e.subject ?? ''}`, `To: ${formatAddresses(e.to)}`]
@@ -117,7 +118,9 @@ export function draftFor(mode: ReplyMode, e: EmailFull, me: string): Draft {
       attachments: [...e.attachments.filter((a) => a.disposition !== 'inline'), ...embedded(e)], // forwards keep files + inline images
     };
   }
-  const notMe = (a: Address) => a.email.toLowerCase() !== me.toLowerCase();
+  const own = new Set([me, ...mine].map((x) => x.toLowerCase()));
+  const notMe = (a: Address) => !own.has(a.email.toLowerCase());
+  const from = [...(e.to ?? []), ...(e.cc ?? [])].find((a) => own.has(a.email.toLowerCase()))?.email;
   const seen = new Set<string>();
   const uniq = (as: Address[]) => as.filter((a) => notMe(a) && !seen.has(a.email.toLowerCase()) && seen.add(a.email.toLowerCase()));
   const primary = e.replyTo?.length ? e.replyTo : e.from ?? [];
@@ -126,7 +129,7 @@ export function draftFor(mode: ReplyMode, e: EmailFull, me: string): Draft {
   if (!to.length) to.push({ name: null, email: me }); // a note to self: reply to self
   const extra = mode === 'replyAll' ? uniq([...(e.to ?? []), ...(e.cc ?? [])]) : [];
   return {
-    to, cc: extra, subject: withPrefix('Re', e.subject), text: '', attachments: embedded(e), // quoted images keep working
+    to, cc: extra, subject: withPrefix('Re', e.subject), text: '', ...(from && from.toLowerCase() !== me.toLowerCase() && { from }), attachments: embedded(e), // quoted images keep working
     html: `<div><br></div><div>On ${escapeHtml(when)}, ${escapeHtml(displayName(e.from?.[0]))} wrote:</div><blockquote>${originalHtml(e)}</blockquote>`,
     inReplyTo: e.messageId ?? undefined,
     references: [...(e.references ?? []), ...(e.messageId ?? [])],
@@ -136,7 +139,8 @@ export function draftFor(mode: ReplyMode, e: EmailFull, me: string): Draft {
 /** Reopen a saved draft in the editor. */
 export function draftFromEmail(e: EmailFull): Draft {
   return {
-    id: e.id, to: e.to ?? [], cc: e.cc ?? [], subject: e.subject ?? '',
+    id: e.id, to: e.to ?? [], cc: e.cc ?? [], bcc: e.bcc ?? [], subject: e.subject ?? '',
+    from: e.from?.[0]?.email,
     html: e.html ? cleanHtml(e.html) : textToHtml(e.text ?? ''), text: e.text ?? '',
     attachments: e.attachments.filter((a: Attachment) => a.disposition !== 'inline'),
     inReplyTo: e.inReplyTo ?? undefined, references: e.references ?? undefined, // a resumed reply stays in its thread

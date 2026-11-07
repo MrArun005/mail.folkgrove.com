@@ -130,7 +130,11 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       .filter((a) => !seen.has(a.email.toLowerCase()) && seen.add(a.email.toLowerCase()));
     setContacts(merged); cache.set(key('contacts'), merged);
   }, () => {}), [client]);
-  const loadIdentity = useCallback(() => client.getIdentityFresh().then(setIdentity, () => {}), [client]);
+  const [identities, setIdentities] = useState<Identity[]>([]);
+  const loadIdentity = useCallback(() => {
+    client.getIdentityFresh().then(setIdentity, () => {});
+    client.identities().then((l) => setIdentities(l.sort((a, b) => Number(b.email === client.username) - Number(a.email === client.username))), () => {});
+  }, [client]);
   useEffect(() => { loadContacts(); loadIdentity(); }, [loadContacts, loadIdentity]);
 
   const [sigData, setSigData] = useState<Pick<ScriptData, 'signatures' | 'sigNew' | 'sigReply'>>({});
@@ -361,7 +365,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const withSignature = (d: Draft, kind: 'new' | 'reply' = 'new'): Draft =>
     ({ ...d, html: addSignature(d.html, chooseSignature(signatures, kind === 'new' ? sigData.sigNew : sigData.sigReply)) });
   const newMessage = () => setCompose(withSignature(EMPTY_DRAFT));
-  function reply(mode: ReplyMode, e: EmailFull) { setCompose(withSignature(draftFor(mode, e, client.username), 'reply')); }
+  function reply(mode: ReplyMode, e: EmailFull) { setCompose(withSignature(draftFor(mode, e, client.username, identities.map((i) => i.email)), 'reply')); }
 
   const composeApi: ComposeApi = {
     upload: (f) => client.upload(f),
@@ -671,7 +675,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
       </>}
 
-      {compose && <Compose key={compose.id ?? JSON.stringify(compose).length} initial={compose} contacts={contacts} api={composeApi} signatures={signatures} onSend={send} onClose={closeCompose} />}
+      {compose && <Compose key={compose.id ?? JSON.stringify(compose).length} initial={compose} contacts={contacts} api={composeApi} signatures={signatures} identities={identities} onSend={send} onClose={closeCompose} />}
 
       {toast && (
         <div className="toast" role="status">
@@ -682,7 +686,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
       {overlay === 'palette' && <Palette commands={commands} onClose={() => setOverlay(null)} />}
       {overlay === 'settings' && <Settings client={client} boxes={boxes} prefillRule={rulePrefill}
-        onClose={() => { setOverlay(null); setRulePrefill(undefined); reloadCategories(); }} onFoldersChanged={refresh}
+        onClose={() => { setOverlay(null); setRulePrefill(undefined); reloadCategories(); }} onFoldersChanged={refresh} onIdentitiesChanged={loadIdentity}
         onSaved={(m) => { setOverlay(null); setRulePrefill(undefined); say({ text: m }); loadIdentity(); reloadCategories(); }} />}
       {overlay === 'help' && (
         <div className="overlay" onClick={() => setOverlay(null)} onKeyDown={(e) => e.key === 'Escape' && setOverlay(null)}>

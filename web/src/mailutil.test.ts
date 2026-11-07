@@ -29,7 +29,7 @@ it('htmlToText makes a readable plain-text alternative', () => {
 const mail = (over: Partial<EmailFull>): EmailFull => ({
   id: '1', threadId: 't', subject: 'Lunch', preview: '', receivedAt: '2026-11-07T12:00:00Z', keywords: {}, hasAttachment: false,
   from: [{ name: 'Carol', email: 'carol@x.org' }], to: [{ name: null, email: 'me@o.test' }, { name: null, email: 'dan@x.org' }],
-  cc: [{ name: null, email: 'eve@x.org' }], replyTo: null, messageId: ['m1@x'], inReplyTo: null, references: ['m0@x'],
+  cc: [{ name: null, email: 'eve@x.org' }], bcc: null, replyTo: null, messageId: ['m1@x'], inReplyTo: null, references: ['m0@x'],
   blobId: 'b0', mailboxIds: {}, attachments: [], unsubscribe: null, receiptTo: null, html: null, text: 'hi <there>', ...over,
 });
 
@@ -135,4 +135,12 @@ it('picks, adds and marks signatures', async () => {
   expect(addSignature('<p>x</p>', null)).toBe('<p>x</p>');
   // The marker survives sanitizing (Compose re-cleans drafts); other attributes don't.
   expect(cleanHtml('<div data-sig="" onclick="x" class="y">s</div>')).toBe('<div data-sig="">s</div>');
+});
+
+it('replies from the alias a message was sent to, and never copies your own aliases', () => {
+  const e = mail({ to: [{ name: null, email: 'shop.otter.1234@o.test' }], cc: [{ name: null, email: 'eve@x.org' }] });
+  const d = draftFor('replyAll', e, 'me@o.test', ['me@o.test', 'shop.otter.1234@o.test']);
+  expect(d.from).toBe('shop.otter.1234@o.test');
+  expect(d.cc.map((a) => a.email)).toEqual(['eve@x.org']);
+  expect(draftFor('reply', mail({}), 'me@o.test', ['me@o.test']).from).toBeUndefined();
 });

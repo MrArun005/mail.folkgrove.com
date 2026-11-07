@@ -159,7 +159,8 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     const data = parseScript((await c.getRules()).script);
     expect(data.vacation.enabled).toBe(true);
     expect(data.rules).toHaveLength(1);
-    await c.saveRules(toSieve({ rules: [], vacation: { enabled: false } }, folders), (await c.getRules()).id);
+    // Put the account's own settings back (signatures, saved searches, categories live in this script too).
+    await c.saveRules(before.script || toSieve({ rules: [], vacation: { enabled: false } }, folders), (await c.getRules()).id);
   });
 
   it('pushes a change notification when something changes', async () => {

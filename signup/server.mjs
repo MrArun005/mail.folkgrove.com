@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { checkUsername, checkPassword, RateLimiter, ipKey, Invites } from './lib.mjs';
+import { aliasRoutes } from './aliases.mjs';
 
 export function configFromEnv(env = process.env) {
   const admin = env.ADMIN_FILE
@@ -28,6 +29,8 @@ export function configFromEnv(env = process.env) {
     signupsPerHour: Number(env.SIGNUPS_PER_HOUR || 3),
     checksPerMinute: Number(env.CHECKS_PER_MINUTE || 30),
     clientIpHeader: env.CLIENT_IP_HEADER?.toLowerCase() || null, // e.g. cf-connecting-ip behind Cloudflare
+    maxAliases: Number(env.MAX_ALIASES || 200),
+    aliasesPerHour: Number(env.ALIASES_PER_HOUR || 30),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
   };
 }
@@ -184,9 +187,12 @@ export function createApp(cfg) {
     send(res, 200, { ok: true, available: true, email: `${u}@${cfg.domain}` });
   }
 
+  const aliases = aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter });
+
   return createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://x');
+      if (url.pathname.startsWith('/api/aliases') && await aliases(req, res, url)) return;
       if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
       if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);
       if (url.pathname === '/healthz') return send(res, 200, { ok: true });

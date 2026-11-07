@@ -279,6 +279,7 @@ button.chip:hover { background: var(--hover); border-color: var(--muted); }
 .field { display: flex; align-items: center; gap: var(--s3); min-height: var(--h-lg); margin: 0 var(--s4); border-bottom: 1px solid var(--rule); color: var(--muted); flex: none; }
 .field > span:first-child { width: 52px; flex: none; }
 .field input { flex: 1; min-width: 0; height: var(--h-lg); border: 0; background: none; outline: none; color: var(--ink); }
+.from-select { flex: 1; min-width: 0; height: var(--h-lg); border: 0; background: none; color: var(--ink); font: inherit; outline: none; cursor: pointer; }
 .recipients { flex: 1; min-width: 0; position: relative; display: flex; }
 .suggestions {
   position: absolute; top: calc(100% + 2px); left: calc(-1 * var(--s2)); right: 0; z-index: 3; padding: var(--s1);
@@ -570,3 +571,15 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .sig-card { display: grid; gap: var(--s2); padding: var(--s3); border: 1px solid var(--rule); border-radius: var(--r-md); }
 .sig-head { display: flex; gap: var(--s2); align-items: center; }
 .sig-head .input { flex: 1; }
+
+/* On/off switch: a real checkbox, drawn as a track + knob */
+.switch { position: relative; display: inline-flex; flex: none; width: 36px; height: 20px; cursor: pointer; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: inherit; }
+.switch span { width: 100%; height: 100%; border-radius: var(--r-full); background: var(--rule); transition: background .15s; }
+.switch span::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--paper); box-shadow: var(--lift-sm); transition: transform .15s; }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(16px); }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch input:disabled + span { opacity: .5; }
+.alias-list .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alias-list li.off code { opacity: .55; }

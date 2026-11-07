@@ -4,6 +4,7 @@ import { FiltersSection, FoldersSection, loadScript, saveScript } from './Filter
 import type { Rule, Vacation } from './rules';
 import { Button } from './Button';
 import { SecuritySection } from './Security';
+import { AddressesSection } from './Addresses';
 import { chooseSignature, textToHtml, type Signature } from './mailutil';
 
 export type Theme = 'system' | 'light' | 'dark';
@@ -17,9 +18,9 @@ export const savedTheme = (): Theme => { try { return (localStorage.getItem('om:
 
 const dateOnly = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
 
-export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFoldersChanged }: {
+export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFoldersChanged, onIdentitiesChanged }: {
   client: Jmap; boxes: Mailbox[]; prefillRule?: Partial<Rule>;
-  onClose: () => void; onSaved: (msg: string) => void; onFoldersChanged: () => void;
+  onClose: () => void; onSaved: (msg: string) => void; onFoldersChanged: () => void; onIdentitiesChanged: () => void;
 }) {
   const [name, setName] = useState('');
   const [sigs, setSigs] = useState<Signature[]>([]);
@@ -111,6 +112,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
           </> : <p className="fine">Loading…</p>}
         </section>
 
+        <AddressesSection client={client} onChanged={onIdentitiesChanged} />
         <SecuritySection username={client.username} />
         <CategoriesSection client={client} boxes={boxes} />
         <FiltersSection client={client} boxes={boxes} prefill={prefillRule} />

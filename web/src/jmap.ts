@@ -21,7 +21,7 @@ export interface EmailSummary {
   preview: string; receivedAt: string; keywords: Record<string, boolean>; hasAttachment: boolean;
 }
 export interface EmailFull extends EmailSummary {
-  cc: Address[] | null; replyTo: Address[] | null;
+  cc: Address[] | null; bcc: Address[] | null; replyTo: Address[] | null;
   blobId: string; messageId: string[] | null; inReplyTo: string[] | null; references: string[] | null; mailboxIds: Record<string, boolean>;
   attachments: Attachment[]; html: string | null; text: string | null;
   /** Disposition-Notification-To: the sender asked for a read receipt (we only ever send one if the user says so). */
@@ -35,6 +35,10 @@ export interface Scheduled { submissionId: string; sendAt: string; email: EmailS
 export interface Draft {
   id?: string; // saved copy in Drafts, replaced on every autosave
   to: Address[]; cc: Address[]; subject: string;
+  /** Blind copies: in the envelope only. The Sent copy keeps a Bcc header so you can see who got one. */
+  bcc?: Address[];
+  /** Send from this address (one of identities()); the account's main address when missing. */
+  from?: string;
   html: string; text: string; attachments: Attachment[];
   inReplyTo?: string[]; references?: string[];
   /** Ask the recipient for a read receipt. */
@@ -66,11 +70,18 @@ const clean = (a: Address) => (a.name ? { name: a.name, email: a.email } : { ema
 const pathOnly = (url: string) => url.replace(/^https?:\/\/[^/]+/, ''); // keep {placeholders} intact
 
 const SUMMARY = ['threadId', 'subject', 'from', 'to', 'preview', 'receivedAt', 'keywords', 'hasAttachment'];
-const FULL = [...SUMMARY, 'blobId', 'cc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
+const FULL = [...SUMMARY, 'blobId', 'cc', 'bcc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
   'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses'];
 
+export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
+async function aliasReply(r: Response) {
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok) throw new JmapError(j.error?.message ?? `The server returned an error (${r.status})`);
+  return j;
+}
+
 export class Jmap {
-  private identity?: { id: string; name: string; email: string };
+  private identity?: Identity;
 
   private constructor(
     private authHeader: () => Promise<string>, private onUnauthorized: (() => Promise<void>) | null, private base: string,
@@ -327,22 +338,55 @@ export class Jmap {
 
   private async getIdentity() {
     if (!this.identity) {
-      const [r] = await this.call([['Identity/get', { accountId: this.accountId }, 'i']]);
-      this.identity = r.list[0];
+      const list = await this.identities();
+      // The account's own address first; Stalwart also adds one identity per alias.
+      this.identity = list.find((i) => i.email.toLowerCase() === this.username.toLowerCase()) ?? list[0];
       if (!this.identity) throw new JmapError('This account has no sending identity');
     }
     return this.identity;
   }
 
+  /** Every address this account may send from (its own, plus aliases). */
+  async identities(): Promise<Identity[]> {
+    const [r] = await this.call([['Identity/get', { accountId: this.accountId }, 'i']]);
+    return r.list;
+  }
+
+  // ── Masked aliases (the account service, signup/aliases.mjs: adding addresses needs admin rights) ──
+
+  /** null = this server doesn't run the account service. */
+  async aliases(): Promise<MaskedAlias[] | null> {
+    const r = await this.fetch(`${this.base}/api/aliases`);
+    if (r.status === 404 || r.status === 502 || r.status === 503) return null;
+    return (await aliasReply(r)).aliases;
+  }
+  async createAlias(label: string): Promise<MaskedAlias> {
+    return (await aliasReply(await this.fetch(`${this.base}/api/aliases`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) }))).alias;
+  }
+  async updateAlias(id: string, patch: { enabled?: boolean; label?: string }): Promise<MaskedAlias> {
+    return (await aliasReply(await this.fetch(`${this.base}/api/aliases/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }))).alias;
+  }
+  async deleteAlias(id: string): Promise<void> {
+    await aliasReply(await this.fetch(`${this.base}/api/aliases/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+  }
+
+  /** The identity a draft sends as: its chosen From address if the account still owns it, else the main one. */
+  private async identityFor(d: Draft): Promise<Identity> {
+    const main = await this.getIdentity();
+    if (!d.from || d.from.toLowerCase() === main.email.toLowerCase()) return main;
+    return (await this.identities()).find((i) => i.email.toLowerCase() === d.from!.toLowerCase()) ?? main;
+  }
+
   /** Email/set create payload. Stalwart rejects explicit nulls on create, so optional fields are omitted when empty. */
   private async compose(d: Draft, mailboxId: string) {
-    const me = await this.getIdentity();
+    const me = await this.identityFor(d);
     return {
       mailboxIds: { [mailboxId]: true }, keywords: { $draft: true, $seen: true },
       from: [me.name && me.name !== me.email ? { name: me.name, email: me.email } : { email: me.email }],
       subject: d.subject,
       ...(d.to.length && { to: d.to.map(clean) }),
       ...(d.cc.length && { cc: d.cc.map(clean) }),
+      ...(d.bcc?.length && { bcc: d.bcc.map(clean) }),
       ...(d.inReplyTo?.length && { inReplyTo: d.inReplyTo }),
       ...(d.references?.length && { references: d.references }),
       ...(d.receipt && { 'header:Disposition-Notification-To:asAddresses': [{ email: me.email }] }),
@@ -464,7 +508,7 @@ export class Jmap {
    */
   /** sendAt: schedule for later (SMTP FUTURERELEASE HOLDUNTIL, up to 30 days on Stalwart). */
   async send(d: Draft, boxes: Mailbox[], sendAt?: Date): Promise<{ submissionId: string; emailId: string }> {
-    const me = await this.getIdentity();
+    const me = await this.identityFor(d);
     const drafts = this.box(boxes, 'drafts'), sent = this.box(boxes, 'sent');
     const [created, sub] = await this.call([
       ['Email/set', { accountId: this.accountId, create: { d: await this.compose(d, drafts) }, destroy: d.id ? [d.id] : [] }, 'e'],
@@ -473,7 +517,7 @@ export class Jmap {
         create: { s: { identityId: me.id, emailId: '#d', envelope: {
           mailFrom: { email: me.email, parameters: sendAt
             ? { HOLDUNTIL: sendAt.toISOString().replace(/\.\d+Z$/, 'Z') } : { HOLDFOR: String(UNDO_SECONDS) } },
-          rcptTo: [...d.to, ...d.cc].map((a) => ({ email: a.email })),
+          rcptTo: [...d.to, ...d.cc, ...(d.bcc ?? [])].map((a) => ({ email: a.email })),
         } } },
         onSuccessUpdateEmail: { '#s': { [`mailboxIds/${drafts}`]: null, [`mailboxIds/${sent}`]: true, 'keywords/$draft': null } },
       }, 's'],
