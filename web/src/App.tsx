@@ -43,6 +43,7 @@ export default function App() {
   }
   /** Sign out of the current account; stay signed in to any others (switch to the next one). */
   async function signOut() {
+    if (session.current) cache.clear(`${session.current.username}:`); // their mail leaves this tab now, not later
     await session.current?.signOut();
     session.current = null;
     const next = Session.resume();

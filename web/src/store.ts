@@ -4,7 +4,8 @@
 export const cache = {
   get<T>(key: string): T | null { try { return JSON.parse(sessionStorage.getItem('om:' + key) ?? 'null'); } catch { return null; } },
   set(key: string, v: unknown) { try { sessionStorage.setItem('om:' + key, JSON.stringify(v)); } catch {} },
-  clear() {
-    try { Object.keys(sessionStorage).filter((k) => k.startsWith('om:')).forEach((k) => sessionStorage.removeItem(k)); } catch {}
+  /** Everything cached for one account (keys are "<username>:…"); prefix '' = all accounts. */
+  clear(prefix = '') {
+    try { Object.keys(sessionStorage).filter((k) => k.startsWith('om:' + prefix)).forEach((k) => sessionStorage.removeItem(k)); } catch {}
   },
 };

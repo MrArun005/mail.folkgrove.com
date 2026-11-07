@@ -93,6 +93,7 @@ export const forgetSession = () => {
 /** A token source the JMAP client asks for headers; refreshes shortly before expiry or after a 401. */
 export class Session {
   private refreshing: Promise<void> | null = null;
+  private signedOut = false;
   constructor(private t: Tokens) {}
 
   /** The active account's session (or a given account's), from this tab's storage. */
@@ -115,12 +116,18 @@ export class Session {
   refresh(): Promise<void> {
     // One refresh at a time: refresh tokens rotate, so a second parallel request would use a dead token.
     this.refreshing ??= tokenRequest({ grant_type: 'refresh_token', refresh_token: this.t.refresh })
-      .then((t) => { this.t = { ...t, username: t.username || this.t.username }; store.set('accounts', { ...saved(), [this.t.username]: t.refresh }); })
+      .then((t) => {
+        this.t = { ...t, username: t.username || this.t.username };
+        // A refresh that finishes after sign-out must not bring the account back.
+        if (!this.signedOut && this.t.username in saved()) store.set('accounts', { ...saved(), [this.t.username]: t.refresh });
+      })
       .finally(() => { this.refreshing = null; });
     return this.refreshing;
   }
 
   async signOut() {
+    this.signedOut = true;
+    await this.refreshing?.catch(() => {}); // then revoke whichever refresh token is current
     const a = saved(); delete a[this.t.username];
     store.set('accounts', a);
     if (store.get<string>('active') === this.t.username) store.set('active', Object.keys(a)[0] ?? null);
