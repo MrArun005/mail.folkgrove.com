@@ -48,7 +48,8 @@ Tracked row by row in [PARITY.md](PARITY.md).
 
 ### Phase 4: Public hosted instance (blocked by Gate 1)
 - [x] Sign-up: invite codes, per-IP limits, reserved names, quotas, optional Turnstile
-- [ ] Hosted stack on PostgreSQL + S3 (reuse `deploy/scale/`), with PostgreSQL backups (pg_dump + WAL archiving)
+- [x] Hosted stack on PostgreSQL + S3: `install.sh --hosted` (`deploy/production/hosted/`), backups with pg_dump + S3 mirror (restore tested)
+- [ ] PostgreSQL WAL archiving (point-in-time recovery) for the hosted instance
 - [x] Email verification at sign-up: a 6-digit code to an existing address (hashed, 15 min, 5 tries, rate-limited per network and per address), sent from a system account through our own server
 - [x] Sending tiers (verified on the dev server): new accounts (first 14 days, `new-accounts` list kept by the account service) get 50 recipients per message and 50 outside recipients an hour; established 500 / 500; everyone 2,000 a day; filter forwarding is capped at one redirect per message (Stalwart default).
 - [ ] Abuse controls still to build: outbound spam held for review (outgoing mail is already spam-scanned; a DATA-stage system Sieve script set via x:MtaStageData.script did not run on Stalwart 1.0.3 in testing, so this needs a milter/x:MtaHook or Stalwart's own outbound action), automatic sending block on bounce/complaint spikes with self-service unblock, complaint/bounce-aware promotion (ARF reports), abuse@ mailbox
