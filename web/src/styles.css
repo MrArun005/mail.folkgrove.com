@@ -764,6 +764,8 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   :root:not([data-pane="split"]) .app.reading .reader { border-radius: var(--r-lg); }
   :root:not([data-pane="split"]) .app.reading .only-mobile { display: inline-flex; margin-left: calc((18px - var(--h-md)) / 2); }
   :root:not([data-pane="split"]) .app.reading .toolbar > .only-mobile + * { margin-left: 0; }
+}
+
 /* ═══ Admin console (/admin) ═══════════════════════════ */
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .admin { min-height: 100%; padding: var(--s4) var(--s8) var(--s10); background: var(--paper); }

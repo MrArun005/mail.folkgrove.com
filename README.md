@@ -33,9 +33,14 @@ web/                 React + TypeScript + Vite client (design rules: web/DESIGN.
 deploy/              local dev mail server (docker-compose + dev-setup.mjs)
 deploy/production/   self-hosting kit: install.sh, check-dns.sh, backup.sh, Caddy
 signup/              public sign-up API for a hosted instance
+apps/                desktop (Electron) and iOS/Android (Capacitor) shells, apps/README.md
 docs/                self-hosting guide
 PLAN.md, PARITY.md   roadmap; feature-by-feature plan to beat Zoho Mail and Gmail
 ```
+
+## Apps
+
+The web app installs as an app from the browser (Settings → App). It gets an unread badge, Compose/Inbox shortcuts, “Share to OpenMail” and email-link handling. `apps/` has thin native shells that ask for your server's address once and then open its web app. Desktop (Electron, `apps/desktop`) builds and runs on macOS and opens `mailto:` links. iOS and Android (Capacitor, `apps/mobile`) are generated but not built yet. Build steps, sign-in and what native push needs: [apps/README.md](apps/README.md).
 
 ## Security model for displaying email
 

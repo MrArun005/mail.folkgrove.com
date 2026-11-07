@@ -60,6 +60,9 @@ Tracked row by row in [PARITY.md](PARITY.md).
 
 ### Phase 5: Later
 Shared team inboxes, notes and tasks, native mobile apps.
+- [x] Native shells (`apps/`): one first-run “which server?” screen; desktop (Electron) built and run on macOS; iOS/Android (Capacitor) projects generated. They sign in on the server's own origin, so no extra OAuth redirect is needed.
+- [ ] Build and test iOS/Android (needs Xcode / Android SDK); signing; store accounts (Apple $99/yr, Google Play $25)
+- [ ] Native push: FCM + APNs keys and a Web Push → FCM/APNs gateway, apps built per server (apps/README.md)
 
 ## Known gaps we accept
 - Spam filtering won't equal Gmail's on day one: Stalwart's filter plus per-user learning plus blocklists.
