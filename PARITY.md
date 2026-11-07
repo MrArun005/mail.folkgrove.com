@@ -20,8 +20,8 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Search | ✅ | ✅ | `from:` `to:` `subject:` `has:attachment` `is:unread` `in:` `before:` `after:` `-negation` |
 | Saved searches / search folders | ✅ | ⬜ | Phase 2.5 |
 | Live updates | ✅ | ✅ | Server push, no polling |
-| Show original / headers | ✅ | ⬜ | Next batch |
-| Print | ✅ | ⬜ | Next batch |
+| Show original / headers | ✅ | ✅ | |
+| Print | ✅ | ✅ | Prints with trackers removed |
 | Read receipts (request) | ✅ | ⬜ | Opt-in only; we never send receipts silently |
 | Translate | ✅ (Zia) | ⬜ | Optional, local model where possible |
 | Inbox categories (Updates / Promotions) | 🟡 | ⬜ | Phase 2.5, rules first, local ML later |
@@ -48,13 +48,13 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 
 | Feature | Zoho | Us | Better because |
 |---|---|---|---|
-| Filters / rules | ✅ | ⬜ | Next batch: Sieve (open standard), so rules run on the server and in any client |
-| Block sender | ✅ | ⬜ | Next batch |
+| Filters / rules | ✅ | ✅ | Sieve (open standard): run on the server, visible to any client; "filter messages like this" |
+| Block sender | ✅ | ✅ | Exact-address match; goes to Junk, never silently lost |
 | One-click unsubscribe | 🟡 | ✅ | RFC 8058 one-click, mailto fallback |
 | Subscriptions manager | ⬜ | ⬜ | Phase 2.5: list every newsletter, unsubscribe in one place |
 | Vacation / out-of-office | ✅ | ✅ | Date range, once per sender |
-| Forwarding | ✅ | ⬜ | Via Sieve redirect |
-| Folder management (rename, nest, delete) | ✅ | 🟡 | Create works; rename/delete UI next |
+| Forwarding | ✅ | ✅ | Per-filter forwarding (keeps a copy) |
+| Folder management (rename, nest, delete) | ✅ | 🟡 | Create, rename, delete; nesting later |
 
 ## 4. Privacy and security (where we must win clearly)
 
@@ -65,8 +65,8 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Tracking pixels removed | ⬜ | ✅ | Removed even after "Load images", and the sender is named |
 | Link tracking parameters stripped | ⬜ | ✅ | utm_*, fbclid, gclid, … |
 | Hostile HTML isolation | ✅ | ✅ | Sandboxed frame + strict CSP, tested |
-| 2FA / passkeys | ✅ | ⬜ | Phase 2: Stalwart supports TOTP; passkeys via OAuth |
-| OAuth sign-in (no stored password) | ✅ | ⬜ | Phase 2 (blocks the public launch) |
+| 2FA / passkeys | ✅ | 🟡 | TOTP works through the server's sign-in page; enrolment UI and passkeys next |
+| OAuth sign-in (no stored password) | ✅ | ✅ | PKCE, rotating refresh token, revoked at sign-out |
 | End-to-end encryption | 🟡 (S/MIME) | ⬜ | OpenPGP.js, Phase 2.5 |
 | Encryption at rest | ✅ | 🟡 | Stalwart supports per-account encryption at rest; expose in settings |
 | Masked / disposable aliases | ⬜ | ⬜ | Phase 4: unlimited, each can be turned off |
@@ -90,7 +90,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Feature | Zoho | Us | Plan |
 |---|---|---|---|
 | Web app | ✅ | ✅ | Local-first: instant UI, light and dark, phone layout |
-| Installable app / offline | 🟡 | ⬜ | Next batch: PWA; full offline in Phase 2.5 |
+| Installable app / offline | 🟡 | 🟡 | Installable (PWA), shell works offline; mail offline in Phase 2.5 |
 | Native mobile apps | ✅ | ⬜ | PWA first; native in Phase 5 |
 | Custom domains | ✅ | 🟡 | Self-hosting: yes. Hosted: Phase 2.5 |
 | Admin console (users, groups, aliases, policies) | ✅ | 🟡 | Stalwart's admin UI today; our own in Phase 4 |
@@ -100,15 +100,15 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 ## Score today
 
 Counting rows a typical Zoho Mail user touches (sections 1–4 plus calendar, contacts and the web app):
-**26 of 50 at parity or better (52%), 5 partial.** The "next batch" items below take that to roughly 70%;
+**32 of 50 at parity or better (64%), 6 partial.** The "next batch" items below take that to roughly 70%;
 Phase 2.5 (calendar, contacts UI, categories, multiple signatures, multi-account, E2E, OAuth/2FA) takes it past 90%;
 shared mailboxes and import close the rest of the 95%.
 
 ## Order of work
 
-1. **Next batch (small, high value):** filters and block sender (Sieve), show original, print, templates,
-   folder rename/delete, PWA install, signup form in the client.
-2. **Phase 2 security:** OAuth sign-in, 2FA, passkeys. Required before any public instance.
+1. **Next batch (small, high value):** templates, signatures (several), 2FA enrolment screen,
+   signup form in the client, inline images kept when forwarding.
+2. **Phase 2 security:** passkeys; branded sign-in page (today it is the mail server's own page).
 3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager, multiple signatures,
    multi-account, E2E (OpenPGP), saved searches, encryption-at-rest toggle.
 4. **Phase 3–4:** installer, import, masked aliases, shared mailboxes, admin console.

@@ -45,3 +45,9 @@ it('out-of-office lives in the same script: after blocks, before other rules, wi
   // Scripts saved before out-of-office moved in still read back.
   expect(parseScript('# openmail-rules: [{"id":"9","from":"a","action":"star"}]').rules).toHaveLength(1);
 });
+
+it('Block sender matches the exact address only', () => {
+  const s = toSieve([{ id: 'b', from: 'bob@x.com', fromExact: true, action: 'block' }], { trash: 'T', junk: 'J' });
+  expect(s).toContain('if allof(address :is "from" "bob@x.com")');
+  expect(s).not.toContain(':contains "from" "bob@x.com"');
+});

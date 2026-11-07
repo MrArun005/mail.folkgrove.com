@@ -115,6 +115,7 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 .login label { display: grid; gap: 6px; color: var(--ink-2); font-weight: 500; }
 .login .btn { width: 100%; margin-top: var(--s1); }
 .login .fine { text-align: center; }
+.login .btn.alt { justify-self: center; font-size: var(--t-sm); }
 
 /* ═══ Layout: rail | list | reader (full width) ════════ */
 .app { display: grid; grid-template-columns: var(--rail-w) minmax(320px, var(--list-w)) 1fr; height: 100%; }

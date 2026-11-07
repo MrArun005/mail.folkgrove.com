@@ -21,6 +21,8 @@ We'll credit you in the release notes unless you prefer otherwise.
 
 ## Known limitations (not vulnerabilities)
 
-- The web client currently signs in with HTTP Basic auth and keeps the session in `sessionStorage`. OAuth sign-in
-  is on the roadmap and required before any public hosted instance.
+- Sign-in uses OAuth (authorization code + PKCE). The rotating refresh token is kept in `sessionStorage` for the
+  life of the tab and revoked at sign-out; a backend-held httpOnly cookie would shorten exposure further.
+- "Sign in with a password instead" (for servers without the OAuth client registered) uses HTTP Basic and keeps
+  the password in memory only.
 - Snoozed mail wakes only while a client is open.

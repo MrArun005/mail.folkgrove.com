@@ -1,7 +1,6 @@
 // Minimal JMAP client (RFC 8620 core, 8621 mail + submission). Talks to Stalwart directly; we have no backend.
 import { SCRIPT_NAME } from './rules';
 
-// ponytail: Basic auth over HTTPS for the MVP. Move to OAuth (Stalwart supports it) before the public instance.
 
 const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve'];
 export const UNDO_SECONDS = 10;
@@ -45,15 +44,26 @@ export class Jmap {
   private identity?: { id: string; name: string; email: string };
 
   private constructor(
-    private auth: string, private base: string,
+    private authHeader: () => Promise<string>, private onUnauthorized: (() => Promise<void>) | null, private base: string,
     readonly accountId: string, readonly username: string,
     private apiUrl: string, private downloadUrl: string, private uploadUrl: string, private eventSourceUrl: string,
   ) {}
 
-  /** base '' = same origin (prod, and dev via the Vite proxy). */
-  static async login(user: string, pass: string, base = ''): Promise<Jmap> {
+  /** Password sign-in (HTTP Basic). Used by tests and local development; the app signs in with OAuth (connect). */
+  static login(user: string, pass: string, base = ''): Promise<Jmap> {
     const auth = 'Basic ' + btoa(unescape(encodeURIComponent(`${user}:${pass}`)));
-    const res = await fetch(`${base}/jmap/session`, { headers: { Authorization: auth } });
+    return Jmap.open(async () => auth, null, base);
+  }
+
+  /** OAuth sign-in: tokens come from the session and are refreshed on expiry or a 401. */
+  static connect(session: { header(): Promise<string>; refresh(): Promise<void> }, base = ''): Promise<Jmap> {
+    return Jmap.open(() => session.header(), () => session.refresh(), base);
+  }
+
+  /** base '' = same origin (prod, and dev via the Vite proxy). */
+  private static async open(authHeader: () => Promise<string>, onUnauthorized: (() => Promise<void>) | null, base: string): Promise<Jmap> {
+    const probe = new Jmap(authHeader, onUnauthorized, base, '', '', '', '', '', '');
+    const res = await probe.fetch(`${base}/jmap/session`);
     if (res.status === 401) throw new JmapError('Wrong email or password');
     if (!res.ok) throw new JmapError(`The mail server returned an error (${res.status})`);
     const s = await res.json();
@@ -61,13 +71,23 @@ export class Jmap {
     if (!accountId) throw new JmapError('This account has no mailbox');
     // Session URLs may be absolute with the server's internal hostname (e.g. behind a proxy).
     // Keep only the path and use the origin we actually reached.
-    return new Jmap(auth, base, accountId, s.username, pathOnly(s.apiUrl), pathOnly(s.downloadUrl), pathOnly(s.uploadUrl), pathOnly(s.eventSourceUrl));
+    return new Jmap(authHeader, onUnauthorized, base, accountId, s.username, pathOnly(s.apiUrl), pathOnly(s.downloadUrl), pathOnly(s.uploadUrl), pathOnly(s.eventSourceUrl));
+  }
+
+  /** Authenticated fetch. On a 401 with OAuth, refresh the token once and retry. */
+  private async fetch(url: string, init: RequestInit = {}, retry = true): Promise<Response> {
+    const res = await fetch(url, { ...init, headers: { ...init.headers, Authorization: await this.authHeader() } });
+    if (res.status === 401 && retry && this.onUnauthorized) {
+      await this.onUnauthorized();
+      return this.fetch(url, init, false);
+    }
+    return res;
   }
 
   async call(methodCalls: [string, object, string][]): Promise<any[]> {
-    const res = await fetch(this.base + this.apiUrl, {
+    const res = await this.fetch(this.base + this.apiUrl, {
       method: 'POST',
-      headers: { Authorization: this.auth, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ using: USING, methodCalls }),
     });
     if (!res.ok) throw new JmapError(`The mail server returned an error (${res.status})`);
@@ -232,8 +252,8 @@ export class Jmap {
   // ── Files ──────────────────────────────────────────────
 
   async upload(file: Blob & { name?: string }): Promise<Attachment> {
-    const res = await fetch(this.base + this.uploadUrl.replace('{accountId}', this.accountId), {
-      method: 'POST', headers: { Authorization: this.auth, 'Content-Type': file.type || 'application/octet-stream' }, body: file,
+    const res = await this.fetch(this.base + this.uploadUrl.replace('{accountId}', this.accountId), {
+      method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file,
     });
     if (!res.ok) throw new JmapError(res.status === 413 ? 'That file is too large to attach' : `Upload failed (${res.status})`);
     const r = await res.json();
@@ -243,7 +263,7 @@ export class Jmap {
   async download(a: Attachment): Promise<Blob> {
     const url = this.downloadUrl.replace('{accountId}', this.accountId).replace('{blobId}', a.blobId)
       .replace('{name}', encodeURIComponent(a.name ?? 'file')).replace('{type}', encodeURIComponent(a.type));
-    const res = await fetch(this.base + url, { headers: { Authorization: this.auth } });
+    const res = await this.fetch(this.base + url);
     if (!res.ok) throw new JmapError(`Download failed (${res.status})`);
     return res.blob();
   }
@@ -362,7 +382,7 @@ export class Jmap {
       while (!stopped) {
         ctrl = new AbortController();
         try {
-          const res = await fetch(url, { headers: { Authorization: this.auth, Accept: 'text/event-stream' }, signal: ctrl.signal });
+          const res = await this.fetch(url, { headers: { Accept: 'text/event-stream' }, signal: ctrl.signal });
           if (!res.ok || !res.body) throw new Error(String(res.status));
           delay = 1000;
           const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();

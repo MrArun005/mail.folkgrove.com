@@ -4,7 +4,8 @@
 export type RuleAction = 'move' | 'read' | 'star' | 'trash' | 'block' | 'forward';
 export interface Rule {
   id: string;
-  from?: string;          // sender address or domain contains
+  from?: string;          // sender address or domain contains (or equals, with fromExact)
+  fromExact?: boolean;    // exact address match: used by Block sender so it can't over-match
   to?: string;            // any recipient contains
   subject?: string;       // subject contains
   action: RuleAction;
@@ -23,7 +24,7 @@ const MARK = '# openmail-rules: ';
 const q = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
 export function describeRule(r: Rule): string {
-  const when = [r.from && `from contains “${r.from}”`, r.to && `to contains “${r.to}”`, r.subject && `subject contains “${r.subject}”`]
+  const when = [r.from && (r.fromExact ? `from is “${r.from}”` : `from contains “${r.from}”`), r.to && `to contains “${r.to}”`, r.subject && `subject contains “${r.subject}”`]
     .filter(Boolean).join(' and ') || 'every message';
   const then = { move: `move to ${r.folder}`, read: 'mark as read', star: 'star it', trash: 'delete it', block: 'block it (send to Junk)', forward: `forward to ${r.forwardTo}` }[r.action];
   return `If ${when}, ${then}`;
@@ -54,7 +55,7 @@ export function toSieve(rules: Rule[], folders: { trash: string; junk: string },
     if (r.action !== 'block') emitVacation();
     if (validateRule(r)) continue; // never emit a half-made rule
     const tests: string[] = [];
-    if (r.from?.trim()) tests.push(`address :contains "from" ${q(r.from.trim())}`);
+    if (r.from?.trim()) tests.push(`address ${r.fromExact ? ':is' : ':contains'} "from" ${q(r.from.trim())}`);
     if (r.to?.trim()) tests.push(`address :contains ["to", "cc"] ${q(r.to.trim())}`);
     if (r.subject?.trim()) tests.push(`header :contains "subject" ${q(r.subject.trim())}`);
     const body = {

@@ -5,5 +5,6 @@ import react from '@vitejs/plugin-react';
 const stalwart = process.env.JMAP_URL ?? 'http://localhost:8080';
 export default defineConfig({
   plugins: [react()],
-  server: { proxy: { '/jmap': stalwart, '/.well-known/jmap': stalwart } },
+  // Same paths the production reverse proxy sends to the mail server: JMAP, OAuth and its sign-in page.
+  server: { proxy: Object.fromEntries(['/jmap', '/.well-known', '/login', '/api/auth', '/auth', '/ui-', '/logo'].map((p) => [p, stalwart])) },
 });

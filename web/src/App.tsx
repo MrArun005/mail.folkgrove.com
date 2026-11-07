@@ -1,52 +1,75 @@
-import { useEffect, useState } from 'react';
-import { Jmap, JmapError } from './jmap';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
+import { Jmap, JmapError } from './jmap';
 import { Mail } from './Mail';
+import { finishSignIn, Session, startSignIn } from './oauth';
 import { applyTheme, savedTheme } from './Settings';
 import { cache } from './store';
-
-// Stay signed in across reloads in this tab; closing the tab signs out.
-// ponytail: holds the password in sessionStorage. Replace with an OAuth refresh token before the public instance.
-const session = {
-  get(): { user: string; pass: string } | null { try { return JSON.parse(sessionStorage.getItem('om:session') ?? 'null'); } catch { return null; } },
-  set(v: { user: string; pass: string } | null) { try { v ? sessionStorage.setItem('om:session', JSON.stringify(v)) : sessionStorage.removeItem('om:session'); } catch {} },
-};
 
 applyTheme(savedTheme());
 
 export default function App() {
   const [client, setClient] = useState<Jmap | null>(null);
-  const [restoring, setRestoring] = useState(() => !!session.get());
+  const [booting, setBooting] = useState(true);
+  const [error, setError] = useState('');
+  const session = useRef<Session | null>(null);
+
   useEffect(() => {
-    const s = session.get();
-    if (s) Jmap.login(s.user, s.pass).then(setClient, () => session.set(null)).finally(() => setRestoring(false));
+    (async () => {
+      try {
+        // Returning from the server's sign-in page, or resuming in this tab after a reload.
+        const fresh = await finishSignIn();
+        const s = fresh ? new Session(fresh) : Session.resume();
+        if (s) { session.current = s; setClient(await Jmap.connect(s)); }
+      } catch (e) {
+        session.current = null;
+        setError(e instanceof Error ? e.message : String(e));
+      } finally { setBooting(false); }
+    })();
   }, []);
-  if (restoring) return <div className="reader-loading" aria-busy="true" />;
-  if (!client) return <Login onLogin={setClient} />;
-  return <Mail client={client} onLogout={() => { cache.clear(); session.set(null); setClient(null); }} />;
+
+  async function signOut() {
+    cache.clear();
+    await session.current?.signOut();
+    session.current = null;
+    setClient(null);
+  }
+
+  if (booting) return <div className="reader-loading" aria-busy="true" />;
+  if (!client) return <Login initialError={error} onLogin={setClient} />;
+  return <Mail client={client} onLogout={signOut} />;
 }
 
-function Login({ onLogin }: { onLogin: (c: Jmap) => void }) {
-  const [error, setError] = useState('');
+function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: Jmap) => void }) {
+  const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
+  const [withPassword, setWithPassword] = useState(false);
+
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    const user = String(f.get('email')).trim(), pass = String(f.get('password'));
+    const user = String(f.get('email')).trim();
     setBusy(true); setError('');
-    try { const c = await Jmap.login(user, pass); session.set({ user, pass }); onLogin(c); }
-    catch (err) { setError(err instanceof JmapError ? err.message : 'Can’t reach the mail server. Check your connection and try again.'); }
-    finally { setBusy(false); }
+    if (!withPassword) return startSignIn(user); // the server's page takes the password and any two-factor code
+    try { onLogin(await Jmap.login(user, String(f.get('password')))); } // fallback: not remembered across reloads
+    catch (err) { setError(err instanceof JmapError ? err.message : 'Can’t reach the mail server. Check your connection and try again.'); setBusy(false); }
   }
+
   return (
     <main className="login">
       <form onSubmit={submit}>
         <p className="wordmark">OpenMail</p>
         <h1>Sign in to your mailbox</h1>
         <label>Email address<input className="input" name="email" type="email" autoComplete="username" required autoFocus /></label>
-        <label>Password<input className="input" name="password" type="password" autoComplete="current-password" required /></label>
+        {withPassword && <label>Password<input className="input" name="password" type="password" autoComplete="current-password" required /></label>}
         {error && <p className="error" role="alert">{error}</p>}
-        <Button type="submit" variant="primary" size="lg" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
+        <Button type="submit" variant="primary" size="lg" disabled={busy}>{busy ? 'Signing in…' : withPassword ? 'Sign in' : 'Continue'}</Button>
+        {!withPassword
+          ? <p className="fine">You’ll enter your password (and two-factor code, if you use one) on your mail server’s secure page.</p>
+          : <p className="fine">Password sign-in isn’t remembered: you’ll sign in again after a reload.</p>}
+        <Button variant="link" className="alt" onClick={() => { setWithPassword(!withPassword); setError(''); }}>
+          {withPassword ? 'Use secure sign-in instead' : 'Sign in with a password instead'}
+        </Button>
         <p className="fine">No ads. No reading your mail. Open source.</p>
       </form>
     </main>

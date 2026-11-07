@@ -360,6 +360,19 @@ if [ -n "$USER_NAME" ]; then
 fi
 
 # ---------------------------------------------------------------------------------------------
+# Register the webmail as an OAuth client, so it signs in with tokens (and two-factor) instead of passwords.
+# Idempotent: updates the redirect address and scope if the client already exists.
+clients=$(api '[["x:OAuthClient/get",{"ids":null,"properties":["clientId"]},"c"]]')
+client_id=$(jget "next((c['id'] for c in r[0][1]['list'] if c['clientId'] == 'openmail-web'), None)" <<<"$clients")
+oauth="\"redirectUris\":{$(jstr "$PUBLIC_URL/"):true},\"scopes\":{\"mail\":true},\"description\":\"Webmail\""
+if [ -n "$client_id" ]; then
+  api "[[\"x:OAuthClient/set\",{\"update\":{$(jstr "$client_id"):{$oauth}}},\"c\"]]" >/dev/null
+else
+  api "[[\"x:OAuthClient/set\",{\"create\":{\"c\":{\"clientId\":\"openmail-web\",$oauth}}},\"c\"]]" >/dev/null
+fi
+say "Webmail sign-in (OAuth) registered for $PUBLIC_URL/"
+
+# ---------------------------------------------------------------------------------------------
 # Daily certificate hand-over from Caddy to Stalwart.
 if [ "$LOCAL_TEST" = 0 ]; then
   line="17 4 * * * root $HERE/install.sh --refresh-certs >> /var/log/postwren-certs.log 2>&1"

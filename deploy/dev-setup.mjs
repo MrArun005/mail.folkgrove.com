@@ -58,7 +58,17 @@ if (!existsSync(SECRET_FILE)) {
 }
 const admin = JSON.parse(readFileSync(SECRET_FILE, 'utf8'));
 
-// 2. Test user.
+// 2. The web app as an OAuth client (sign-in with tokens + two-factor). Idempotent.
+{
+  const [[, cl]] = await jmap(admin, [['x:OAuthClient/get', { ids: null, properties: ['clientId'] }, 'c']]);
+  const existing = cl.list.find((c) => c.clientId === 'openmail-web');
+  const fields = { redirectUris: { 'http://localhost:5173/': true }, scopes: { mail: true }, description: 'OpenMail web (dev)' };
+  await jmap(admin, [['x:OAuthClient/set', existing
+    ? { update: { [existing.id]: fields } }
+    : { create: { c: { clientId: 'openmail-web', ...fields } } }, 'c']]);
+}
+
+// 3. Test user.
 const [[, doms]] = await jmap(admin, [['x:Domain/get', { ids: null, properties: ['name'] }, 'd']]);
 const domainId = doms.list.find((d) => d.name === DOMAIN).id;
 const [[, made]] = await jmap(admin, [['x:Account/set', { create: { u: {
@@ -68,7 +78,7 @@ const [[, made]] = await jmap(admin, [['x:Account/set', { create: { u: {
 const created = !!made.created;
 console.log(created ? `Created ${USER.name}@${DOMAIN}` : `${USER.name}@${DOMAIN} already exists`);
 
-// 3. Seed inbox (only for a freshly created user). Import skips the spam filter, so it lands in Inbox.
+// 4. Seed inbox (only for a freshly created user). Import skips the spam filter, so it lands in Inbox.
 if (created) {
   const alice = { user: `${USER.name}@${DOMAIN}`, pass: USER.pass };
   const session = await (await fetch(`${BASE}/jmap/session`, { headers: { Authorization: basic(alice) } })).json();

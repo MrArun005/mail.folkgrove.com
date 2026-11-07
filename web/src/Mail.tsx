@@ -3,7 +3,7 @@ import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
 import { Icon, roleIcon } from './icons';
 import { Jmap, UNDO_SECONDS, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
-import { displayName, draftFor, draftFromEmail, formatAddresses, textToHtml, unsubscribePlan, type ReplyMode } from './mailutil';
+import { displayName, draftFor, draftFromEmail, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
@@ -230,17 +230,20 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         const url = URL.createObjectURL(new Blob([await client.original(m)], { type: 'text/plain;charset=utf-8' }));
         window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 60_000);
       } else if (what === 'print') {
-        // Same isolation as reading (CSP, no scripts, trackers removed), plus a printable header.
+        // Print from a hidden sandboxed frame: same isolation as reading (CSP, trackers removed). allow-same-origin
+        // lets us call print(); without allow-scripts nothing in the message can run. allow-modals shows the dialog.
         const head = `<h1 style="font:600 20px system-ui">${escape(m.subject ?? '')}</h1><p style="font:13px system-ui;color:#555">From: ${escape(formatAddresses(m.from))}<br>To: ${escape(formatAddresses(m.to))}<br>${new Date(m.receivedAt).toLocaleString()}</p><hr>`;
-        const { srcdoc } = buildSrcdoc(head + (m.html ?? textToHtml(m.text ?? '')), false);
-        const url = URL.createObjectURL(new Blob([srcdoc], { type: 'text/html' }));
-        const w = window.open(url, '_blank');
-        w?.addEventListener('load', () => { w.print(); URL.revokeObjectURL(url); });
+        const frame = Object.assign(document.createElement('iframe'), { srcdoc: buildSrcdoc(head + (m.html ?? textToHtml(m.text ?? '')), false).srcdoc });
+        frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
+        frame.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden';
+        frame.onload = () => { frame.contentWindow?.print(); setTimeout(() => frame.remove(), 1000); };
+        document.body.appendChild(frame);
       } else if (what === 'filter') {
         setRulePrefill({ from: sender }); setOverlay('settings');
       } else if (what === 'block') {
-        if (!confirm(`Block ${sender}? Their messages will go straight to Junk. You can undo this in Settings → Filters.`)) return;
-        await addRule(client, boxes, { id: crypto.randomUUID(), from: sender, action: 'block' });
+        if (!parseAddresses(sender).list.length) return say({ text: 'This sender’s address can’t be blocked safely. Use a filter instead.' });
+        if (!confirm(`Block ${sender}? Messages from exactly this address will go straight to Junk. You can undo this in Settings → Filters.`)) return;
+        await addRule(client, boxes, { id: crypto.randomUUID(), from: sender, fromExact: true, action: 'block' });
         await act('junk', [m.threadId]);
         say({ text: `Blocked ${sender}` });
       }
