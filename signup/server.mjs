@@ -221,7 +221,9 @@ export function createApp(cfg) {
     }
     if (r.created?.n) {
       // New accounts start on the lower sending tier (install.sh rules); failing to mark one is logged, not fatal.
-      await tiers.markNew(`${username}@${cfg.domain}`).catch((e) => console.error('signup: tier mark failed:', e.message));
+      // Fail safe: retry once; if it still fails, the hourly job adds it (any self-sign-up still inside the window).
+      await tiers.markNew(`${username}@${cfg.domain}`).catch(() => tiers.markNew(`${username}@${cfg.domain}`))
+        .catch((e) => console.error('signup: tier mark failed, the hourly job will add it:', e.message));
       return send(res, 201, { ok: true, email: `${username}@${cfg.domain}` });
     }
 
@@ -253,7 +255,7 @@ export function createApp(cfg) {
   const tiers = makeTiers({ jmap, getDomainId, cfg });
   // Promote aged-out new accounts once an hour (and shortly after start). unref: never keeps the process alive.
   if (cfg.signupEnabled !== false) {
-    const run = () => tiers.promote().then((p) => p.length && console.log('tiers: promoted', p.length), (e) => console.error('tiers:', e.message));
+    const run = () => tiers.promote() // also adds young self-sign-ups missing from the list.then((p) => p.length && console.log('tiers: promoted', p.length), (e) => console.error('tiers:', e.message));
     setTimeout(run, 60_000).unref(); setInterval(run, 3600e3).unref();
   }
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });

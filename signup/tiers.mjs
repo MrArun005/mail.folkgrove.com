@@ -18,10 +18,15 @@ export function tiers({ jmap, getDomainId, cfg }) {
   /** Remove accounts older than `days` from the list. Returns the promoted addresses. */
   async function promote(now = Date.now()) {
     const ids = (await jmap([['x:MemoryLookupKey/query', { filter: { namespace: 'new-accounts' } }, 'q']])).ids;
-    if (!ids.length) return [];
-    const keys = (await jmap([['x:MemoryLookupKey/get', { ids }, 'g']])).list;
+    const keys = ids.length ? (await jmap([['x:MemoryLookupKey/get', { ids }, 'g']])).list : [];
     const accIds = (await jmap([['x:Account/query', { filter: { domainId: await getDomainId() } }, 'q']])).ids;
-    const accounts = accIds.length ? (await jmap([['x:Account/get', { ids: accIds, properties: ['emailAddress', 'createdAt'] }, 'g']])).list : [];
+    const accounts = accIds.length ? (await jmap([['x:Account/get', { ids: accIds, properties: ['emailAddress', 'createdAt', 'description'] }, 'g']])).list : [];
+    // Fail safe: a self-signed-up account still inside the window that isn't on the list (a failed mark at sign-up) is added.
+    const listed = new Set(keys.map((k) => k.key));
+    for (const a of accounts) {
+      const addr = String(a.emailAddress).toLowerCase();
+      if (String(a.description ?? '').startsWith('Self sign-up') && now - Date.parse(a.createdAt) <= days * 86400e3 && !listed.has(addr)) await markNew(addr);
+    }
     const created = new Map(accounts.map((a) => [String(a.emailAddress).toLowerCase(), Date.parse(a.createdAt)]));
     // Only accounts we can see and that have aged out. (A brand-new account can be missing from the search index for a
     // moment; a deleted one's entry is harmless, since addresses are never reused.)
