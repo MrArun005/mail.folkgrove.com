@@ -54,3 +54,15 @@ export async function rewrite(text: string, style: RewriteStyle): Promise<string
   });
   return r.rewrite(text);
 }
+
+/**
+ * The text a person actually sees in an HTML email. Hidden parts (display:none, visibility:hidden, zero size or
+ * opacity, [hidden]) are dropped first: senders can hide text there to steer a summary or translation.
+ */
+export function visibleText(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script, style, head, template, [hidden], [aria-hidden="true"]').forEach((el) => el.remove());
+  const hidden = /display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?![.\d]*[1-9])|opacity\s*:\s*0(?![.\d]*[1-9])|max-height\s*:\s*0(?![.\d]*[1-9])|(?:^|;)\s*(?:width|height)\s*:\s*0(?:px)?\s*(?:;|$)/i;
+  doc.querySelectorAll<HTMLElement>('[style]').forEach((el) => { if (hidden.test(el.getAttribute('style') ?? '')) el.remove(); });
+  return (doc.body.innerText ?? doc.body.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim();
+}

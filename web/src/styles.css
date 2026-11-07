@@ -659,5 +659,7 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 
 /* On-device translate / summarize */
 .assist-links { display: flex; align-items: center; gap: var(--s4); margin-left: var(--text-col); font-size: var(--t-sm); }
-.assist .assist-text { display: block; margin-top: var(--s1); white-space: pre-wrap; color: var(--ink); }
+.assist { display: flex; gap: var(--s3); align-items: flex-start; margin-left: var(--text-col); padding: var(--s3) var(--s4); border: 1px dashed var(--rule); border-radius: var(--r-md); }
+.assist .grow { flex: 1; min-width: 0; }
+.assist .assist-text { display: block; margin-top: var(--s1); white-space: pre-wrap; color: var(--ink); font: var(--t-read)/1.5 var(--read); }
 .assist-note { margin-left: var(--text-col); }

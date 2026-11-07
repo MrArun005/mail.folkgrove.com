@@ -4,8 +4,8 @@ import { createPortal } from 'react-dom';
 import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
 import { Button } from './Button';
 import { Icon } from './icons';
-import { displayName, fileSize, formatAddresses, htmlToText, type ReplyMode } from './mailutil';
-import { canSummarize, canTranslate, languageName, summarize, translate } from './ai';
+import { displayName, fileSize, formatAddresses, type ReplyMode } from './mailutil';
+import { canSummarize, canTranslate, languageName, summarize, translate, visibleText } from './ai';
 import { buildSrcdoc } from './safeHtml';
 import { span, type CalEvent } from './calendar';
 import type { PartStat } from './ics';
@@ -121,11 +121,12 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
   const [preview, setPreview] = useState<Attachment | null>(null);
   const [assist, setAssist] = useState<{ kind: 'translation' | 'summary'; text: string; note: string } | null>(null);
   const [assisting, setAssisting] = useState('');
-  const plain = (m.text || (m.html ? htmlToText(m.html) : '')).trim();
+  // Prefer the sender's plain-text part; from HTML, only what a reader can actually see (see visibleText).
+  const plain = (m.text || (m.html ? visibleText(m.html) : '')).trim();
   async function help(kind: 'translation' | 'summary') {
     setAssisting(kind === 'translation' ? 'Translating on this device…' : 'Summarising on this device…');
     try {
-      if (kind === 'summary') setAssist({ kind, text: await summarize(plain), note: 'Summary made on this device' });
+      if (kind === 'summary') setAssist({ kind, text: await summarize(plain), note: 'Summary of the sender’s message, made on this device. It can be wrong: check the message before acting on it.' });
       else {
         const t = await translate(plain);
         setAssist(t ? { kind, text: t.text, note: `Translated from ${languageName(t.from)} on this device` } : { kind: 'summary', text: '', note: 'This message is already in your language.' });
@@ -167,7 +168,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
         </p>
       )}
       {assist?.kind === 'summary' && (
-        <div className="banner banner--info assist" role="status">
+        <div className="assist" role="note" aria-label="Summary of this message">
           <span className="grow"><span className="fine">{assist.note}</span>{assist.text && <span className="assist-text">{assist.text}</span>}</span>
           <Button variant="quiet" size="sm" icon="close" label="Close" onClick={() => setAssist(null)} />
         </div>
