@@ -1,0 +1,208 @@
+// Admin console API (/api/admin/*): users, blocked IPs, new-account limits and the outgoing queue.
+// Who is an admin: the ADMINS setting (comma-separated usernames on DOMAIN). The caller proves who they are with
+// their own sign-in token (checked by Stalwart, as for aliases); then their name must be on that list.
+// This is a short, explicit list of Stalwart admin operations, never a passthrough.
+import { randomBytes } from 'node:crypto';
+import { callerOf } from './aliases.mjs';
+import { checkUsername } from './lib.mjs';
+
+const NEW = 'new-accounts'; // x:MemoryLookupKey namespace for the stricter sending tier (key = full address)
+const USER_PROPS = ['name', 'emailAddress', 'description', 'createdAt', 'usedDiskQuota', 'quotas', 'aliases', 'permissions', 'roles'];
+const ID = '[A-Za-z0-9_-]{1,64}';
+
+/** One account as the console shows it. Disabled = may not sign in (Stalwart permission "authenticate" taken away). */
+export function userView(a, newTier = new Set()) {
+  return {
+    id: a.id, name: a.name, email: a.emailAddress, description: a.description ?? '', createdAt: a.createdAt,
+    used: a.usedDiskQuota ?? 0, quota: a.quotas?.maxDiskQuota ?? null,
+    aliases: Object.values(a.aliases ?? {}).filter((x) => x.enable !== false).length,
+    enabled: !a.permissions?.disabledPermissions?.authenticate,
+    admin: a.roles?.['@type'] !== 'User', newAccount: newTier.has(String(a.emailAddress).toLowerCase()),
+  };
+}
+
+/** The permissions object with sign-in switched on or off, keeping any other custom permissions. */
+export function withSignIn(p = { '@type': 'Inherit' }, enabled) {
+  const base = p['@type'] === 'Inherit' ? { '@type': 'Merge', enabledPermissions: {}, disabledPermissions: {} } : structuredClone(p);
+  base.disabledPermissions = { ...base.disabledPermissions };
+  if (enabled) delete base.disabledPermissions.authenticate; else base.disabledPermissions.authenticate = true;
+  const empty = base['@type'] === 'Merge' && !Object.keys(base.disabledPermissions).length && !Object.keys(base.enabledPermissions ?? {}).length;
+  return empty ? { '@type': 'Inherit' } : base;
+}
+
+/** One queued message: who sent it, and per recipient its status, attempts and last error. */
+export function queueView(m) {
+  return {
+    id: m.id, from: m.returnPath, createdAt: m.createdAt, nextRetry: m.nextRetry ?? null, size: m.size ?? 0,
+    recipients: Object.entries(m.recipients ?? {}).map(([to, r]) => ({
+      to, status: r.status?.['@type'] ?? 'Scheduled', attempts: r.retryCount ?? 0, nextAttempt: r.retryDue ?? null,
+      error: r.status?.errorMessage || r.status?.responseMessage || null,
+      code: [r.status?.responseCode, r.status?.responseEnhanced].filter(Boolean).join(' ') || null,
+    })),
+  };
+}
+
+const password = () => randomBytes(12).toString('base64url'); // 16 characters, about 96 bits
+
+export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf }) {
+  const admins = new Set(cfg.admins ?? []);
+  const badAuth = new RateLimiter(20, 15 * 60e3); // failed sign-ins per network, as for /api/aliases
+
+  const set = async (type, args) => {
+    const r = await jmap([[`${type}/set`, args, 's']]);
+    const bad = r.notCreated ?? r.notUpdated ?? r.notDestroyed;
+    if (bad && Object.keys(bad).length) throw Object.assign(new Error(`${type}/set refused`), { detail: Object.values(bad)[0] });
+    return r;
+  };
+  const query = async (type, args) => jmap([[`${type}/query`, args, 'q']]);
+  const get = async (type, ids, properties) => ids.length ? (await jmap([[`${type}/get`, { ids, ...(properties && { properties }) }, 'g']])).list : [];
+  const newTier = async () => {
+    // ponytail: Stalwart filters lookup keys by namespace only, so the whole tier is read; fine for thousands.
+    const { ids } = await query('x:MemoryLookupKey', { filter: { namespace: NEW } });
+    return (await get('x:MemoryLookupKey', ids)).filter((k) => k.namespace === NEW);
+  };
+  const account = async (id) => (await get('x:Account', [id], USER_PROPS))[0];
+
+  const handlers = {
+    'GET overview': async () => {
+      const [a, q, b, n] = await Promise.all([
+        query('x:Account', { filter: { '@type': 'User' }, calculateTotal: true, limit: 0 }),
+        query('x:QueuedMessage', { calculateTotal: true, limit: 0 }),
+        query('x:BlockedIp', { calculateTotal: true, limit: 0 }),
+        newTier(),
+      ]);
+      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length };
+    },
+
+    'GET users': async (_req, url) => {
+      // Stalwart's text search matches whole words (alice, not ali), so a full address is cut to its name.
+      const q = (url.searchParams.get('q') || '').trim().toLowerCase().replace(/@.*$/, '').slice(0, 64);
+      const r = await query('x:Account', { filter: { '@type': 'User', ...(q && { text: q }) }, sort: [{ property: 'name' }], limit: 200, calculateTotal: true });
+      const [list, tier] = await Promise.all([get('x:Account', r.ids, USER_PROPS), newTier()]);
+      const keys = new Set(tier.map((k) => k.key.toLowerCase()));
+      return { users: list.map((a) => userView(a, keys)), total: r.total };
+    },
+
+    'POST users': async (req) => {
+      const body = await readJson(req).catch(() => ({}));
+      const name = typeof body.name === 'string' ? body.name.trim().toLowerCase() : '';
+      const bad = checkUsername(name);
+      if (bad && bad.code !== 'username_reserved') return [400, bad.code, bad.message]; // admins may use reserved names
+      const quota = body.quotaBytes == null || body.quotaBytes === '' ? (cfg.quotaBytes || null) : Number(body.quotaBytes);
+      if (quota !== null && !(Number.isSafeInteger(quota) && quota >= 0)) return [400, 'bad_quota', 'Enter the storage limit as a whole number.'];
+      const secret = password();
+      const r = await jmap([['x:Account/set', { create: { n: {
+        '@type': 'User', name, domainId: await getDomainId(),
+        description: typeof body.description === 'string' && body.description.trim() ? body.description.trim().slice(0, 200) : null,
+        credentials: { 0: { '@type': 'Password', secret } },
+        ...(quota ? { quotas: { maxDiskQuota: quota } } : {}),
+      } } }, 'c']]);
+      if (r.notCreated?.n?.type === 'primaryKeyViolation') return [409, 'username_taken', 'That username is already taken.'];
+      if (!r.created?.n) throw Object.assign(new Error('create refused'), { detail: r.notCreated?.n });
+      return { user: userView(await account(r.created.n.id)), password: secret };
+    },
+
+    'PATCH users/:id': async (req, _url, id, who) => {
+      const body = await readJson(req).catch(() => ({}));
+      const a = await account(id);
+      if (!a) return [404, 'not_found', 'That account no longer exists.'];
+      if (a.roles?.['@type'] !== 'User') return [403, 'protected', 'Server administrator accounts are managed in Stalwart’s own admin.'];
+      const patch = {};
+      if (typeof body.enabled === 'boolean') {
+        if (!body.enabled && id === who.id) return [400, 'self', 'You can’t disable your own account.'];
+        patch.permissions = withSignIn(a.permissions, body.enabled);
+      }
+      if ('quotaBytes' in body) {
+        const q = body.quotaBytes === null ? null : Number(body.quotaBytes);
+        if (q !== null && !(Number.isSafeInteger(q) && q > 0)) return [400, 'bad_quota', 'Enter the storage limit as a whole number.'];
+        patch['quotas/maxDiskQuota'] = q; // null = no limit
+      }
+      let secret;
+      if (body.resetPassword === true) {
+        // Replaces the main password only (app passwords stay). Stalwart signs the account out everywhere.
+        const creds = (await get('x:Account', [id], ['credentials']))[0]?.credentials ?? {};
+        const key = Object.entries(creds).find(([, c]) => c['@type'] === 'Password')?.[0];
+        secret = password();
+        if (key) patch[`credentials/${key}/secret`] = secret; else patch.credentials = { 0: { '@type': 'Password', secret } };
+      }
+      if (!Object.keys(patch).length) return [400, 'nothing', 'Nothing to change.'];
+      await set('x:Account', { update: { [id]: patch } });
+      return { user: userView(await account(id)), ...(secret && { password: secret }) };
+    },
+
+    'DELETE users/:id': async (_req, _url, id, who) => {
+      const a = await account(id);
+      if (!a) return [404, 'not_found', 'That account no longer exists.'];
+      if (a.roles?.['@type'] !== 'User') return [403, 'protected', 'Server administrator accounts are managed in Stalwart’s own admin.'];
+      if (id === who.id) return [400, 'self', 'You can’t delete your own account.'];
+      await set('x:Account', { destroy: [id] });
+      const stale = (await newTier()).filter((k) => k.key.toLowerCase() === String(a.emailAddress).toLowerCase()).map((k) => k.id);
+      if (stale.length) await set('x:MemoryLookupKey', { destroy: stale });
+      return {};
+    },
+
+    'GET blocked': async () => {
+      const { ids } = await query('x:BlockedIp', { limit: 500 });
+      const list = await get('x:BlockedIp', ids);
+      return { blocked: list.map(({ id, address, reason, createdAt, expiresAt }) => ({ id, address, reason, createdAt, expiresAt: expiresAt ?? null })) };
+    },
+    'DELETE blocked/:id': async (_req, _url, id) => { await set('x:BlockedIp', { destroy: [id] }); return {}; },
+
+    'GET new-accounts': async () => ({ keys: (await newTier()).map(({ id, key }) => ({ id, address: key })) }),
+    'POST new-accounts': async (req) => {
+      const body = await readJson(req).catch(() => ({}));
+      const address = typeof body.address === 'string' ? body.address.trim().toLowerCase() : '';
+      const full = address.includes('@') ? address : `${address}@${cfg.domain}`;
+      if (!/^[a-z0-9.-]{1,64}@[a-z0-9.-]+$/.test(full)) return [400, 'bad_address', 'Enter a username or full address, like bob@' + cfg.domain + '.'];
+      const tier = await newTier();
+      if (tier.some((k) => k.key.toLowerCase() === full)) return { address: full };
+      await set('x:MemoryLookupKey', { create: { k: { namespace: NEW, key: full, isGlobPattern: false } } });
+      return { address: full };
+    },
+    'DELETE new-accounts/:id': async (_req, _url, id) => {
+      const [k] = await get('x:MemoryLookupKey', [id]);
+      if (!k || k.namespace !== NEW) return [404, 'not_found', 'That entry no longer exists.']; // only ever this namespace
+      await set('x:MemoryLookupKey', { destroy: [id] });
+      return {};
+    },
+
+    'GET queue': async (_req, url) => {
+      const q = (url.searchParams.get('q') || '').trim().toLowerCase().slice(0, 254);
+      // Sender or recipient (substring). Stalwart filters support AND only, so two queries are merged.
+      const ids = q
+        ? [...new Set((await Promise.all([{ returnPath: q }, { to: q }].map((filter) => query('x:QueuedMessage', { filter, limit: 200 })))).flatMap((r) => r.ids))]
+        : (await query('x:QueuedMessage', { limit: 200 })).ids;
+      const list = (await get('x:QueuedMessage', ids.slice(0, 200), ['returnPath', 'createdAt', 'nextRetry', 'size', 'recipients'])).map(queueView);
+      return { messages: list.sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt))) };
+    },
+    // Retry now: what Stalwart's own admin does (next attempt due in the past).
+    'POST queue/:id/retry': async (_req, _url, id) => { await set('x:QueuedMessage', { update: { [id]: { nextRetry: '2000-01-01T00:00:00Z' } } }); return {}; },
+    'DELETE queue/:id': async (_req, _url, id) => { await set('x:QueuedMessage', { destroy: [id] }); return {}; },
+  };
+
+  return async function handle(req, res, url) {
+    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue)(?:/(${ID}))?(/retry)?$`));
+    if (!m) return false;
+    if (!admins.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS is set
+    const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);
+    if (blocked) return fail(res, 429, 'rate_limited', 'Too many failed sign-ins from your network. Try again later.', { retryAfter: blocked }), true;
+    let who;
+    try { who = await callerOf(cfg, jmap, getDomainId, req); } catch (e) { badAuth.refund(ip, win); throw e; }
+    if (!who) return fail(res, 401, 'unauthorized', 'Please sign in again.'), true;
+    badAuth.refund(ip, win);
+    if (!admins.has(who.name)) return fail(res, 403, 'not_admin', 'This account isn’t an administrator.'), true;
+
+    const key = `${req.method} ${m[1]}${m[2] ? '/:id' : ''}${m[3] ?? ''}`;
+    const fn = handlers[key];
+    if (!fn) return fail(res, 405, 'method_not_allowed', 'Not allowed.'), true;
+    let out;
+    try { out = await fn(req, url, m[2], who); }
+    catch (e) {
+      console.error(`admin: ${key} by ${who.name} failed:`, e.message, e.detail ? JSON.stringify(e.detail) : '');
+      return fail(res, 502, 'stalwart_refused', 'The mail server refused that change. Details are in the account service log.'), true;
+    }
+    if (Array.isArray(out)) return fail(res, out[0], out[1], out[2]), true;
+    if (req.method !== 'GET') console.log(`admin: ${who.name} ${key}${m[2] ? ` ${m[2]}` : ''}`); // ponytail: audit trail is the log
+    return send(res, 200, { ok: true, ...out }), true;
+  };
+}

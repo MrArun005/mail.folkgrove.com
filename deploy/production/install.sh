@@ -421,7 +421,7 @@ cat <<EOF
 
 Done.
   Webmail:   $PUBLIC_URL   (works once DNS points here and the certificate is issued)
-  Admin UI:  $PUBLIC_URL/admin   login in $HERE/.admin-credentials
+  Admin UI:  $PUBLIC_URL/admin/  (Stalwart) login in $HERE/.admin-credentials; OpenMail console: $PUBLIC_URL/admin (set ADMINS)
   Mail apps: IMAP $MAIL_HOSTNAME:993 (TLS), SMTP $MAIL_HOSTNAME:465 (TLS) or 587 (STARTTLS)
   Backups:   $HERE/backup.sh   (see docs/self-hosting.md)
 EOF

@@ -21,6 +21,23 @@ export function toView(a, domainName) {
 
 export const cleanLabel = (s) => (typeof s === 'string' ? s.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80) : '');
 
+/** Who is calling: their own session, verified by Stalwart. Returns their { id, name }, or null. */
+export async function callerOf(cfg, jmap, getDomainId, req) {
+  const authz = req.headers.authorization;
+  // Tokens only: accepting passwords here would let attackers spend Stalwart's per-IP failed-login budget from
+  // this service's address and get it banned for everyone. (Tests may allow Basic.)
+  if (!authz || !(cfg.allowBasicAuth ? /^(Bearer|Basic) / : /^Bearer /).test(authz)) return null;
+  const r = await fetch(`${cfg.stalwartUrl}/jmap/session`, { headers: { Authorization: authz }, signal: AbortSignal.timeout(10_000) });
+  if (!r.ok) return null;
+  const session = await r.json();
+  const [local, domain] = String(session.username ?? '').toLowerCase().split('@');
+  // The account id comes from the caller's own session; the admin record must match it exactly.
+  const id = session.primaryAccounts?.['urn:ietf:params:jmap:mail'];
+  if (!local || domain !== cfg.domain || typeof id !== 'string') return null;
+  const acct = (await jmap([['x:Account/get', { ids: [id], properties: ['name', 'domainId'] }, 'g']])).list?.[0];
+  return acct && acct.name?.toLowerCase() === local && acct.domainId === await getDomainId() ? { id, name: local } : null;
+}
+
 export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf }) {
   const createLimit = new RateLimiter(cfg.aliasesPerHour ?? 30, 3600e3);
   // Failed sign-ins per IP: this endpoint must not become a way to guess passwords.
@@ -35,22 +52,7 @@ export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     return run;
   };
 
-  /** Who is calling: their own session, verified by Stalwart. Returns their account id, or null. */
-  async function caller(req) {
-    const authz = req.headers.authorization;
-    // Tokens only: accepting passwords here would let attackers spend Stalwart's per-IP failed-login budget from
-    // this service's address and get it banned for everyone. (Tests may allow Basic.)
-    if (!authz || !(cfg.allowBasicAuth ? /^(Bearer|Basic) / : /^Bearer /).test(authz)) return null;
-    const r = await fetch(`${cfg.stalwartUrl}/jmap/session`, { headers: { Authorization: authz }, signal: AbortSignal.timeout(10_000) });
-    if (!r.ok) return null;
-    const session = await r.json();
-    const [local, domain] = String(session.username ?? '').toLowerCase().split('@');
-    // The account id comes from the caller's own session; the admin record must match it exactly.
-    const id = session.primaryAccounts?.['urn:ietf:params:jmap:mail'];
-    if (!local || domain !== cfg.domain || typeof id !== 'string') return null;
-    const acct = (await jmap([['x:Account/get', { ids: [id], properties: ['name', 'domainId'] }, 'g']])).list?.[0];
-    return acct && acct.name?.toLowerCase() === local && acct.domainId === await getDomainId() ? id : null;
-  }
+  const caller = async (req) => (await callerOf(cfg, jmap, getDomainId, req))?.id ?? null;
   const aliasesOf = async (id) => (await jmap([['x:Account/get', { ids: [id], properties: ['aliases'] }, 'g']])).list[0]?.aliases ?? {};
   const live = (a) => !(typeof a.description === 'string' && a.description.startsWith(RETIRED));
   const list = async (id) => Object.values(await aliasesOf(id)).filter(live).map((a) => toView(a, cfg.domain));

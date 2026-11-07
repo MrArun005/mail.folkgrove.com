@@ -71,6 +71,7 @@ services:
       ADMIN_FILE: /run/secrets/admin
       SIGNUP: ${SIGNUP:-off}
       INVITE_CODES: ${INVITE_CODES:-}
+      ADMINS: ${ADMINS:-}   # who may use the admin console at /admin (usernames, comma-separated)
       CLIENT_IP_HEADER: x-real-ip
     env_file:
       - path: ./.system-mail.env   # system sender for sign-up codes (install.sh creates it)

@@ -569,6 +569,13 @@ export class Jmap {
     await aliasReply(await this.fetch(`${this.base}/api/aliases/${encodeURIComponent(id)}`, { method: 'DELETE' }));
   }
 
+  /** Admin console API (signup/admin.mjs); only accounts listed in the service's ADMINS get answers. */
+  async admin<T = any>(path: string, method = 'GET', body?: object): Promise<T> {
+    const r = await this.fetch(`${this.base}/api/admin/${path}`, { method, ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
+    if (r.status === 404 || r.status === 502) throw new JmapError('The admin console is off on this server. Set ADMINS for the account service to switch it on.');
+    return aliasReply(r);
+  }
+
   /** The identity a draft sends as: its chosen From address if the account still owns it, else the main one. */
   private async identityFor(d: Draft): Promise<Identity> {
     const main = await this.getIdentity();

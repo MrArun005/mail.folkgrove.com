@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { checkUsername, checkPassword, RateLimiter, ipKey, Invites } from './lib.mjs';
 import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
+import { adminRoutes } from './admin.mjs';
 import { sendMail } from './mailer.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 
@@ -49,6 +50,8 @@ export function configFromEnv(env = process.env) {
     secureCookies: env.INSECURE_COOKIES !== 'true', // only for plain-http testing
     maxAliasesTotal: Number(env.MAX_ALIASES_TOTAL || 1000), // lifetime, retired included
     aliasesPerHour: Number(env.ALIASES_PER_HOUR || 30),
+    // Admin console (/admin): usernames on DOMAIN allowed to use it. Empty = console off.
+    admins: (env.ADMINS || '').split(',').map((s) => s.trim().toLowerCase().replace(/@.*$/, '')).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
   };
 }
@@ -245,6 +248,7 @@ export function createApp(cfg) {
   }
 
   const aliases = aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
   return createServer(async (req, res) => {
@@ -252,6 +256,7 @@ export function createApp(cfg) {
       const url = new URL(req.url, 'http://x');
       if (url.pathname.startsWith('/api/aliases') && await aliases(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
+      if (url.pathname.startsWith('/api/admin/') && await admin(req, res, url)) return;
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);

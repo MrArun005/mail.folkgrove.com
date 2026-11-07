@@ -142,7 +142,9 @@ A brand-new domain and IP have no sending reputation. Big providers may send you
 
 ## 5. Administration
 
-Stalwart's admin interface is at `https://mx.example.com/admin`. Sign in with the details in `.admin-credentials`. From there you can manage users, aliases, quotas, the mail queue, spam settings and logs.
+OpenMail's own admin console is at `https://mx.example.com/admin`: users (create, disable, reset password, storage limits), blocked IP addresses, new-account sending limits and the outgoing queue. Set `ADMINS=you` (usernames, comma-separated) for the account service, then sign in to the web app as one of them.
+
+Stalwart's full admin interface is at `https://mx.example.com/admin/` (note the slash at the end). Sign in with the details in `.admin-credentials`. From there you can manage everything else: settings, spam filter, logs.
 
 Logs:
 
@@ -236,7 +238,7 @@ The restore procedure was tested by wiping a test install (all its Docker volume
 4. Check the IP at [MXToolbox](https://mxtoolbox.com/blacklists.aspx).
 5. Give a new domain time.
 
-**Admin sign-in says "Client metadata documents are disabled".** The public URL Stalwart expects doesn't match the address in your browser. Always use `https://mx.example.com/admin`, not the IP address.
+**Admin sign-in says "Client metadata documents are disabled".** The public URL Stalwart expects doesn't match the address in your browser. Always use `https://mx.example.com/admin/`, not the IP address.
 
 **Lost the admin password** (`.admin-credentials` deleted). Start Stalwart in recovery mode on a local-only port, reset the password, then restart normally:
 
