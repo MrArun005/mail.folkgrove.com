@@ -351,6 +351,7 @@ function MessageFrame({ title, srcdoc }: { title: string; srcdoc: string }) {
       const claimed = a && claimedHost(a.textContent ?? '');
       if (!a || !claimed || sameSite(claimed, a.hostname)) return;
       e.preventDefault();
+      if (!/^https?:$/.test(a.protocol)) return; // only web addresses are ever opened from here
       if (await confirmIt({ title: 'This link isn’t what it says', danger: true, confirm: 'Open anyway',
         body: `It shows ${claimed} but goes to ${a.hostname}. Scam emails do this to steal passwords.` })) window.open(a.href, '_blank', 'noopener');
     };

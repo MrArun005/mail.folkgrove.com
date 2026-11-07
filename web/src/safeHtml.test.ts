@@ -33,3 +33,10 @@ it('resolves inline cid: images to data URLs', () => {
   expect(r.srcdoc).toContain('src="data:image/png;base64,AA=="');
   expect(r.srcdoc).not.toContain('cid:missing');
 });
+
+it('keeps only web, mail and phone links', () => {
+  const { srcdoc } = buildSrcdoc('<a href="javascript:alert(1)">https://bank.com</a><a href=" data:text/html,x">d</a><a href="mailto:a@b.c">m</a><a href="https://ok.example/">w</a>', false);
+  expect(srcdoc).not.toMatch(/javascript:|data:text/);
+  expect(srcdoc).toContain('href="mailto:a@b.c"');
+  expect(srcdoc).toContain('href="https://ok.example/"');
+});

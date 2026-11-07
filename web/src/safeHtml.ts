@@ -45,7 +45,11 @@ export function buildSrcdoc(html: string, allowRemoteImages: boolean, inline: Re
     try { trackers.add(new URL(img.getAttribute('src')!, 'https://x').hostname); } catch { /* malformed src: still removed */ }
     img.remove();
   });
-  doc.querySelectorAll('a[href]').forEach((a) => a.setAttribute('href', cleanLink(a.getAttribute('href')!)));
+  doc.querySelectorAll('a[href]').forEach((a) => {
+    const href = a.getAttribute('href')!.trim();
+    // Only web, mail and phone links: javascript:, data:, file: and the like never reach a click.
+    if (/^(https?:|mailto:|tel:)/i.test(href)) a.setAttribute('href', cleanLink(href)); else a.removeAttribute('href');
+  });
 
   const blockedImages = allowRemoteImages
     ? 0
