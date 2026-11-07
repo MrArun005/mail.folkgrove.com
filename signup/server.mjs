@@ -10,6 +10,8 @@ import { sessionRoutes } from './session.mjs';
 import { accountRoutes } from './account.mjs';
 import { adminRoutes } from './admin.mjs';
 import { fileRoutes } from './files.mjs';
+import { domainRoutes } from './domains.mjs';
+import { abuseRoutes } from './abuse.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
@@ -63,7 +65,19 @@ export function configFromEnv(env = process.env) {
     filesQuotaBytes: Number(env.FILES_QUOTA_BYTES || 5 * 1024 ** 3),
     filesPerHour: Number(env.FILES_PER_HOUR || 20),
     downloadsPerHour: Number(env.DOWNLOADS_PER_HOUR || 200),
+    // Users' own domains (domains.mjs). CUSTOM_DOMAINS=off switches the feature off.
+    customDomains: env.CUSTOM_DOMAINS !== 'off',
+    maxDomains: Number(env.MAX_DOMAINS || 3),
+    maxDomainAddresses: Number(env.MAX_DOMAIN_ADDRESSES || 10),
+    reservedDomains: (env.RESERVED_DOMAINS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+    dnsServers: (env.DNS_SERVERS || '').split(',').map((s) => s.trim()).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+    // Abuse and inactive accounts (abuse.mjs): Stalwart posts events to EVENTS_URL; state survives restarts in STATE_FILE.
+    eventsUrl: env.EVENTS_URL || null,
+    stateFile: env.STATE_FILE || null,
+    abuseLimitHits: Number(env.ABUSE_LIMIT_HITS || 10), // throttle refusals per hour before sending is suspended
+    abuseBounces: Number(env.ABUSE_BOUNCES || 20), // hard bounces per hour before sending is suspended
+    inactiveMonths: env.INACTIVE_MONTHS ? Number(env.INACTIVE_MONTHS) : signupEnabled ? 12 : 0, // 0 = off
   };
 }
 
@@ -273,11 +287,15 @@ export function createApp(cfg) {
     setTimeout(run, 60_000).unref(); setInterval(run, 3600e3).unref();
   }
   const account = accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
-  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const files = fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const abuse = abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
+  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, abuse, ipOf: (req) => ipKey(clientIp(req)) });
+  const domains = cfg.customDomains === false ? null : domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  // Re-check every claimed domain's TXT record every 6 hours (a missing one pauses the domain after 7 days).
+  if (domains) setInterval(() => domains.recheckAll().catch((e) => console.error('domains:', e.message)), 6 * 3600e3).unref();
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
-  const server = createServer(async (req, res) => {
+  const server = Object.assign(createServer(async (req, res) => {
     // Our own request timeout instead of server.requestTimeout, so that one route can lengthen it: a client gets
     // 15 s to send the whole request. Only a signed-in file upload (files.mjs) may ask for more, by size.
     const limit = (ms) => setTimeout(() => { if (!req.complete) req.destroy(); }, ms).unref();
@@ -291,6 +309,8 @@ export function createApp(cfg) {
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
       if (url.pathname.startsWith('/api/admin/') && await admin(req, res, url)) return;
       if ((url.pathname.startsWith('/api/files') || url.pathname.startsWith('/f/')) && await files(req, res, url)) return;
+      if (domains && url.pathname.startsWith('/api/domains') && await domains(req, res, url)) return;
+      if (/^\/api\/(events|blocked|sending)/.test(url.pathname) && await abuse(req, res, url)) return;
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);
@@ -301,7 +321,7 @@ export function createApp(cfg) {
       console.error('unhandled:', e);
       if (!res.headersSent) fail(res, 500, 'internal', 'Something went wrong on our side. Please try again.');
     }
-  });
+  }), { domains, abuse }); // tests drive the domain re-check and the abuse jobs directly
   server.requestTimeout = 0; // the timer above replaces it (headersTimeout still applies)
   return server;
 }

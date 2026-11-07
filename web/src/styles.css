@@ -630,6 +630,16 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .switch input:disabled + span { opacity: .5; }
 .alias-list .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alias-list li.off code { opacity: .55; }
+/* Settings → Your domain (Domains.tsx): long DNS values wrap instead of widening the sheet */
+.domain-card { display: grid; gap: var(--s2); min-width: 0; padding: var(--s3) 0; }
+.domain-card > *, .dns-list li > .grow { min-width: 0; }
+.domain-head { display: flex; align-items: center; gap: var(--s2); min-height: var(--h-sm); }
+.domain-head .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dns-list li { align-items: flex-start; padding-block: var(--s2); }
+.rule-list.dns-list li > .grow { display: grid; gap: 2px; white-space: normal; }
+.dns-list li > .grow > code { font-size: var(--t-sm); overflow-wrap: anywhere; user-select: all; }
+.dns-list .pill { flex: none; margin-top: 2px; }
+.domain-at { align-self: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
 
 .list-more { display: flex; justify-content: center; padding: var(--s3) 0 var(--s6); }
 .pill--warn { background: color-mix(in srgb, var(--star) 20%, transparent); color: color-mix(in srgb, var(--star) 70%, var(--ink)); }
@@ -768,6 +778,7 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   :root:not([data-pane="split"]) .app.reading .only-mobile { display: inline-flex; margin-left: calc((18px - var(--h-md)) / 2); }
   :root:not([data-pane="split"]) .app.reading .toolbar > .only-mobile + * { margin-left: 0; }
 }
+
 /* ═══ Admin console (/admin) ═══════════════════════════ */
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .admin { min-height: 100%; padding: var(--s4) var(--s8) var(--s10); background: var(--paper); }
@@ -809,3 +820,6 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 
 /* Settings → Shared files: name and details wrap on narrow screens instead of hiding the expiry. */
 .files-list li > .grow { white-space: normal; overflow-wrap: anywhere; padding: var(--s2) 0; }
+/* Sending suspended (Sending.tsx) */
+.banner--warn { background: color-mix(in srgb, var(--star) 18%, transparent); color: var(--ink); }
+.banner--warn .grow { flex-basis: 100%; } /* the action goes under the explanation */

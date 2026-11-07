@@ -482,6 +482,7 @@ fi
 # ---------------------------------------------------------------------------------------------
 # Register the webmail as an OAuth client, so it signs in with tokens (and two-factor) instead of passwords.
 # Idempotent: updates the redirect address and scope if the client already exists.
+# The iOS, Android and desktop apps (apps/) open this same address and sign in on it, so this one redirect covers them.
 clients=$(api '[["x:OAuthClient/get",{"ids":null,"properties":["clientId"]},"c"]]')
 client_id=$(jget "next((c['id'] for c in r[0][1]['list'] if c['clientId'] == 'openmail-web'), None)" <<<"$clients")
 oauth="\"redirectUris\":{$(jstr "$PUBLIC_URL/"):true},\"scopes\":{\"mail\":true,\"contacts\":true,\"calendars\":true,\"security\":true},\"description\":\"Webmail\""

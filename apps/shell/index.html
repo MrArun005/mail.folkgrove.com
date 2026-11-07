@@ -1,0 +1,87 @@
+<!doctype html>
+<!-- First-run screen of the native shells (iOS, Android, desktop): which OpenMail server to open. Remembered on the
+     device; after that the shell opens that server's web app straight away. The web app itself (and its sign-in)
+     always comes from that server, so a self-hosted app works with any server and updates with it.
+     Query: ?change shows the form again, ?mailto=<url> opens Compose for an email link, ?error says it couldn't load. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https:; img-src data:">
+  <title>OpenMail</title>
+  <style>
+    :root { --canvas: #f4f7fc; --paper: #fff; --ink: #1e2228; --ink-2: #4a5059; --rule: #e3e7ee; --accent: #115bcd; --accent-ink: #fff; --danger: #c4282b;
+      font: 15px/1.45 'Google Sans Flex', 'Google Sans', system-ui, -apple-system, sans-serif; color-scheme: light dark; }
+    @media (prefers-color-scheme: dark) {
+      :root { --canvas: #0d0e10; --paper: #17181a; --ink: #eceef1; --ink-2: #c3c6cb; --rule: #2e3136; --accent: #8fb6f5; --accent-ink: #111a2b; --danger: #f08a7f; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--canvas); color: var(--ink);
+      padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+    main { width: 100%; max-width: 420px; background: var(--paper); border-radius: 14px; padding: 32px 24px; }
+    main[hidden] { display: none; }
+    .wordmark { margin: 0 0 24px; font-size: 22px; font-weight: 500; color: var(--ink-2); display: flex; align-items: center; gap: 12px; }
+    h1 { margin: 0 0 8px; font-size: 22px; font-weight: 600; }
+    p { margin: 0 0 20px; color: var(--ink-2); }
+    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+    input { width: 100%; height: 44px; padding: 0 12px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--rule); border-radius: 6px; }
+    input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button { margin-top: 16px; width: 100%; height: 44px; border: 0; border-radius: 999px; font: inherit; font-weight: 500; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+    button:disabled { opacity: .6; }
+    .error { color: var(--danger); margin: 12px 0 0; }
+    .error:empty { display: none; }
+  </style>
+</head>
+<body>
+  <main hidden>
+    <p class="wordmark"><svg width="28" height="28" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#115bcd"/><path d="M136 176h240a16 16 0 0 1 16 16v128a16 16 0 0 1-16 16H136a16 16 0 0 1-16-16V192a16 16 0 0 1 16-16z" fill="none" stroke="#fff" stroke-width="28" stroke-linejoin="round"/><path d="M128 188l128 96 128-96" fill="none" stroke="#fff" stroke-width="28" stroke-linejoin="round" stroke-linecap="round"/></svg>OpenMail</p>
+    <h1>Which server is your mail on?</h1>
+    <p>Enter the address you use for OpenMail in a browser. You can change it later.</p>
+    <form>
+      <label for="server">Server address</label>
+      <input id="server" name="server" type="text" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="mail.example.com" required>
+      <p class="error" role="alert"></p>
+      <button type="submit">Continue</button>
+    </form>
+  </main>
+  <script>
+    const KEY = 'om:server', q = new URLSearchParams(location.search);
+    const get = (s, k) => { try { return s.getItem(k); } catch { return null; } };
+    const set = (s, k, v) => { try { s.setItem(k, v); } catch { /* private storage off: asked again next launch */ } };
+    const saved = get(localStorage, KEY);
+    const form = document.querySelector('form'), input = form.server, error = form.querySelector('.error'), button = form.querySelector('button');
+
+    // Open the server's web app. "tried" tells a load failure (the shell comes back here) from a fresh launch.
+    function go(origin) {
+      set(sessionStorage, 'om:tried', '1');
+      location.replace(origin + '/' + (q.get('mailto') ? '?mailto=' + encodeURIComponent(q.get('mailto')) : ''));
+    }
+
+    const failed = q.has('error') || (get(sessionStorage, 'om:tried') && !q.has('mailto'));
+    if (saved && !q.has('change') && !failed) go(saved);
+    else {
+      document.querySelector('main').hidden = false;
+      if (saved) input.value = saved.replace(/^https:\/\//, '');
+      if (failed && !q.has('change')) error.textContent = `Couldn’t open ${input.value}. Check your connection, or the address.`;
+      input.focus();
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      error.textContent = '';
+      let origin;
+      try { origin = new URL(/^https?:\/\//i.test(input.value.trim()) ? input.value.trim() : 'https://' + input.value.trim()).origin; }
+      catch { error.textContent = 'That doesn’t look like a web address. Example: mail.example.com'; return; }
+      button.disabled = true; button.textContent = 'Checking…';
+      // Is an OpenMail server there? A no-cors request can't read the answer, but it fails when nothing answers.
+      // ponytail: plain http:// (local development only) is not checked; mixed content blocks the request.
+      const ok = origin.startsWith('http:') || await fetch(origin + '/manifest.webmanifest', { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(10000) }).then(() => true, () => false);
+      button.disabled = false; button.textContent = 'Continue';
+      if (!ok) { error.textContent = `Couldn’t reach ${origin.replace(/^https:\/\//, '')}. Check the address and your connection.`; return; }
+      set(localStorage, KEY, origin);
+      go(origin);
+    });
+  </script>
+</body>
+</html>

@@ -78,6 +78,9 @@ services:
       FILES_DB: /data/file-links.json
       MAX_FILE_BYTES: ${MAX_FILE_BYTES:-2147483648}         # biggest file (2 GiB)
       FILES_QUOTA_BYTES: ${FILES_QUOTA_BYTES:-5368709120}   # all of one user's links together (5 GiB); their storage quota applies too
+      STATE_FILE: /data/state.json  # sending suspensions and last sign-in per account (abuse.mjs)
+      EVENTS_URL: http://signup:3000/api/events  # Stalwart posts sign-ins, refusals and bounces here (internal only)
+      INACTIVE_MONTHS: ${INACTIVE_MONTHS:-}  # inactive-account reminders; empty = 12 with SIGNUP=on, else off
     env_file:
       - path: ./.system-mail.env   # system sender for sign-up codes (install.sh creates it)
         required: false

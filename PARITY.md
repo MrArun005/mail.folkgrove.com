@@ -90,12 +90,15 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Feature | Zoho | Us | Plan |
 |---|---|---|---|
 | Web app | ✅ | ✅ | Local-first: instant UI, light and dark, phone layout |
-| Installable app / offline | 🟡 | 🟡 | Installable (PWA), shell works offline; mail offline in Phase 2.5 |
-| Native mobile apps | ✅ | ⬜ | PWA first; native in Phase 5 |
-| Custom domains | ✅ | 🟡 | Self-hosting: yes. Hosted: Phase 2.5 |
-| Admin console (users, groups, aliases, policies) | ✅ | 🟡 | Ours at `/admin` (`ADMINS`): users, blocked IPs, new-account limits, outgoing queue. Groups, policies, audit log: Stalwart's admin UI (`/admin/`) |
+| Installable app / offline | 🟡 | 🟡 | Installable (PWA: install button, unread badge, Compose shortcut, “Share to OpenMail”, mailto handler), shell works offline; mail offline in Phase 2.5 |
+| Desktop app | ✅ | 🟡 | `apps/desktop` (Electron): any server, opens mailto: links, Dock badge; unsigned, no installers yet |
+| Native mobile apps | ✅ | 🟡 | `apps/mobile` (Capacitor) shells for any server, generated but not yet built; native push needs FCM/APNs + a push gateway (apps/README.md) |
+| Custom domains | ✅ | 🟡 | Settings → Your domain: TXT ownership check, the MX/SPF/DKIM/DMARC records with live status, your address plus up to 10 more, send from them. One owner per domain (no shared org domains yet); re-checked every 6 hours, paused after 7 days without the TXT record |
+| Admin console (users, groups, aliases, policies) | ✅ | 🟡 | Ours at `/admin` (`ADMINS`): users, blocked IPs, new-account limits, outgoing queue, users' domains, suspended and inactive accounts. Groups, policies, audit log: Stalwart's admin UI (`/admin/`) |
 | SSO / SAML, eDiscovery, retention | ✅ | ⬜ | Phase 5 (business tier) |
 | Public sign-up with abuse controls | n/a | ✅ | Invites, rate limits, quotas (signup/) |
+| Automatic sending block on abuse, self-service unblock | ✅ | ✅ | Repeated throttle refusals or a bounce spike suspend sending (reading still works); a banner explains it and lifts it once, a second time within 7 days needs an admin (signup/abuse.mjs) |
+| Inactive-account reminders | ✅ | 🟡 | Daily job emails reminders 60/30/7 days before 12 months without sign-in and lists due accounts for an admin; blocking is the admin's click, not automatic |
 
 ## Toward Gmail (and past it)
 

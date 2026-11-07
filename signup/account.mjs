@@ -9,16 +9,31 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { callerOf } from './aliases.mjs';
 import { forgetFiles } from './files.mjs';
+import { readMeta, writeMeta } from './domains.mjs';
 
 export const readRetired = (file) =>
   file && existsSync(file) ? readFileSync(file, 'utf8').split('\n').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
 
-/** Reserve every name an account uses (username + aliases) for good, before it's destroyed. Shared with admin.mjs. */
-export async function retireNames({ cfg, jmap }, id, name) {
-  const acct = (await jmap([['x:Account/get', { ids: [id], properties: ['aliases'] }, 'g']])).list?.[0];
-  const names = [...new Set([String(name).toLowerCase(), ...Object.values(acct?.aliases ?? {}).map((a) => String(a.name).toLowerCase())])];
+/** Never give these out again: names on DOMAIN, or full addresses on other domains (domains.mjs). */
+export function retire(cfg, names) {
   if (cfg.retiredFile) appendFileSync(cfg.retiredFile, names.join('\n') + '\n');
   (cfg.extraReserved ??= []).push(...names);
+}
+
+/** Reserve every name an account uses (username + aliases) for good, before it's destroyed. Shared with admin.mjs. */
+export async function retireNames({ cfg, jmap }, id, name) {
+  const [acct, doms] = await Promise.all([jmap([['x:Account/get', { ids: [id], properties: ['aliases'] }, 'g']]), jmap([['x:Domain/get', { ids: null, properties: ['name', 'description'] }, 'd']])]);
+  const domainName = new Map((doms.list ?? []).map((d) => [d.id, d.name]));
+  // Aliases on the user's own domains are kept as full addresses (the domain itself stays claimed: domains.mjs).
+  const full = (a) => { const d = domainName.get(a.domainId); return !d || d === cfg.domain ? String(a.name).toLowerCase() : `${a.name}@${d}`.toLowerCase(); };
+  const names = [...new Set([String(name).toLowerCase(), ...Object.values(acct.list?.[0]?.aliases ?? {}).map(full)])];
+  retire(cfg, names);
+  // Their domains lose their owner now: account ids can come back, and a later account must never match this one.
+  // Paused, and released for others after RELEASE_DAYS (domains.mjs); their addresses stay retired.
+  const now = new Date().toISOString();
+  const theirs = (doms.list ?? []).map((d) => ({ d, m: readMeta(d.description) })).filter(({ m }) => m?.owner === id);
+  if (theirs.length) await jmap([['x:Domain/set', { update: Object.fromEntries(theirs.map(({ d, m }) =>
+    [d.id, { description: writeMeta({ ...m, owner: null, orphaned: now, paused: true }) }])) }, 'o']]);
   return names;
 }
 

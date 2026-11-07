@@ -86,9 +86,17 @@ const SUMMARY = ['threadId', 'subject', 'from', 'to', 'preview', 'receivedAt', '
 const FULL = [...SUMMARY, 'blobId', 'cc', 'bcc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
   'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses'];
 
+/** Your own domain (signup/domains.mjs). ok: live in DNS; null = DNS didn't answer. */
+export interface DnsRecord { kind: 'verify' | 'mx' | 'spf' | 'dkim' | 'dmarc'; name: string; type: string; value: string; ok?: boolean | null }
+export interface CustomDomain {
+  name: string; status: 'pending' | 'active' | 'missing' | 'paused'; missingSince: string | null; pausesAt: string | null; dkimPending: boolean;
+  records: DnsRecord[]; addresses: { name: string; email: string; enabled: boolean; main: boolean }[]; maxAddresses: number;
+}
 export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
 /** A large file sent as a download link (signup/files.mjs). url is absolute; expires is ms since 1970, null = never. */
 export interface SharedFile { id: string; url: string; name: string; size: number; created: number; expires: number | null; downloads: number }
+/** unblock: 'ok' = you may lift it now, 'wait' = once a day (retryAfter seconds), 'admin' = only an admin can. */
+export interface SendingStatus { suspended: boolean; reason?: string; since?: string | null; unblock?: 'ok' | 'wait' | 'admin'; retryAfter?: number }
 async function aliasReply(r: Response) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.ok) throw Object.assign(new JmapError(j.error?.message ?? `The server returned an error (${r.status})`), { code: j.error?.code as string | undefined });
@@ -606,6 +614,14 @@ export class Jmap {
     await aliasReply(await this.fetch(`${this.base}/api/aliases/${encodeURIComponent(id)}`, { method: 'DELETE' }));
   }
 
+  /** Your own domains (the account service, signup/domains.mjs). GET → { domains, maxDomains }, or null when this
+   *  server doesn't offer them; changes → { domain }. Errors carry the service's message. */
+  async customDomains(path = '', method = 'GET', body?: object): Promise<any> {
+    const r = await this.fetch(`${this.base}/api/domains${path}`, { method, ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
+    if (method === 'GET' && (r.status === 404 || r.status === 503)) return null;
+    return aliasReply(r);
+  }
+
   /** Delete this account for good (the account service, signup/account.mjs). Errors carry the service's `code`. */
   async deleteAccount(body: { password: string; code?: string; confirm: string }): Promise<void> {
     const r = await this.fetch(`${this.base}/api/account`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -680,6 +696,17 @@ export class Jmap {
     const r = await this.fetch(`${this.base}/api/admin/${path}`, { method, ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
     if (r.status === 404 || r.status === 502) throw new JmapError('The admin console is off on this server. Set ADMINS for the account service to switch it on.');
     return aliasReply(r);
+  }
+
+  /** Is sending suspended for this account (signup/abuse.mjs)? null = this server doesn't run the account service. */
+  async sendingStatus(): Promise<SendingStatus | null> {
+    const r = await this.fetch(`${this.base}/api/sending`).catch(() => null);
+    if (!r || r.status === 404 || r.status === 502 || r.status === 503) return null;
+    return aliasReply(r);
+  }
+  /** Lift your own suspension (once a day; a second suspension within a week needs an admin). Errors carry `code`. */
+  async unblockSending(): Promise<void> {
+    await aliasReply(await this.fetch(`${this.base}/api/sending/unblock`, { method: 'POST' }));
   }
 
   /** The identity a draft sends as: its chosen From address if the account still owns it, else the main one. */
@@ -888,7 +915,10 @@ export class Jmap {
         onSuccessUpdateEmail: { '#s': { [`mailboxIds/${drafts}`]: null, [`mailboxIds/${sent}`]: true, 'keywords/$draft': null,
           ...(d.followUpDays && { 'keywords/$followup': true, [`keywords/$followup-${Math.floor((+(sendAt ?? new Date()) + d.followUpDays * 86400e3) / 1000)}`]: true }) } },
       }, 's'],
-    ]);
+    ]).catch((e) => {
+      // Sending suspended (signup/abuse.mjs): the server refuses the submission; the message stays in Drafts.
+      throw /^forbidden:/.test((e as Error).message) ? new JmapError('Sending is switched off for your account right now, so this wasn’t sent. It’s saved in Drafts. The notice above your inbox says why and what to do.') : e;
+    });
     return { submissionId: sub.created.s.id, emailId: created.created.d.id };
   }
 
