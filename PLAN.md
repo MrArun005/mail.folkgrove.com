@@ -48,7 +48,8 @@ Tracked row by row in [PARITY.md](PARITY.md).
 
 ### Phase 4: Public hosted instance (blocked by Gate 1)
 - [x] Sign-up: invite codes, per-IP limits, reserved names, quotas, optional Turnstile
-- [ ] Hosted stack on PostgreSQL + S3 (reuse `deploy/scale/`), with PostgreSQL backups (pg_dump + WAL archiving)
+- [x] Hosted stack on PostgreSQL + S3: `install.sh --hosted` (`deploy/production/hosted/`), backups with pg_dump + S3 mirror (restore tested)
+- [ ] PostgreSQL WAL archiving (point-in-time recovery) for the hosted instance
 - [x] Email verification at sign-up: a 6-digit code to an existing address (hashed, 15 min, 5 tries, rate-limited per network and per address), sent from a system account through our own server
 - [ ] Abuse controls (each with numbers in [scale.md](docs/research/scale.md) §10): new-account sending tiers, outbound spam held for review, forwarding limits (one confirmed forwarding address per account), abuse@ mailbox, complaint/bounce-rate suspension (e.g. > 0.3% complaints over 7 days with ≥ 200 sends)
 - [ ] Monitoring: Prometheus + Alertmanager. Alerts: queue age > 30 min, delivery failures > 5% per provider for 15 min, back-pressure rising 5 min

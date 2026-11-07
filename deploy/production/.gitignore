@@ -7,3 +7,4 @@ backup-recipient.txt
 .admin-credentials.before-restore
 .backup.*/
 .restore.*/
+.system-mail.env.before-restore

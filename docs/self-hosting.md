@@ -217,6 +217,21 @@ On a new server, also update the `A` record, the reverse DNS, and the IP in SPF 
 
 The restore procedure was tested by wiping a test install (all its Docker volumes, `.env` and `.admin-credentials`) and restoring it from a backup. The mailbox, its messages, the admin login and the DKIM keys all came back, and re-running `install.sh` worked afterwards.
 
+## Hosted mode (PostgreSQL)
+
+For a public instance that will grow past one server, install with `--hosted`:
+
+```sh
+sudo ./install.sh --hosted --domain example.com --hostname mx.example.com --email you@gmail.com --user you
+```
+
+The same stack, but Stalwart keeps its data in PostgreSQL, message bodies and attachments in an S3 bucket (SeaweedFS on the same server), and rate-limit counters and locks in Valkey, instead of RocksDB on the local disk. More Stalwart servers can later point at the same three services ([scale.md](research/scale.md) §11, and `deploy/scale/` for a working two-server example). The extra services are in `deploy/production/hosted/`.
+
+- **Decide at the first install.** There is no way to move an existing RocksDB server to PostgreSQL, and `--hosted` refuses to run on one. Self-hosters don't need it: leave it off.
+- **Passwords** for PostgreSQL and S3 are generated into `.env` (readable by root only). The admin login is in `.admin-credentials` as usual (user `admin@example.com`).
+- **Backups:** the same `backup.sh` commands. In hosted mode a backup holds a `pg_dump` of the database and a copy of the S3 bucket, taken while mail keeps flowing (no pause). Restore works the same way. Tested: a hosted test install with a delivered message was backed up, all its Docker volumes and secret files deleted, and restored; the message, with its body, came back, and new mail arrived afterwards.
+- **Not done yet:** nightly dumps lose up to a day of mail if the disk dies. Before real users, add PostgreSQL WAL archiving (pgBackRest or WAL-G to off-site object storage) for point-in-time recovery, and move PostgreSQL, S3 and Valkey to replicated or managed services when adding servers.
+
 ## 8. Troubleshooting
 
 **Webmail doesn't load, or shows a certificate error.** Check that `dig +short mx.example.com` returns your IP and that ports 80 and 443 are open in the cloud firewall. Then look in `docker compose logs caddy` for ACME errors. Let's Encrypt limits retries, so fix DNS before restarting repeatedly.

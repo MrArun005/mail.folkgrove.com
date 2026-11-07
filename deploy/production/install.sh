@@ -8,6 +8,7 @@
 #   ./install.sh --refresh-certs         copy Caddy's certificate into Stalwart (cron runs this daily)
 #   ./install.sh --dns                   print the DNS records again
 #   ./install.sh --local-test ...        throwaway stack on alternate ports, Caddy's internal CA, no cron
+#   ./install.sh --hosted ...            hosted instance: PostgreSQL + S3 + Valkey instead of RocksDB (hosted/)
 #
 # Run ./install.sh --help for all flags.
 # shellcheck disable=SC1091,SC2034  # .env is generated; settings are read back via ${!name}
@@ -41,12 +42,16 @@ Usage: ./install.sh [options]
   --dns                 only print the DNS records
   --local-test          test stack: project openmail-test, ports 10025/10465/10587/10993/10080/10443,
                         admin API on 127.0.0.1:18080, self-signed certificates, no cron
+                        (with --hosted: project openmail-hosted-test, ports 11xxx, admin API 18180)
+  --hosted              store mail in PostgreSQL + S3 (+ Valkey) instead of RocksDB, for a public hosted
+                        instance that will grow past one server. Choose at the first install: there is no
+                        RocksDB -> PostgreSQL migration. Remembered in .env.
 EOF
 }
 
 # ---------------------------------------------------------------------------------------------
 # Settings: saved .env first, then flags.
-YES=0 MODE=install REBUILD_WEB=0 LOCAL_TEST=0 NO_RELAY=0 USER_NAME="" USER_PASS=""
+YES=0 MODE=install REBUILD_WEB=0 LOCAL_TEST=0 NO_RELAY=0 USER_NAME="" USER_PASS="" HOSTED_FLAG=0
 if [ -f .env ]; then set -a; . ./.env; set +a; fi
 while [ $# -gt 0 ]; do
   case $1 in
@@ -67,12 +72,18 @@ while [ $# -gt 0 ]; do
     --refresh-certs) MODE=certs; YES=1 ;;
     --dns) MODE=dns; YES=1 ;;
     --local-test) LOCAL_TEST=1 ;;
+    --hosted) HOSTED_FLAG=1 ;;
     -h|--help) usage; exit 0 ;;
     *) usage; die "unknown option $1" ;;
   esac
   shift
 done
 [ "$NO_RELAY" = 1 ] && RELAY_HOST="" RELAY_PORT="" RELAY_USER="" RELAY_PASSWORD="" RELAY_SPF=""
+if [ "$HOSTED_FLAG" = 1 ] && [ "${HOSTED:-0}" != 1 ]; then
+  [ ! -f .admin-credentials ] || die "This server already stores mail in RocksDB; --hosted only works on a fresh install (no migration)"
+  HOSTED=1
+fi
+HOSTED=${HOSTED:-0}
 
 ask() { # ask VAR "question" [default]: keeps the current value of VAR as the default
   local cur=${!1:-${3:-}} ans
@@ -228,9 +239,14 @@ if [ -n "${RELAY_HOST:-}" ] && [ -z "${RELAY_SPF:-}" ]; then
 fi
 [[ "${RELAY_PASSWORD:-}" != *"'"* ]] || die "Relay password can't contain a single quote (')"
 
-if [ "$LOCAL_TEST" = 1 ]; then
+if [ "$LOCAL_TEST" = 1 ] && [ "$HOSTED" = 1 ]; then
+  COMPOSE_PROJECT_NAME=openmail-hosted-test CADDY_CERT_ISSUER=internal ADMIN_PORT=18180
+  HTTP_PORT=11080 HTTPS_PORT=11443 SMTP_PORT=11025 SUBMISSIONS_PORT=11465 SUBMISSION_PORT=11587 IMAPS_PORT=11993
+elif [ "$LOCAL_TEST" = 1 ]; then
   COMPOSE_PROJECT_NAME=openmail-test CADDY_CERT_ISSUER=internal ADMIN_PORT=18080
   HTTP_PORT=10080 HTTPS_PORT=10443 SMTP_PORT=10025 SUBMISSIONS_PORT=10465 SUBMISSION_PORT=10587 IMAPS_PORT=10993
+fi
+if [ "$LOCAL_TEST" = 1 ]; then
   PUBLIC_URL=https://$MAIL_HOSTNAME:$HTTPS_PORT ACME_EMAIL=${ACME_EMAIL:-test@example.com}
   SERVER_IP=${SERVER_IP:-203.0.113.10}
 else
@@ -252,20 +268,76 @@ fi
 
 # ---------------------------------------------------------------------------------------------
 # .env (secrets: 600). Every value is single-quoted, which both bash and Compose read literally.
+# Hosted mode: COMPOSE_FILE adds hosted/docker-compose.yml to every `docker compose` run here, and the
+# PostgreSQL and S3 passwords are generated once and kept in .env.
+if [ "$HOSTED" = 1 ]; then
+  COMPOSE_FILE=docker-compose.yml:hosted/docker-compose.yml
+  PG_PASSWORD=${PG_PASSWORD:-$(python3 -c 'import secrets; print(secrets.token_hex(24))')}
+  S3_SECRET=${S3_SECRET:-$(python3 -c 'import secrets; print(secrets.token_hex(24))')}
+  export COMPOSE_FILE
+fi
 say "Writing $HERE/.env"
 umask 077
 {
   for v in COMPOSE_PROJECT_NAME MAIL_DOMAIN MAIL_HOSTNAME ACME_EMAIL PUBLIC_URL WEB_DIST \
            RELAY_HOST RELAY_PORT RELAY_USER RELAY_PASSWORD RELAY_SPF SERVER_IP CADDY_CERT_ISSUER \
-           ADMIN_PORT HTTP_PORT HTTPS_PORT SMTP_PORT SUBMISSIONS_PORT SUBMISSION_PORT IMAPS_PORT; do
+           ADMIN_PORT HTTP_PORT HTTPS_PORT SMTP_PORT SUBMISSIONS_PORT SUBMISSION_PORT IMAPS_PORT \
+           HOSTED COMPOSE_FILE PG_PASSWORD S3_SECRET; do
     [ -n "${!v:-}" ] && printf "%s='%s'\n" "$v" "${!v}"
   done
 } > .env
 umask 022
 
 say "Starting the stack"
-dc up -d
+# First run: Stalwart (and its stores) only. The account service mounts .admin-credentials, and Docker would
+# create a missing file as an empty directory; the full stack starts once bootstrap has written it.
+if [ -f .admin-credentials ]; then dc up -d; else dc up -d stalwart; fi
 wait_for_stalwart
+
+# ---------------------------------------------------------------------------------------------
+# Hosted bootstrap (first run only). Stalwart's setup wizard doesn't run when config.json already names a data
+# store, so: start once with a one-time recovery admin, create the domain (DKIM keys come with it) and a real
+# admin account, point blobs at S3 and counters at Valkey, then restart without the recovery admin.
+if [ "$HOSTED" = 1 ]; then
+  # The bucket must be created through the S3 API before Stalwart writes to it (SeaweedFS quirk, see
+  # deploy/scale/setup.mjs). Every run: an existing bucket is fine, and a restored server gets its bucket back.
+  for i in $(seq 1 30); do
+    dc run --rm -T rclone mkdir s3:stalwart >/dev/null 2>&1 && break
+    [ "$i" = 30 ] && die "Couldn't create the S3 bucket (check: docker compose logs seaweedfs)"
+    sleep 2
+  done
+fi
+if [ "$HOSTED" = 1 ] && [ ! -f .admin-credentials ]; then
+  say "Bootstrapping Stalwart on PostgreSQL for $MAIL_DOMAIN"
+  boot_pass=$(python3 -c 'import secrets; print(secrets.token_hex(24))')
+  RECOVERY_ADMIN="admin:$boot_pass" dc up -d stalwart >/dev/null
+  ADMIN_AUTH="admin:$boot_pass"
+  sleep 3; wait_for_stalwart
+  api '[["x:Tracer/get",{"ids":null},"t"]]' | grep -q '"Stdout"' \
+    || api '[["x:Tracer/set",{"create":{"t":{"@type":"Stdout","level":"info"}}},"t"]]' >/dev/null
+  domains=$(api '[["x:Domain/get",{"ids":null,"properties":["name"]},"d"]]')
+  domain_id=$(jget "next((d['id'] for d in r[0][1]['list'] if d['name'] == '$MAIL_DOMAIN'), None)" <<<"$domains")
+  [ -n "$domain_id" ] || domain_id=$(api "[[\"x:Domain/set\",{\"create\":{\"d\":{\"name\":$(jstr "$MAIL_DOMAIN")}}},\"d\"]]" | jget "r[0][1]['created']['d']['id']")
+  api "[[\"x:SystemSettings/set\",{\"update\":{\"singleton\":{\"defaultHostname\":$(jstr "$MAIL_HOSTNAME"),\"defaultDomainId\":$(jstr "$domain_id")}}},\"s\"]]" >/dev/null
+  api '[["x:Account/get",{"ids":null,"properties":["name"]},"a"]]' | grep -q '"name":"admin"' \
+    && die "Stalwart is already set up but $HERE/.admin-credentials is missing. See 'Lost admin password' in docs/self-hosting.md."
+  admin_pass=$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')
+  api "[[\"x:Account/set\",{\"create\":{\"u\":{\"@type\":\"User\",\"name\":\"admin\",\"domainId\":$(jstr "$domain_id"),
+    \"roles\":{\"@type\":\"Admin\"},\"description\":\"Server admin (install.sh)\",
+    \"credentials\":{\"0\":{\"@type\":\"Password\",\"secret\":$(jstr "$admin_pass")}}}}},\"a\"]]" >/dev/null
+  (umask 077; printf 'admin@%s:%s\n' "$MAIL_DOMAIN" "$admin_pass" > .admin-credentials)
+  say "Admin login saved to $HERE/.admin-credentials (keep a copy in your password manager)"
+  api '[["x:BlobStore/set",{"update":{"singleton":{"@type":"S3","bucket":"stalwart",
+    "region":{"@type":"Custom","region":"us-east-1","url":"http://seaweedfs:8333"},
+    "accessKeyId":{"@type":"Value","value":"stalwart"},
+    "secretKey":{"@type":"EnvironmentVariable","variableName":"S3_SECRET"}}}},"b"]]' >/dev/null
+  api '[["x:InMemoryStore/set",{"update":{"singleton":{"@type":"Redis","url":"redis://valkey:6379"}}},"m"]]' >/dev/null
+  # Coordinator after the Redis in-memory store; Default = reuse that connection. Needed once a 2nd node joins.
+  api '[["x:Coordinator/set",{"update":{"singleton":{"@type":"Default"}}},"c"]]' >/dev/null
+  say "Restarting Stalwart on its new stores (recovery admin off)"
+  dc up -d stalwart >/dev/null
+  sleep 3; wait_for_stalwart
+fi
 
 # ---------------------------------------------------------------------------------------------
 # Bootstrap (first run only): Stalwart returns the permanent admin password exactly once.
@@ -284,6 +356,7 @@ if [ ! -f .admin-credentials ]; then
   restart_stalwart
 fi
 ADMIN_AUTH=$(cat .admin-credentials)
+dc up -d
 
 # ---------------------------------------------------------------------------------------------
 # Server settings (idempotent).
