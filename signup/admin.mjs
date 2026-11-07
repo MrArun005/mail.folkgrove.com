@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { callerOf } from './aliases.mjs';
 import { retireNames } from './account.mjs';
 import { checkUsername } from './lib.mjs';
+import { adminDomainList } from './domains.mjs';
 
 const NEW = 'new-accounts'; // x:MemoryLookupKey namespace for the stricter sending tier (key = full address)
 const USER_PROPS = ['name', 'emailAddress', 'description', 'createdAt', 'usedDiskQuota', 'quotas', 'aliases', 'permissions', 'roles'];
@@ -147,6 +148,8 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       return {};
     },
 
+    'GET domains': async () => ({ domains: await adminDomainList(jmap) }), // users' own domains (domains.mjs)
+
     'GET blocked': async () => {
       const { ids } = await query('x:BlockedIp', { limit: 500 });
       const list = await get('x:BlockedIp', ids);
@@ -187,7 +190,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   };
 
   return async function handle(req, res, url) {
-    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue)(?:/(${ID}))?(/retry)?$`));
+    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains)(?:/(${ID}))?(/retry)?$`));
     if (!m) return false;
     if (!admins.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS is set
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);

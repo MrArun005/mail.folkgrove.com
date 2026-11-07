@@ -14,6 +14,9 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method === 'POST' && url.origin === location.origin && url.pathname === '/share') {
     // Any website can post here too (a form can't be told apart from the share sheet in a service worker), so the
     // page asks before uploading shared files (Mail.tsx), and nothing is ever sent without the person pressing Send.
+    // Where the browser does show Sec-Fetch-Site here, refuse anything from another site as an extra layer.
+    const site = e.request.headers.get('Sec-Fetch-Site');
+    if (site && site !== 'none' && site !== 'same-origin') { e.respondWith(Response.redirect('/', 303)); return; }
     e.respondWith(share(e.request)); return;
   }
   if (PUSH_ONLY) return;

@@ -5,6 +5,7 @@ import type { Rule, Vacation } from './rules';
 import { Button } from './Button';
 import { SecuritySection } from './Security';
 import { AddressesSection } from './Addresses';
+import { DomainsSection } from './Domains';
 import { ImportSection } from './Import';
 import { DeleteAccountSection, ExportSection } from './Export';
 import { InstallSection } from './Install';
@@ -143,6 +144,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         </section>
 
         <AddressesSection client={client} onChanged={onIdentitiesChanged} />
+        <DomainsSection client={client} onChanged={onIdentitiesChanged} />
         <SecuritySection username={client.username} />
         <CategoriesSection client={client} boxes={boxes} />
         <ScreenerSection client={client} boxes={boxes} />

@@ -4,7 +4,7 @@ import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
 import { Icon, roleIcon } from './icons';
 import { Jmap, UNDO_SECONDS, type Attachment, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
-import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode, type Signature } from './mailutil';
+import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, fileSize, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode, type Signature } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { SubscriptionsList } from './Subscriptions';
@@ -482,8 +482,10 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
     takeLaunch().then(async (l) => {
       if (!l) return;
       // Shared files come from outside (any site can post to /share): attach them only when the person says so.
-      if (l.files.length && !(await confirmIt({ title: `Attach ${l.files.length === 1 ? 'this file' : `these ${l.files.length} files`}?`,
-        body: `${l.files.map((f) => f.name).join(', ')}. They were shared to OpenMail. Only attach files you just shared.`, confirm: 'Attach' }))) l.files = [];
+      // Names are the sender's text: control/direction characters stripped, shortened, shown after the warning.
+      const label = (f: File) => `${f.name.replace(/[\p{Cc}\p{Cf}]/gu, '').slice(0, 60) || 'Untitled file'} (${fileSize(f.size)})`;
+      if (l.files.length && !(await confirmIt({ title: `Attach ${l.files.length === 1 ? 'a shared file' : `${l.files.length} shared files`}?`, danger: true,
+        body: `Only attach files you shared to OpenMail just now. ${l.files.slice(0, 5).map(label).join(' · ')}${l.files.length > 5 ? ' …' : ''}`, confirm: 'Attach' }))) l.files = [];
       const attachments = await Promise.all(l.files.map((f) => client.upload(f))).catch((e) => { fail(e); return []; });
       setCompose(withSignature({ ...EMPTY_DRAFT, to: l.to, cc: l.cc, bcc: l.bcc, subject: l.subject, html: l.body ? textToHtml(l.body) : '', text: l.body, attachments }));
     });
