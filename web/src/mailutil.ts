@@ -174,18 +174,27 @@ export function unsubscribePlan(u: { urls: string[]; oneClick: boolean } | null)
 export const encodeHeader = (s: string) =>
   /^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${btoa(String.fromCharCode(...new TextEncoder().encode(s)))}?=`;
 
+/** Untrusted header-derived text going into a raw message: no CR/LF or other control characters. */
+const oneLine = (v: string) => v.replace(/[\x00-\x1f\x7f]+/g, ' ').trim();
+
 export function buildMdn(o: { from: string; to: string; subject: string; originalMessageId?: string; readAt: Date; domain: string; id: string }): string {
+  // Subject, recipient and Message-ID come from the received message, i.e. from a stranger: sanitize every one.
+  const subject = oneLine(o.subject);
+  const to = oneLine(o.to), from = oneLine(o.from);
+  if (!EMAIL.test(to) || !EMAIL.test(from)) throw new Error('Invalid address for a read receipt');
+  const msgId = o.originalMessageId && /^[^\s<>]+@[^\s<>]+$/.test(o.originalMessageId) ? o.originalMessageId : null;
+  const boundary = `mdn-${crypto.randomUUID()}`; // random per message, so no content can contain it
   const when = o.readAt.toUTCString();
   return [
-    `From: ${o.from}`, `To: ${o.to}`, `Subject: ${encodeHeader(`Read: ${o.subject}`)}`, `Date: ${when}`,
-    `Message-ID: <${o.id}@${o.domain}>`, 'MIME-Version: 1.0', 'Auto-Submitted: auto-replied',
-    'Content-Type: multipart/report; report-type=disposition-notification; boundary="mdn"', '',
-    '--mdn', 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '',
-    `Your message "${o.subject}" was read on ${when}.`, '',
-    '--mdn', 'Content-Type: message/disposition-notification', '',
-    'Reporting-UA: OpenMail', `Final-Recipient: rfc822;${o.from}`,
-    ...(o.originalMessageId ? [`Original-Message-ID: <${o.originalMessageId}>`] : []),
+    `From: ${from}`, `To: ${to}`, `Subject: ${encodeHeader(`Read: ${subject}`)}`, `Date: ${when}`,
+    `Message-ID: <${oneLine(o.id)}@${oneLine(o.domain)}>`, 'MIME-Version: 1.0', 'Auto-Submitted: auto-replied',
+    `Content-Type: multipart/report; report-type=disposition-notification; boundary="${boundary}"`, '',
+    `--${boundary}`, 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '',
+    `Your message "${subject}" was read on ${when}.`, '',
+    `--${boundary}`, 'Content-Type: message/disposition-notification', '',
+    'Reporting-UA: OpenMail', `Final-Recipient: rfc822;${from}`,
+    ...(msgId ? [`Original-Message-ID: <${msgId}>`] : []),
     'Disposition: manual-action/MDN-sent-manually; displayed', '',
-    '--mdn--', '',
+    `--${boundary}--`, '',
   ].join('\r\n');
 }

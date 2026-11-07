@@ -100,12 +100,25 @@ it('replies and forwards carry the inline images their quoted text shows', () =>
 it('builds a standard read receipt (MDN) and encodes non-ASCII subjects', async () => {
   const { buildMdn, encodeHeader } = await import('./mailutil');
   const m = buildMdn({ from: 'alice@o.test', to: 'priya@x.org', subject: 'Offsite plan', originalMessageId: 'm1@x', readAt: new Date('2026-11-07T12:00:00Z'), domain: 'o.test', id: 'r1' });
-  expect(m).toContain('Content-Type: multipart/report; report-type=disposition-notification; boundary="mdn"');
+  expect(m).toMatch(/Content-Type: multipart\/report; report-type=disposition-notification; boundary="mdn-[0-9a-f-]{36}"/);
   expect(m).toContain('Subject: Read: Offsite plan');
   expect(m).toContain('Original-Message-ID: <m1@x>');
   expect(m).toContain('Disposition: manual-action/MDN-sent-manually; displayed');
   expect(m).toContain('Auto-Submitted: auto-replied'); // so it never triggers out-of-office loops
-  expect(m.trimEnd().endsWith('--mdn--')).toBe(true);
+  expect(m.trimEnd()).toMatch(/--mdn-[0-9a-f-]{36}--$/);
   expect(encodeHeader('Read: Café plan')).toBe('=?UTF-8?B?UmVhZDogQ2Fmw6kgcGxhbg==?=');
   expect(encodeHeader('plain')).toBe('plain');
+});
+
+it('a hostile subject or Message-ID cannot inject headers or MIME parts into a receipt', async () => {
+  const { buildMdn } = await import('./mailutil');
+  const m = buildMdn({ from: 'alice@o.test', to: 'priya@x.org', readAt: new Date(), domain: 'o.test', id: 'r2',
+    subject: 'Hi\r\nBcc: victim@evil.example\r\n\r\n--mdn\r\nContent-Type: text/html\r\n\r\n<script>x</script>',
+    originalMessageId: 'a@b>\r\nX-Evil: 1' });
+  const headers = m.split('\r\n\r\n')[0];
+  expect(headers).not.toMatch(/^Bcc:/im);
+  expect(m).not.toMatch(/^X-Evil/im);
+  expect(m).not.toContain('Original-Message-ID'); // malformed IDs are dropped, not trusted
+  expect(m.split('\r\n').filter((l) => /^--mdn-/.test(l))).toHaveLength(3); // only our own boundaries
+  expect(() => buildMdn({ from: 'alice@o.test', to: 'x@y.z\r\nBcc: a@b.c', subject: 's', readAt: new Date(), domain: 'o.test', id: 'r3' })).toThrow();
 });
