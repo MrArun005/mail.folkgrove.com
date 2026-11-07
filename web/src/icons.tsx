@@ -33,6 +33,8 @@ const paths = {
   settings: 'M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4',
   check: 'M4 10.5 8 14.5 16 5.5',
   more: 'M10 5h.01M10 10h.01M10 15h.01',
+  calendar: 'M3.5 5.5h13v11h-13zM3.5 9h13M7 3.5v3M13 3.5v3',
+  next: 'M8 4l6 6-6 6',
   person: 'M10 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3.5 17a6.5 6.5 0 0 1 13 0',
   templates: 'M4 3.5h12v13H4zM7 7h6M7 10h6M7 13h3',
   print: 'M6 7V3h8v4M6 14H4V8h12v6h-2M6 11h8v6H6z',
@@ -51,4 +53,4 @@ export function Icon({ name, size = 18, filled = false }: { name: IconName; size
 }
 
 export const roleIcon = (role: string | null): IconName =>
-  (({ inbox: 'inbox', drafts: 'drafts', sent: 'sent', archive: 'archive', junk: 'junk', trash: 'trash', snoozed: 'clock', starred: 'star', scheduled: 'clock', subscriptions: 'unread', contacts: 'person' } as const)[role ?? ''] ?? 'folder');
+  (({ inbox: 'inbox', drafts: 'drafts', sent: 'sent', archive: 'archive', junk: 'junk', trash: 'trash', snoozed: 'clock', starred: 'star', scheduled: 'clock', subscriptions: 'unread', contacts: 'person', calendar: 'calendar' } as const)[role ?? ''] ?? 'folder');

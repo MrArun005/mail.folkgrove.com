@@ -364,7 +364,7 @@ fi
 # Idempotent: updates the redirect address and scope if the client already exists.
 clients=$(api '[["x:OAuthClient/get",{"ids":null,"properties":["clientId"]},"c"]]')
 client_id=$(jget "next((c['id'] for c in r[0][1]['list'] if c['clientId'] == 'openmail-web'), None)" <<<"$clients")
-oauth="\"redirectUris\":{$(jstr "$PUBLIC_URL/"):true},\"scopes\":{\"mail\":true,\"contacts\":true},\"description\":\"Webmail\""
+oauth="\"redirectUris\":{$(jstr "$PUBLIC_URL/"):true},\"scopes\":{\"mail\":true,\"contacts\":true,\"calendars\":true},\"description\":\"Webmail\""
 if [ -n "$client_id" ]; then
   api "[[\"x:OAuthClient/set\",{\"update\":{$(jstr "$client_id"):{$oauth}}},\"c\"]]" >/dev/null
 else

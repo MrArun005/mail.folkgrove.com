@@ -62,10 +62,22 @@ const admin = JSON.parse(readFileSync(SECRET_FILE, 'utf8'));
 {
   const [[, cl]] = await jmap(admin, [['x:OAuthClient/get', { ids: null, properties: ['clientId'] }, 'c']]);
   const existing = cl.list.find((c) => c.clientId === 'openmail-web');
-  const fields = { redirectUris: { 'http://localhost:5173/': true }, scopes: { mail: true, contacts: true }, description: 'OpenMail web (dev)' };
+  const fields = { redirectUris: { 'http://localhost:5173/': true }, scopes: { mail: true, contacts: true, calendars: true }, description: 'OpenMail web (dev)' };
   await jmap(admin, [['x:OAuthClient/set', existing
     ? { update: { [existing.id]: fields } }
     : { create: { c: { clientId: 'openmail-web', ...fields } } }, 'c']]);
+}
+
+// Dev only: switch off inbound rate limits. The test suite sends bursts of mail to one mailbox and would hit
+// "25 per hour per sender domain and recipient" within a couple of runs. Production keeps Stalwart's defaults.
+{
+  const [[, th]] = await jmap(admin, [['x:MtaInboundThrottle/get', { ids: null, properties: ['enable'] }, 't']]);
+  const on = th.list.filter((t) => t.enable);
+  if (on.length) {
+    await jmap(admin, [['x:MtaInboundThrottle/set', { update: Object.fromEntries(on.map((t) => [t.id, { enable: false }])) }, 't']]);
+    await jmap(admin, [['x:Action/set', { create: { r: { '@type': 'ReloadSettings' } } }, 'r']]);
+    console.log('Dev: inbound rate limits off');
+  }
 }
 
 // 3. Test user.
@@ -142,6 +154,20 @@ if (created) {
     '',
   ].join('\r\n'), 30);
 
+  // A meeting invitation (text/calendar), to exercise "Add to calendar".
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//OpenMail seed//EN', 'METHOD:REQUEST', 'BEGIN:VEVENT',
+    `UID:seed-review@${DOMAIN}`, 'DTSTAMP:20261107T090000Z', 'DTSTART:20261110T093000Z', 'DTEND:20261110T103000Z',
+    'SUMMARY:Quarterly design review', 'LOCATION:Room 4 or video call', 'ORGANIZER:mailto:priya@example.org',
+    `ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:${alice.user}`, 'END:VEVENT', 'END:VCALENDAR', ''].join('\r\n');
+  await importRaw([
+    'From: Priya Raman <priya@example.org>', `To: ${alice.user}`, 'Subject: Invitation: Quarterly design review',
+    `Date: ${new Date(Date.now() - 2 * 3600e3).toUTCString()}`, `Message-ID: <seed-invite@${DOMAIN}>`, 'MIME-Version: 1.0',
+    'Content-Type: multipart/mixed; boundary="inv"', '',
+    '--inv', 'Content-Type: text/plain; charset=utf-8', '', 'Hi Alice, please join the quarterly design review on Tuesday.', '',
+    '--inv', 'Content-Type: text/calendar; charset=utf-8; method=REQUEST; name="invite.ics"', 'Content-Disposition: attachment; filename="invite.ics"', '',
+    ics, '--inv--', '',
+  ].join('\r\n'), 2);
+
   // One message with an inline image (cid:) and two attachments, to exercise the reader.
   const map = '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="200"><rect width="480" height="200" fill="#e7ebfb"/><path d="M40 160 C140 40 260 180 440 50" stroke="#2340c4" stroke-width="6" fill="none"/><circle cx="440" cy="50" r="12" fill="#2340c4"/><text x="40" y="40" font-family="Georgia" font-size="22" fill="#18202b">Lake house, 40 min from the office</text></svg>';
   const b64 = (s) => Buffer.from(s).toString('base64').replace(/.{76}/g, '$&\r\n');
@@ -161,7 +187,7 @@ if (created) {
     '--mix--', '',
   ].join('\r\n');
   await importRaw(rich, 1);
-  console.log(`Seeded ${seeds.length + 2} emails`);
+  console.log(`Seeded ${seeds.length + 3} emails`);
 }
 
 console.log(`

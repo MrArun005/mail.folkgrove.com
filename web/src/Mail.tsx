@@ -8,6 +8,7 @@ import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { SubscriptionsList } from './Subscriptions';
 import { ContactList, ContactPanel, fullName } from './Contacts';
+import { CalendarView } from './CalendarView';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
 import { addRule, loadScript, saveScript } from './Filters';
 import { UPDATES, type Rule } from './rules';
@@ -20,7 +21,7 @@ import { describe } from './when';
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
 const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
 // Virtual folders: views that aren't mailboxes on the server.
-const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts';
+const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar';
 
 type Toast = { text: string; undo?: () => void } | null;
 type BulkAction = Action | 'read' | { snooze: Date } | { moveTo: string | null; label: boolean };
@@ -66,7 +67,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const listKey = (box: string | null) => `list:${box}${box && box === inbox && categories ? `:${tab}` : ''}`;
   const current = query ? null : view ?? inbox;
   const currentBox = boxes.find((b) => b.id === current);
-  const role = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS].includes(current ?? '') ? current : currentBox?.role ?? null;
+  const role = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR].includes(current ?? '') ? current : currentBox?.role ?? null;
   // Moves need a real source folder; from Starred or search results, act on the Inbox copy.
   const source = currentBox ? currentBox.id : inbox;
   const folders = useMemo(() => boxes.filter((b) => (!b.role || b.role === 'archive' || b.role === 'inbox') && b.id !== source), [boxes, source]);
@@ -90,6 +91,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       if (box === SCHEDULED) { setScheduled(await client.scheduled()); return; }
       if (box === SUBSCRIPTIONS) { setSubs(await client.subscriptions()); return; }
       if (box === CONTACTS) { setPeople(await client.addressBook()); return; }
+      if (box === CALENDAR) return; // the calendar loads its own week
       const isInbox = b.find((x) => x.id === box)?.role === 'inbox';
       const filter: Filter = query ? parseSearch(query, b) : box === STARRED ? { hasKeyword: '$flagged' }
         : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box }, tab === 'updates' ? { hasKeyword: UPDATES } : { notKeyword: UPDATES }] }
@@ -375,7 +377,16 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       return;
     }
     if (sendAt) return refresh();
-    setTimeout(() => { if (!undone) { say({ text: 'Message sent' }); refresh(); setThreadVersion((v) => v + 1); } }, UNDO_SECONDS * 1000);
+    // After the undo window, ask the server how delivery went: a refused recipient is reported, not hidden.
+    setTimeout(async () => {
+      if (undone) return;
+      const { submissionId } = await pending;
+      const problems = await client.deliveryProblems(submissionId).catch(() => []);
+      say(problems.length
+        ? { text: `Not delivered to ${problems.map((p) => p.email).join(', ')}: ${problems[0].reason}` }
+        : { text: 'Message sent' }, problems.length ? 10000 : 4000);
+      refresh(); setThreadVersion((v) => v + 1);
+    }, UNDO_SECONDS * 1000 + 1500);
   }
 
   async function editScheduled(s: Scheduled) {
@@ -413,6 +424,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     ...boxes.slice(1).flatMap((b) => (b.role === 'drafts' ? [b, { id: SCHEDULED, name: 'Scheduled', role: SCHEDULED, unreadEmails: 0, sortOrder: 0 }] : [b])),
     { id: SUBSCRIPTIONS, name: 'Subscriptions', role: SUBSCRIPTIONS, unreadEmails: 0, sortOrder: 0 },
     { id: CONTACTS, name: 'Contacts', role: CONTACTS, unreadEmails: 0, sortOrder: 0 },
+    { id: CALENDAR, name: 'Calendar', role: CALENDAR, unreadEmails: 0, sortOrder: 0 },
   ];
 
   const commands: Command[] = [
@@ -477,7 +489,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   );
 
   return (
-    <div className={`app${threadId || (role === CONTACTS && (personId || editingPerson)) ? ' reading' : ''}`}>
+    <div className={`app${role === CALENDAR ? ' calendar-mode' : ''}${threadId || (role === CONTACTS && (personId || editingPerson)) ? ' reading' : ''}`}>
       <nav className="rail" aria-label="Folders">
         <p className="wordmark">OpenMail</p>
         <Button variant="primary" size="lg" icon="compose" className="compose-btn" onClick={newMessage} title="Compose (c)">Compose</Button>
@@ -516,6 +528,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         </div>
       </nav>
 
+      {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : <>
       <section className="list" aria-label="Conversations">
         <div className="list-head">
         <div className="search">
@@ -631,6 +644,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
               <p className="fine">Press <kbd>?</kbd> for keyboard shortcuts, or <kbd>⌘K</kbd> to find any action.</p>
             </div>}
       </section>
+
+      </>}
 
       {compose && <Compose key={compose.id ?? JSON.stringify(compose).length} initial={compose} contacts={contacts} api={composeApi} onSend={send} onClose={closeCompose} />}
 

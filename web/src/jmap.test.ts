@@ -324,6 +324,38 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     } finally { await purge(stamp); }
   });
 
+  it('calendar: create, list in range, update and delete an event; parse an invitation', async () => {
+    const c = await login();
+    const id = await c.saveEvent({ title: 'Offsite planning', start: '2026-11-12T10:00:00', timeZone: 'Europe/London', duration: 'PT1H',
+      allDay: false, location: 'Lake house', description: 'Bring the agenda' });
+    let week = await c.events(new Date('2026-11-09T00:00:00Z'), new Date('2026-11-16T00:00:00Z'));
+    expect(week.find((e) => e.id === id)).toMatchObject({ title: 'Offsite planning', location: 'Lake house', utcStart: '2026-11-12T10:00:00Z', utcEnd: '2026-11-12T11:00:00Z' });
+    await c.saveEvent({ id, title: 'Offsite planning (moved)', start: '2026-11-13T14:30:00', timeZone: 'Europe/London', duration: 'PT1H30M',
+      allDay: false, location: '', description: '' });
+    week = await c.events(new Date('2026-11-09T00:00:00Z'), new Date('2026-11-16T00:00:00Z'));
+    expect(week.find((e) => e.id === id)).toMatchObject({ title: 'Offsite planning (moved)', utcStart: '2026-11-13T14:30:00Z', location: '' });
+    await c.deleteEvent(id);
+    expect((await c.events(new Date('2026-11-09T00:00:00Z'), new Date('2026-11-16T00:00:00Z'))).some((e) => e.id === id)).toBe(false);
+
+    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//test//EN', 'METHOD:REQUEST', 'BEGIN:VEVENT', 'UID:invite-test@example.org',
+      'DTSTAMP:20261107T120000Z', 'DTSTART:20261120T150000Z', 'DTEND:20261120T160000Z', 'SUMMARY:Design review', 'LOCATION:Room 4', 'END:VEVENT', 'END:VCALENDAR', ''].join('\r\n');
+    const blob = await c.upload(Object.assign(new Blob([ics], { type: 'text/calendar' }), { name: 'invite.ics' }));
+    const [inv] = await c.parseInvite(blob.blobId);
+    expect(inv).toMatchObject({ title: 'Design review', location: 'Room 4', duration: 'PT1H' });
+  });
+
+  it('reports recipients the server refused', async () => {
+    const c = await login();
+    const boxes = await c.mailboxes();
+    // An address on our own domain that doesn't exist is refused right away by local delivery.
+    const { submissionId, emailId } = await c.send({ to: [{ name: null, email: 'nobody-here@openmail.test' }], cc: [], subject: `bounce ${Date.now()}`, html: '<p>x</p>', text: 'x', attachments: [] }, boxes, new Date(Date.now() + 1000));
+    let problems: { email: string; reason: string }[] = [];
+    for (let i = 0; i < 30 && !problems.length; i++) { await new Promise((r) => setTimeout(r, 300)); problems = await c.deliveryProblems(submissionId); }
+    expect(problems[0]?.email).toBe('nobody-here@openmail.test');
+    expect(problems[0]?.reason.length).toBeGreaterThan(3);
+    await c.deleteDraft(emailId).catch(() => {});
+  }, 20_000);
+
   it('suggests contacts, people I write to first, never me', async () => {
     const c = await login();
     const people = (await c.contacts()).map((a) => a.email);

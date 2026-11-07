@@ -1,11 +1,13 @@
 // Minimal JMAP client (RFC 8620 core, 8621 mail + submission). Talks to Stalwart directly; we have no backend.
 import { SCRIPT_NAME, UPDATES } from './rules';
+import type { CalEvent } from './calendar';
 
 
 const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve'];
 // Contacts are asked for only on contact calls: a session without contacts access (or a server without it)
 // must still be able to do everything else.
 const CONTACTS = 'urn:ietf:params:jmap:contacts';
+const CALENDARS = ['urn:ietf:params:jmap:calendars', 'urn:ietf:params:jmap:calendars:parse'];
 export const UNDO_SECONDS = 10;
 
 export interface Mailbox { id: string; name: string; role: string | null; unreadEmails: number; sortOrder: number }
@@ -507,6 +509,15 @@ export class Jmap {
     return () => { stopped = true; ctrl?.abort(); };
   }
 
+  /** Recipients the server refused for this submission, with its reason in plain words (empty = all fine so far). */
+  async deliveryProblems(submissionId: string): Promise<{ email: string; reason: string }[]> {
+    const [r] = await this.call([['EmailSubmission/get', { accountId: this.accountId, ids: [submissionId], properties: ['deliveryStatus', 'undoStatus'] }, 'g']]);
+    const st = r.list[0]?.deliveryStatus ?? {};
+    return Object.entries(st as Record<string, { delivered: string; smtpReply: string }>)
+      .filter(([, v]) => v.delivered === 'no')
+      .map(([email, v]) => ({ email, reason: v.smtpReply.replace(/^\d{3}\s+(\d\.\d\.\d+\s+)?/, '').replace(/\.$/, '') || 'the server refused it' }));
+  }
+
   async undoSend(submissionId: string, emailId: string, boxes: Mailbox[]): Promise<void> {
     await this.call([
       ['EmailSubmission/set', { accountId: this.accountId, update: { [submissionId]: { undoStatus: 'canceled' } } }, 'u'],
@@ -514,6 +525,42 @@ export class Jmap {
         [`mailboxIds/${this.box(boxes, 'sent')}`]: null, [`mailboxIds/${this.box(boxes, 'drafts')}`]: true, 'keywords/$draft': true,
       } } }, 'm'],
     ]);
+  }
+
+  // ── Calendar (JMAP Calendars) ──────────────────────────
+
+  async events(from: Date, to: Date): Promise<CalEvent[]> {
+    const [, r] = await this.call([
+      ['CalendarEvent/query', { accountId: this.accountId, filter: { after: from.toISOString().replace(/\.\d+Z$/, 'Z'), before: to.toISOString().replace(/\.\d+Z$/, 'Z') }, expandRecurrences: true }, 'q'],
+      ['CalendarEvent/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'CalendarEvent/query', path: '/ids' },
+        properties: ['title', 'start', 'timeZone', 'duration', 'showWithoutTime', 'locations', 'description', 'utcStart', 'utcEnd'] }, 'g'],
+    ], CALENDARS);
+    return (r.list as any[]).map(toCalEvent);
+  }
+
+  async saveEvent(e: CalEvent): Promise<string> {
+    const body = {
+      '@type': 'Event', title: e.title.trim() || 'Untitled event', start: e.start, timeZone: e.allDay ? null : e.timeZone,
+      duration: e.duration, showWithoutTime: e.allDay, description: e.description,
+      locations: e.location.trim() ? { l1: { '@type': 'Location', name: e.location.trim() } } : null,
+    };
+    if (e.id) {
+      await this.call([['CalendarEvent/set', { accountId: this.accountId, update: { [e.id]: body } }, 's']], CALENDARS);
+      return e.id;
+    }
+    const [cals] = await this.call([['Calendar/get', { accountId: this.accountId, properties: ['isDefault'] }, 'c']], CALENDARS);
+    const cal = (cals.list as { id: string; isDefault: boolean }[]).find((c) => c.isDefault) ?? cals.list[0];
+    if (!cal) throw new JmapError('This account has no calendar');
+    const [r] = await this.call([['CalendarEvent/set', { accountId: this.accountId, create: { e: { ...body, calendarIds: { [cal.id]: true } } } }, 's']], CALENDARS);
+    return r.created.e.id;
+  }
+
+  async deleteEvent(id: string) { await this.call([['CalendarEvent/set', { accountId: this.accountId, destroy: [id] }, 'd']], CALENDARS); }
+
+  /** Read the events inside an invitation attachment (text/calendar), without adding them anywhere. */
+  async parseInvite(blobId: string): Promise<CalEvent[]> {
+    const [r] = await this.call([['CalendarEvent/parse', { accountId: this.accountId, blobIds: [blobId] }, 'p']], CALENDARS);
+    return ((r.parsed?.[blobId] ?? []) as any[]).map(toCalEvent);
   }
 
   // ── Address book (JMAP Contacts, RFC 9610) ─────────────
@@ -582,4 +629,12 @@ export class Jmap {
     }
     return [...seen.values()].sort((x, y) => y.n - x.n).map((x) => x.a);
   }
+}
+
+function toCalEvent(e: any): CalEvent {
+  return {
+    id: e.id, title: e.title ?? '', start: e.start, timeZone: e.timeZone ?? '', duration: e.duration ?? 'PT1H',
+    allDay: !!e.showWithoutTime, location: (Object.values(e.locations ?? {})[0] as any)?.name ?? '', description: e.description ?? '',
+    utcStart: e.utcStart, utcEnd: e.utcEnd,
+  };
 }

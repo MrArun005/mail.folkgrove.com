@@ -4,6 +4,7 @@ import { Button } from './Button';
 import { Icon } from './icons';
 import { displayName, fileSize, formatAddresses, type ReplyMode } from './mailutil';
 import { buildSrcdoc } from './safeHtml';
+import { localZone, span, type CalEvent } from './calendar';
 import { Menu, TimeChoices } from './Menu';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star';
@@ -129,6 +130,7 @@ function Message({ client, m, me, onFold, onUnsubscribe }: { client: Jmap; m: Em
           <time dateTime={m.receivedAt} title={new Date(m.receivedAt).toLocaleString()}>{longDate(m.receivedAt)}</time>
         </span>
       </header>
+      <Invitation client={client} m={m} />
       {html && html.trackers.length > 0 && (
         <p className="banner banner--safe"><Icon name="shield" size={16} />
           Blocked {html.trackers.length === 1 ? 'a tracking pixel' : `${html.trackers.length} tracking pixels`} from {html.trackers.join(', ')}. The sender can’t see that you opened this.
@@ -179,3 +181,26 @@ export function shortDate(iso: string) {
   return d.toLocaleDateString([], d.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { dateStyle: 'medium' });
 }
 const longDate = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+/** Invitations (text/calendar attachments): show what and when, and add to the calendar in one click. */
+function Invitation({ client, m }: { client: Jmap; m: EmailFull }) {
+  const ics = m.attachments.find((a) => /text\/calendar/i.test(a.type) || /\.ics$/i.test(a.name ?? ''));
+  const [ev, setEv] = useState<CalEvent | null>(null);
+  const [state, setState] = useState<'idle' | 'adding' | 'added' | 'failed'>('idle');
+  useEffect(() => { if (ics) client.parseInvite(ics.blobId).then((l) => setEv(l[0] ?? null), () => {}); }, [ics?.blobId]);
+  if (!ev) return null;
+  const { start, end } = span(ev);
+  const when = ev.allDay ? start.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
+    : `${start.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  return (
+    <div className="banner banner--info invite">
+      <Icon name="calendar" size={16} />
+      <span><b>{ev.title || 'Invitation'}</b>, {when}{ev.location ? `, ${ev.location}` : ''}</span>
+      {state === 'added' ? <span className="done">Added to your calendar</span>
+        : <Button variant="link" disabled={state === 'adding'} onClick={async () => {
+            setState('adding');
+            try { await client.saveEvent({ ...ev, id: undefined, timeZone: ev.timeZone || localZone() }); setState('added'); } catch { setState('failed'); }
+          }}>{state === 'failed' ? 'Couldn’t add. Try again' : 'Add to calendar'}</Button>}
+    </div>
+  );
+}
