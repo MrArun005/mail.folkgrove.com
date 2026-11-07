@@ -6,7 +6,7 @@ import { Button } from './Button';
 import { SecuritySection } from './Security';
 import { AddressesSection } from './Addresses';
 import { ImportSection } from './Import';
-import { notifyOn, notifySupported, setNotify } from './notify';
+import { disablePush, enablePush, notifyOn, notifySupported, setNotify } from './notify';
 import { chooseSignature, textToHtml, type Signature } from './mailutil';
 
 export type Theme = 'system' | 'light' | 'dark';
@@ -48,6 +48,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
   const [theme, setTheme] = useState<Theme>(savedTheme());
   const [display, setDisplay] = useState(() => Object.fromEntries((Object.keys(DISPLAY) as DisplayKey[]).map((k) => [k, displayPref(k)])) as Record<DisplayKey, string>);
   const [notify, setNotifyState] = useState(notifyOn());
+  const [pushNote, setPushNote] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -150,9 +151,14 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
           <section>
             <h3>Notifications</h3>
             <label className="inline"><input type="checkbox" className="check" checked={notify}
-              onChange={async (e) => { const on = await setNotify(e.target.checked); setNotifyState(on); if (e.target.checked && !on) setError('Your browser blocked notifications. Allow them for this site in the browser’s settings.'); }} />
+              onChange={async (e) => {
+                const want = e.target.checked, on = await setNotify(want); setNotifyState(on);
+                if (want && !on) return setError('Your browser blocked notifications. Allow them for this site in the browser’s settings.');
+                if (on) setPushNote((await enablePush(client).catch(() => false)) ? 'Also when OpenMail is closed.' : 'Only while OpenMail is open in a tab (this browser or server can’t do background push).');
+                else { await disablePush(client); setPushNote(''); }
+              }} />
               Show a desktop notification when new mail arrives in Primary</label>
-            <p className="fine">Only on this device, and only while OpenMail isn’t the window you’re looking at.</p>
+            <p className="fine">{pushNote || 'On this device, while OpenMail isn’t the window you’re looking at.'}</p>
           </section>
         )}
 

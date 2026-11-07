@@ -150,6 +150,7 @@ export class Jmap {
     // Keep only the path and use the origin we actually reached.
     const c = new Jmap(authHeader, onUnauthorized, base, accountId, s.username, pathOnly(s.apiUrl), pathOnly(s.downloadUrl), pathOnly(s.uploadUrl), pathOnly(s.eventSourceUrl));
     c.maxConcurrent = Math.max(1, Number(s.capabilities?.['urn:ietf:params:jmap:core']?.maxConcurrentRequests) || 4);
+    c.vapidKey = s.capabilities?.['urn:ietf:params:jmap:webpush-vapid']?.applicationServerKey ?? null;
     return c;
   }
 
@@ -174,6 +175,8 @@ export class Jmap {
   // with one slot left for the live-update stream, which the server counts as a request too.
   private static gates = new Map<string, { inFlight: number; waiting: (() => void)[] }>();
   maxConcurrent = 4;
+  /** The server's Web Push (VAPID) public key, when it can push to closed tabs. */
+  vapidKey: string | null = null;
   private async slot<T>(fn: () => Promise<T>): Promise<T> {
     const key = `${this.base}|${this.username}`;
     const g = Jmap.gates.get(key) ?? Jmap.gates.set(key, { inFlight: 0, waiting: [] }).get(key)!;
@@ -259,6 +262,28 @@ export class Jmap {
     const mine = new Set((await this.identities()).map((i) => i.email.toLowerCase())); // notes to self aren't "important"
     return new Set((r.list as { to: Address[] | null; cc: Address[] | null }[]).flatMap((e) => [...(e.to ?? []), ...(e.cc ?? [])])
       .map((a) => a.email.toLowerCase()).filter((a) => !mine.has(a)));
+  }
+
+  // ── Web Push (RFC 8620 §7.2 PushSubscription + VAPID): new mail reaches this browser even with every tab closed ──
+
+  /** Register this browser's push endpoint for new-mail deliveries only. Returns the subscription id. */
+  async createPushSubscription(deviceClientId: string, url: string, keys: { p256dh: string; auth: string }): Promise<string> {
+    // One per browser: replace any earlier one for this device.
+    const [g] = await this.call([['PushSubscription/get', { ids: null }, 'g']]);
+    const old = (g.list as { id: string; deviceClientId: string }[]).filter((x) => x.deviceClientId === deviceClientId).map((x) => x.id);
+    const [r] = await this.call([['PushSubscription/set', {
+      create: { p: { deviceClientId, url, keys, types: ['EmailDelivery'] } }, ...(old.length && { destroy: old }),
+    }, 's']]);
+    return r.created.p.id;
+  }
+  /** Finish registration with the code the server pushed to the browser. */
+  async verifyPushSubscription(id: string, verificationCode: string) {
+    await this.call([['PushSubscription/set', { update: { [id]: { verificationCode } } }, 'v']]);
+  }
+  async deletePushSubscriptions(deviceClientId: string) {
+    const [g] = await this.call([['PushSubscription/get', { ids: null }, 'g']]);
+    const ids = (g.list as { id: string; deviceClientId: string }[]).filter((x) => x.deviceClientId === deviceClientId).map((x) => x.id);
+    if (ids.length) await this.call([['PushSubscription/set', { destroy: ids }, 'd']]);
   }
 
   /** Every message in a conversation, oldest first. */

@@ -105,7 +105,7 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 |---|---|---|---|
 | Bcc | ✅ | ✅ | Envelope only; recipients' copies carry no Bcc header (tested) |
 | Endless list (beyond 50) | ✅ | ✅ | Pages in as you scroll |
-| Desktop notifications | ✅ | ✅ | Opt-in, Primary only, only when the app isn't focused |
+| Desktop notifications | ✅ | ✅ | Opt-in; also with every tab closed (standard Web Push from the mail server, no third party); content never in the push |
 | Follow-up reminders / nudges | ✅ | ✅ | “Remind me if nobody replies”: unanswered mail comes back marked “No reply yet” |
 | Mute conversation | ✅ | ✅ | New replies skip the Inbox (m) |
 | Attachment preview | ✅ | ✅ | Images, PDF, text; SVG always downloads (safety) |

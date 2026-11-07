@@ -16,7 +16,7 @@ import { Reader, shortDate, type Action, type MoreAction } from './Reader';
 import { TaskList } from './Tasks';
 import { addRule, loadScript, saveScript } from './Filters';
 import { SCREENER, UPDATES, type Rule, type ScriptData } from './rules';
-import { notifyOn, showMail } from './notify';
+import { enablePush, notifyOn, showMail } from './notify';
 import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
 import { applyTheme, Settings } from './Settings';
@@ -159,6 +159,16 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
     try { await refresh(); } finally { loadingMore.current = false; }
   }
   const inboxRef = useRef(inbox); inboxRef.current = inbox;
+  // Background push: a click on a notification opens that conversation; subscriptions expire, so renew every few days.
+  useEffect(() => {
+    const onMsg = (m: MessageEvent) => { if (m.data?.type === 'om-open-thread') openRef.current(m.data.threadId); };
+    navigator.serviceWorker?.addEventListener('message', onMsg);
+    try {
+      if (notifyOn() && Date.now() - Number(localStorage.getItem('om:push-at') ?? 0) > 3 * 86400e3)
+        enablePush(client).then((ok) => { if (ok) localStorage.setItem('om:push-at', String(Date.now())); }, () => {});
+    } catch { /* storage blocked: renew next time */ }
+    return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
+  }, [client]);
   const openRef = useRef((_: string) => {});
   useEffect(() => {
     let t = 0, since = new Date().toISOString();

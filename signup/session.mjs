@@ -33,11 +33,17 @@ export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf }) 
   // Two tabs refreshing at once send the same cookie; the second would carry a token Stalwart already rotated away and
   // be signed out. So one refresh per token at a time, and its result is reused for a short while.
   // ponytail: in this process only; with several replicas, route /api/session to one of them (or move this to Valkey).
+  // The reuse window is a few seconds (tabs opening together), not longer: a replayed old cookie after that gets nothing.
+  const REUSE_MS = 5_000;
   const recent = new Map(); // old refresh token → { at, promise }
   const refreshOnce = (token) => {
     const now = Date.now();
-    for (const [k, v] of recent) if (now - v.at > 30_000) recent.delete(k);
-    if (!recent.has(token)) recent.set(token, { at: now, promise: stalwart('/auth/token', { grant_type: 'refresh_token', refresh_token: token }) });
+    for (const [k, v] of recent) if (now - v.at > REUSE_MS) recent.delete(k);
+    if (!recent.has(token)) {
+      const promise = stalwart('/auth/token', { grant_type: 'refresh_token', refresh_token: token })
+        .then((r) => { if (!r.ok) recent.delete(token); return r; }, (e) => { recent.delete(token); throw e; });
+      recent.set(token, { at: now, promise });
+    }
     return recent.get(token).promise;
   };
 
@@ -71,7 +77,7 @@ export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf }) 
 
     const token = readCookies(req.headers.cookie)[name];
     if (m[1] === 'forget') {
-      if (token) await stalwart('/auth/revoke', { token, token_type_hint: 'refresh_token' }).catch(() => {});
+      if (token) { recent.delete(token); await stalwart('/auth/revoke', { token, token_type_hint: 'refresh_token' }).catch(() => {}); }
       res.setHeader('Set-Cookie', setCookie(name, '', 0, secure));
       return send(res, 200, { ok: true }), true;
     }
