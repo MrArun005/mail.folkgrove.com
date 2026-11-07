@@ -1,5 +1,5 @@
 // Minimal JMAP client (RFC 8620 core, 8621 mail + submission). Talks to Stalwart directly; we have no backend.
-import { SCRIPT_NAME } from './rules';
+import { SCRIPT_NAME, UPDATES } from './rules';
 
 
 const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve'];
@@ -362,6 +362,23 @@ export class Jmap {
   }
 
   async deleteTemplate(id: string) { await this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
+
+  /**
+   * One-time backfill for Inbox categories: tag recent newsletters/notifications already in the Inbox with $updates
+   * (new mail is tagged on delivery by the Sieve rule). Same test as the rule. Returns how many were tagged.
+   */
+  async tagUpdates(inboxId: string, limit = 500): Promise<number> {
+    const [, r] = await this.call([
+      ['Email/query', { accountId: this.accountId, filter: { inMailbox: inboxId, notKeyword: UPDATES }, sort: [{ property: 'receivedAt', isAscending: false }], limit }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' },
+        properties: ['from', 'header:List-Unsubscribe', 'header:List-Id'] }, 'g'], // raw form: works for any header
+    ]);
+    const automated = /^(noreply|no-reply|donotreply|notifications|mailer-daemon)/i;
+    const ids = (r.list as any[]).filter((e) => e['header:List-Unsubscribe'] || e['header:List-Id']
+      || e.from?.some((a: Address) => automated.test(a.email.split('@')[0]))).map((e) => e.id);
+    if (ids.length) await this.call([['Email/set', { accountId: this.accountId, update: Object.fromEntries(ids.map((id) => [id, { [`keywords/${UPDATES}`]: true }])) }, 't']]);
+    return ids.length;
+  }
 
   /**
    * Send with a server-side hold (SMTP FUTURERELEASE), so Undo works even if the tab closes.

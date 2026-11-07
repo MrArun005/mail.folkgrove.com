@@ -10,7 +10,7 @@ const rules: Rule[] = [
 ];
 
 it('compiles rules to Sieve with escaping and stops after moves', () => {
-  const s = toSieve(rules, { trash: 'Deleted Items', junk: 'Junk Mail' });
+  const s = toSieve({ rules, vacation: { enabled: false }, categories: false }, { trash: 'Deleted Items', junk: 'Junk Mail' });
   expect(s).toContain('require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational"];');
   expect(s).toContain('if allof(address :contains "from" "news@shop.example") { fileinto :create "Shopping"; stop; }');
   expect(s).toContain('if allof(address :contains "from" "spammer.example") { fileinto "Junk Mail"; addflag "\\\\Seen"; stop; }');
@@ -20,7 +20,7 @@ it('compiles rules to Sieve with escaping and stops after moves', () => {
 });
 
 it('round-trips the rules through the script', () => {
-  expect(parseRules(toSieve(rules, { trash: 'Trash', junk: 'Junk' }))).toEqual(rules);
+  expect(parseRules(toSieve({ rules, vacation: { enabled: false } }, { trash: 'Trash', junk: 'Junk' }))).toEqual(rules);
   expect(parseRules('require "fileinto";')).toEqual([]);
 });
 
@@ -33,7 +33,7 @@ it('explains what is missing', () => {
 it('out-of-office lives in the same script: after blocks, before other rules, with dates', async () => {
   const { parseScript } = await import('./rules');
   const vacation = { enabled: true, from: '2026-12-20', to: '2027-01-02', subject: 'Away', body: 'Back on the 3rd.' };
-  const s = toSieve(rules, { trash: 'Deleted Items', junk: 'Junk Mail' }, vacation);
+  const s = toSieve({ rules, vacation }, { trash: 'Deleted Items', junk: 'Junk Mail' });
   const at = (t: string) => s.indexOf(`if allof(address :contains "from" "${t}")`);
   const block = at('spammer.example'), reply = s.indexOf('vacation :days 1'), move = at('news@shop.example');
   expect(block).toBeGreaterThan(0);
@@ -41,13 +41,19 @@ it('out-of-office lives in the same script: after blocks, before other rules, wi
   expect(move).toBeGreaterThan(reply);
   expect(s).toContain('if allof(currentdate :value "ge" "date" "2026-12-20", currentdate :value "le" "date" "2027-01-02") { vacation :days 1 :subject "Away" "Back on the 3rd."; }');
   expect(parseScript(s)).toEqual({ rules, vacation });
-  expect(toSieve(rules, { trash: 'T', junk: 'J' })).not.toContain('vacation :days');
+  expect(toSieve({ rules, vacation: { enabled: false } }, { trash: 'T', junk: 'J' })).not.toContain('vacation :days');
   // Scripts saved before out-of-office moved in still read back.
   expect(parseScript('# openmail-rules: [{"id":"9","from":"a","action":"star"}]').rules).toHaveLength(1);
 });
 
 it('Block sender matches the exact address only', () => {
-  const s = toSieve([{ id: 'b', from: 'bob@x.com', fromExact: true, action: 'block' }], { trash: 'T', junk: 'J' });
+  const s = toSieve({ rules: [{ id: 'b', from: 'bob@x.com', fromExact: true, action: 'block' }], vacation: { enabled: false } }, { trash: 'T', junk: 'J' });
   expect(s).toContain('if allof(address :is "from" "bob@x.com")');
   expect(s).not.toContain(':contains "from" "bob@x.com"');
+});
+
+it('sorts newsletters and automated senders into Updates unless turned off', () => {
+  const on = toSieve({ rules: [], vacation: { enabled: false } }, { trash: 'T', junk: 'J' });
+  expect(on).toContain('if anyof(exists "list-unsubscribe", exists "list-id", address :localpart :contains "from" ["noreply", "no-reply", "donotreply", "notifications", "mailer-daemon"]) { addflag "$updates"; }');
+  expect(toSieve({ rules: [], vacation: { enabled: false }, categories: false }, { trash: 'T', junk: 'J' })).not.toContain('$updates');
 });

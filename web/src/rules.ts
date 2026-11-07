@@ -16,7 +16,15 @@ export interface Rule {
 /** Out-of-office reply. Lives in the same script as the filters: Sieve allows only one active script,
  *  so a separate vacation script (the JMAP VacationResponse object) would switch the filters off. */
 export interface Vacation { enabled: boolean; from?: string | null; to?: string | null; subject?: string; body?: string }
-export interface ScriptData { rules: Rule[]; vacation: Vacation }
+/** Everything this app keeps on the server in its Sieve script: synced to every device, private to the account. */
+export interface ScriptData {
+  rules: Rule[];
+  vacation: Vacation;
+  /** Sort newsletters and notifications into Updates (keyword $updates), Gmail-style. On unless turned off. */
+  categories?: boolean;
+  savedSearches?: { name: string; query: string }[];
+}
+export const UPDATES = '$updates';
 
 export const SCRIPT_NAME = 'openmail';
 const MARK = '# openmail-rules: ';
@@ -38,8 +46,14 @@ export function validateRule(r: Rule): string | null {
 }
 
 /** Folder names on this server for the delete and block actions. Blocked mail goes to Junk, never silently lost. */
-export function toSieve(rules: Rule[], folders: { trash: string; junk: string }, vacation: Vacation = { enabled: false }): string {
-  const lines = [MARK + JSON.stringify({ rules, vacation }), 'require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational"];', ''];
+export function toSieve(data: ScriptData, folders: { trash: string; junk: string }): string {
+  const { rules, vacation } = data;
+  const lines = [MARK + JSON.stringify(data), 'require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational"];', ''];
+  if (data.categories !== false) {
+    // Mailing lists, newsletters and automated senders go to the Updates tab; people stay in Primary.
+    lines.push('# Inbox categories: newsletters and notifications → Updates',
+      `if anyof(exists "list-unsubscribe", exists "list-id", address :localpart :contains "from" ["noreply", "no-reply", "donotreply", "notifications", "mailer-daemon"]) { addflag ${q(UPDATES)}; }`, '');
+  }
   // Order: blocks first (no auto-reply to blocked senders), then the out-of-office reply, then everything else.
   const ordered = [...rules.filter((r) => r.action === 'block'), ...rules.filter((r) => r.action !== 'block')];
   let vacationDone = false;
@@ -77,7 +91,7 @@ export function parseScript(script: string): ScriptData {
   try {
     const data = line ? JSON.parse(line.slice(MARK.length)) : null;
     if (Array.isArray(data)) return { rules: data, vacation: { enabled: false } }; // first format: rules only
-    return { rules: data?.rules ?? [], vacation: data?.vacation ?? { enabled: false } };
+    return { ...data, rules: data?.rules ?? [], vacation: data?.vacation ?? { enabled: false } };
   } catch { return { rules: [], vacation: { enabled: false } }; }
 }
 export const parseRules = (script: string) => parseScript(script).rules;

@@ -24,7 +24,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Print | ✅ | ✅ | Prints with trackers removed |
 | Read receipts (request) | ✅ | ⬜ | Opt-in only; we never send receipts silently |
 | Translate | ✅ (Zia) | ⬜ | Optional, local model where possible |
-| Inbox categories (Updates / Promotions) | 🟡 | ⬜ | Phase 2.5, rules first, local ML later |
+| Inbox categories (Updates / Promotions) | 🟡 | ✅ | Primary / Updates, sorted on the server as mail arrives; one switch in Settings |
 
 ## 2. Writing
 
@@ -65,7 +65,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Tracking pixels removed | ⬜ | ✅ | Removed even after "Load images", and the sender is named |
 | Link tracking parameters stripped | ⬜ | ✅ | utm_*, fbclid, gclid, … |
 | Hostile HTML isolation | ✅ | ✅ | Sandboxed frame + strict CSP, tested |
-| 2FA / passkeys | ✅ | 🟡 | TOTP works through the server's sign-in page; enrolment UI and passkeys next |
+| 2FA / passkeys | ✅ | 🟡 | TOTP sign-in works (server's page). Enrolment needs a step-up sign-in screen: re-enter password → short-lived security token in memory only. Stalwart's own /account UI doesn't load in v1.0.3 |
 | OAuth sign-in (no stored password) | ✅ | ✅ | PKCE, rotating refresh token, revoked at sign-out |
 | End-to-end encryption | 🟡 (S/MIME) | ⬜ | OpenPGP.js, Phase 2.5 |
 | Encryption at rest | ✅ | 🟡 | Stalwart supports per-account encryption at rest; expose in settings |
@@ -100,13 +100,13 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 ## Score today
 
 Counting rows a typical Zoho Mail user touches (sections 1–4 plus calendar, contacts and the web app):
-**34 of 50 at parity or better (68%), 5 partial.** The "next batch" items below take that to roughly 70%;
+**35 of 50 at parity or better (70%), 5 partial.** The "next batch" items below take that to roughly 70%;
 Phase 2.5 (calendar, contacts UI, categories, multiple signatures, multi-account, E2E, OAuth/2FA) takes it past 90%;
 shared mailboxes and import close the rest of the 95%.
 
 ## Order of work
 
-1. **Next batch (small, high value):** several signatures, 2FA enrolment screen, saved searches,
+1. **Next batch (small, high value):** several signatures, 2FA enrolment (step-up sign-in), app passwords, saved searches,
    subscriptions manager.
 2. **Phase 2 security:** passkeys; branded sign-in page (today it is the mail server's own page).
 3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager, multiple signatures,

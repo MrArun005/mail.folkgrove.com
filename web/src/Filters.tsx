@@ -17,7 +17,7 @@ export async function saveScript(client: Jmap, boxes: Mailbox[], data: ScriptDat
   const { id } = await client.getRules();
   // Keep the server's separate vacation script off: only one Sieve script can be active, and it must be ours.
   if ((await client.vacation().catch(() => null))?.isEnabled) await client.setVacation({ isEnabled: false });
-  await client.saveRules(toSieve(data.rules, folderNames(boxes), data.vacation), id);
+  await client.saveRules(toSieve(data, folderNames(boxes)), id);
 }
 
 /** Shared by Settings → Filters and the reader's "Block sender" / "Filter messages like this". */

@@ -81,6 +81,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
           </> : <p className="fine">Loading…</p>}
         </section>
 
+        <CategoriesSection client={client} boxes={boxes} />
         <FiltersSection client={client} boxes={boxes} prefill={prefillRule} />
         <FoldersSection client={client} boxes={boxes} onChanged={onFoldersChanged} />
 
@@ -103,5 +104,30 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         </footer>
       </form>
     </div>
+  );
+}
+
+/** Inbox categories on/off. Saves immediately (it's a server rule), and tags existing mail when turned on. */
+function CategoriesSection({ client, boxes }: { client: Jmap; boxes: Mailbox[] }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [note, setNote] = useState('');
+  useEffect(() => { loadScript(client).then(({ data }) => setOn(data.categories !== false), () => setOn(true)); }, [client]);
+  async function toggle(next: boolean) {
+    setOn(next); setNote('Saving…');
+    try {
+      const { data } = await loadScript(client);
+      await saveScript(client, boxes, { ...data, categories: next });
+      const inbox = boxes.find((b) => b.role === 'inbox')?.id;
+      const n = next && inbox ? await client.tagUpdates(inbox) : 0;
+      setNote(next ? `On. ${n ? `${n} newsletters moved to Updates.` : 'New newsletters will go to Updates.'}` : 'Off. Everything stays in one Inbox.');
+    } catch (e) { setOn(!next); setNote(`Couldn’t change this: ${(e as Error).message}`); }
+  }
+  return (
+    <section>
+      <h3>Inbox</h3>
+      <label className="inline"><input type="checkbox" className="check" checked={!!on} disabled={on === null}
+        onChange={(e) => toggle(e.target.checked)} />Sort newsletters and notifications into an Updates tab</label>
+      <p className="fine">{note || 'People’s messages stay in Primary. Sorting happens on the server as mail arrives.'}</p>
+    </section>
   );
 }

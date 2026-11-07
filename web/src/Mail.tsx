@@ -7,8 +7,8 @@ import { displayName, draftFor, draftFromEmail, formatAddresses, parseAddresses,
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
-import { addRule } from './Filters';
-import type { Rule } from './rules';
+import { addRule, loadScript, saveScript } from './Filters';
+import { UPDATES, type Rule } from './rules';
 import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
 import { applyTheme, Settings } from './Settings';
@@ -34,6 +34,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const key = (k: string) => `${client.username}:${k}`;
   const [boxes, setBoxes] = useState<Mailbox[]>(() => cache.get(key('boxes')) ?? []);
   const [view, setView] = useState<string | null>(null); // mailbox id or virtual folder; null = Inbox
+  const [tab, setTab] = useState<'primary' | 'updates'>('primary'); // Inbox categories
+  const [categories, setCategories] = useState(true);
   const [query, setQuery] = useState('');
   const [list, setList] = useState<EmailSummary[] | null>(null);
   const [scheduled, setScheduled] = useState<Scheduled[] | null>(null);
@@ -53,6 +55,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const searchRef = useRef<HTMLInputElement>(null);
 
   const inbox = boxes.find((b) => b.role === 'inbox')?.id ?? null;
+  /** Cache key for a list: the Inbox has one per category tab. */
+  const listKey = (box: string | null) => `list:${box}${box && box === inbox && categories ? `:${tab}` : ''}`;
   const current = query ? null : view ?? inbox;
   const currentBox = boxes.find((b) => b.id === current);
   const role = current === STARRED ? STARRED : current === SCHEDULED ? SCHEDULED : currentBox?.role ?? null;
@@ -77,15 +81,18 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       setBoxes(b); cache.set(key('boxes'), b);
       const box = query ? null : view ?? b.find((x) => x.role === 'inbox')?.id ?? null;
       if (box === SCHEDULED) { setScheduled(await client.scheduled()); return; }
-      const filter: Filter = query ? parseSearch(query, b) : box === STARRED ? { hasKeyword: '$flagged' } : { inMailbox: box };
+      const isInbox = b.find((x) => x.id === box)?.role === 'inbox';
+      const filter: Filter = query ? parseSearch(query, b) : box === STARRED ? { hasKeyword: '$flagged' }
+        : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box }, tab === 'updates' ? { hasKeyword: UPDATES } : { notKeyword: UPDATES }] }
+        : { inMailbox: box };
       const l = await client.threads(filter);
       setList(l);
-      if (!query) cache.set(key('list:' + box), l);
+      if (!query) cache.set(key(listKey(box)), l);
     } catch (e) { say({ text: e instanceof Error ? e.message : String(e) }); }
-  }, [client, view, query]);
+  }, [client, view, query, tab, categories]);
 
   useEffect(() => {
-    setList(query ? null : cache.get(key('list:' + (view ?? inbox))));
+    setList(query ? null : cache.get(key(listKey(view ?? inbox))));
     setSelected(new Set());
     const t = setTimeout(refresh, query ? 300 : 0); // debounce typing in search
     const poll = setInterval(refresh, FALLBACK_POLL_MS);
@@ -106,6 +113,23 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const loadContacts = useCallback(() => client.contacts().then((c) => { setContacts(c); cache.set(key('contacts'), c); }, () => {}), [client]);
   const loadIdentity = useCallback(() => client.getIdentityFresh().then(setIdentity, () => {}), [client]);
   useEffect(() => { loadContacts(); loadIdentity(); }, [loadContacts, loadIdentity]);
+
+  const reloadCategories = () => loadScript(client).then(({ data }) => setCategories(data.categories !== false), () => {});
+
+  // Inbox categories: install the server rule (and tag existing mail) the first time this account opens the app.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await loadScript(client);
+        setCategories(data.categories !== false);
+        if (data.categories !== undefined) return;
+        const b = await client.mailboxes();
+        await saveScript(client, b, { ...data, categories: true });
+        const inboxId = b.find((x) => x.role === 'inbox')?.id;
+        if (inboxId && await client.tagUpdates(inboxId)) refreshRef.current();
+      } catch { /* categories are a nicety: the inbox still works without them */ }
+    })();
+  }, [client]);
 
   useEffect(() => {
     if (!threadId) { setMessages(null); return; }
@@ -451,6 +475,16 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
             <Button variant="link" className="push" onClick={() => setSelected(new Set())}>Clear</Button>
           </div>
         ) : <h2 className="list-title">{heading}</h2>}
+        {role === 'inbox' && categories && !selected.size && (
+          <div className="tabs" role="tablist" aria-label="Inbox categories">
+            {(['primary', 'updates'] as const).map((t) => (
+              <button key={t} role="tab" aria-selected={tab === t} className={`tab${tab === t ? ' on' : ''}`}
+                onClick={() => { setTab(t); setThreadId(null); }}>
+                <Icon name={t === 'primary' ? 'inbox' : 'tag'} size={16} />{t === 'primary' ? 'Primary' : 'Updates'}
+              </button>
+            ))}
+          </div>
+        )}
         </div>
 
         {role === SCHEDULED ? (
@@ -526,8 +560,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
       {overlay === 'palette' && <Palette commands={commands} onClose={() => setOverlay(null)} />}
       {overlay === 'settings' && <Settings client={client} boxes={boxes} prefillRule={rulePrefill}
-        onClose={() => { setOverlay(null); setRulePrefill(undefined); }} onFoldersChanged={refresh}
-        onSaved={(m) => { setOverlay(null); setRulePrefill(undefined); say({ text: m }); loadIdentity(); }} />}
+        onClose={() => { setOverlay(null); setRulePrefill(undefined); reloadCategories(); }} onFoldersChanged={refresh}
+        onSaved={(m) => { setOverlay(null); setRulePrefill(undefined); say({ text: m }); loadIdentity(); reloadCategories(); }} />}
       {overlay === 'help' && (
         <div className="overlay" onClick={() => setOverlay(null)} onKeyDown={(e) => e.key === 'Escape' && setOverlay(null)}>
           <section className="sheet help" role="dialog" aria-label="Keyboard shortcuts" onClick={(e) => e.stopPropagation()}>

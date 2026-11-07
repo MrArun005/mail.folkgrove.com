@@ -151,15 +151,15 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     const { toSieve, parseScript } = await import('./rules');
     const folders = { trash: 'Deleted Items', junk: 'Junk Mail' };
     const before = await c.getRules();
-    await c.saveRules(toSieve([{ id: '1', from: 'x@y.org', action: 'star' }], folders,
-      { enabled: true, from: '2026-01-01', to: '2099-01-01', subject: 'Away', body: 'Back soon' }), before.id);
+    await c.saveRules(toSieve({ rules: [{ id: '1', from: 'x@y.org', action: 'star' }],
+      vacation: { enabled: true, from: '2026-01-01', to: '2099-01-01', subject: 'Away', body: 'Back soon' } }, folders), before.id);
     const [r] = await c.call([['SieveScript/get', { accountId: c.accountId, properties: ['name', 'isActive'] }, 'g']]);
     const active = (r.list as { name: string; isActive: boolean }[]).filter((x) => x.isActive).map((x) => x.name);
     expect(active).toEqual(['openmail']);
     const data = parseScript((await c.getRules()).script);
     expect(data.vacation.enabled).toBe(true);
     expect(data.rules).toHaveLength(1);
-    await c.saveRules(toSieve([], folders), (await c.getRules()).id);
+    await c.saveRules(toSieve({ rules: [], vacation: { enabled: false } }, folders), (await c.getRules()).id);
   });
 
   it('pushes a change notification when something changes', async () => {
@@ -181,7 +181,7 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     const { toSieve } = await import('./rules');
     const before = await c.getRules();
     const tag = `rules-${Date.now()}`;
-    await c.saveRules(toSieve([{ id: '1', subject: tag, action: 'move', folder: 'Rules Test' }], { trash: 'Deleted Items', junk: 'Junk Mail' }), before.id);
+    await c.saveRules(toSieve({ rules: [{ id: '1', subject: tag, action: 'move', folder: 'Rules Test' }], vacation: { enabled: false } }, { trash: 'Deleted Items', junk: 'Junk Mail' }), before.id);
     expect((await c.getRules()).script).toContain(tag);
 
     // Deliver a real message over SMTP and check where it lands.
@@ -203,7 +203,7 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     expect(landed, 'the message should have been filed by the rule').toBe('Rules Test');
     const folder = (await c.mailboxes()).find((b) => b.name === 'Rules Test')!;
     await c.deleteMailbox(folder.id);
-    await c.saveRules(before.script || toSieve([], { trash: 'Deleted Items', junk: 'Junk Mail' }), before.id ?? (await c.getRules()).id);
+    await c.saveRules(before.script || toSieve({ rules: [], vacation: { enabled: false } }, { trash: 'Deleted Items', junk: 'Junk Mail' }), before.id ?? (await c.getRules()).id);
     void boxes;
   }, 20_000);
 
@@ -235,6 +235,39 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     expect(copy.attachments.filter((a) => !a.cid).map((a) => a.name).sort()).toEqual(['agenda.txt', 'budget.csv']);
     await c.deleteDraft(id);
   });
+
+  it('Inbox categories: newsletters are tagged on delivery and by the backfill', async () => {
+    const c = await login();
+    const { toSieve } = await import('./rules');
+    const boxes = await c.mailboxes();
+    const inbox = boxes.find((b) => b.role === 'inbox')!.id;
+    const before = await c.getRules();
+    await c.saveRules(toSieve({ rules: [], vacation: { enabled: false } }, { trash: 'Deleted Items', junk: 'Junk Mail' }), before.id);
+
+    // Backfill tags the seeded digest (it has List-Unsubscribe) and leaves people's mail alone.
+    await c.tagUpdates(inbox);
+    const updates = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { hasKeyword: '$updates' }] })).map((e) => e.subject);
+    const primary = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { notKeyword: '$updates' }] })).map((e) => e.subject);
+    expect(updates).toContain('Weekly digest: 5 tools we loved');
+    expect(primary).toContain('Lunch on Friday?');
+    expect(primary).not.toContain('Weekly digest: 5 tools we loved');
+
+    // New mail is tagged by the server as it arrives.
+    const tag = `list-${Date.now()}`;
+    const net = await import('node:net');
+    await new Promise<void>((ok, fail) => {
+      const lines = ['EHLO test.example.org', 'MAIL FROM:<news@example.org>', 'RCPT TO:<alice@openmail.test>', 'DATA',
+        `From: news@example.org\r\nTo: alice@openmail.test\r\nSubject: ${tag}\r\nList-Unsubscribe: <https://example.org/u>\r\nDate: ${new Date().toUTCString()}\r\nMessage-ID: <${tag}@example.org>\r\n\r\nhello\r\n.`, 'QUIT'];
+      const sock = net.connect(2525, 'localhost');
+      let i = 0;
+      sock.on('data', (d: Buffer) => { if (/^[45]/m.test(d.toString())) fail(new Error(d.toString())); if (i < lines.length) sock.write(lines[i++] + '\r\n'); });
+      sock.on('close', () => ok()); sock.on('error', fail);
+    });
+    let kw: Record<string, boolean> | undefined;
+    for (let i = 0; i < 40 && !kw; i++) { await new Promise((r) => setTimeout(r, 250)); kw = (await c.threads({ text: tag }))[0]?.keywords; }
+    expect(kw?.['$updates'], 'delivered newsletter carries the Updates keyword').toBe(true);
+    await c.saveRules(before.script || toSieve({ rules: [], vacation: { enabled: false } }, { trash: 'Deleted Items', junk: 'Junk Mail' }), (await c.getRules()).id);
+  }, 20_000);
 
   it('suggests contacts, people I write to first, never me', async () => {
     const c = await login();

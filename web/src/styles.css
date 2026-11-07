@@ -414,3 +414,13 @@ select.input { appearance: auto; }
 .menu-item .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .menu-note { padding: var(--s2) var(--s3); color: var(--muted); font-size: var(--t-sm); max-width: 300px; white-space: normal; }
 .menu-sep { border-top: 1px solid var(--rule); border-radius: 0; margin-top: var(--s1); }
+
+/* Inbox category tabs: same left edge as the title, one md row */
+.tabs { display: flex; gap: var(--s1); margin: calc(-1 * var(--s1)) 0 0; border-bottom: 1px solid var(--rule); }
+.tab {
+  display: inline-flex; align-items: center; gap: var(--s2); height: var(--h-md); padding: 0 var(--s3);
+  margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--ink-2); font-weight: 500;
+}
+.tab:first-child { padding-left: 0; }
+.tab:hover { color: var(--ink); }
+.tab.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
