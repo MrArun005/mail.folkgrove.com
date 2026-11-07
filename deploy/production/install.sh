@@ -386,6 +386,18 @@ else
 fi
 say "Webmail sign-in (OAuth) registered for $PUBLIC_URL/"
 
+# System sender for the account service (sign-up codes): noreply@domain with a random password, kept in
+# .system-mail.env (root only) and read by the signup container. Created once; re-runs keep it.
+if [ ! -f .system-mail.env ]; then
+  sys_pass=$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')
+  domains=$(api '[["x:Domain/get",{"ids":null,"properties":["name"]},"d"]]')
+  domain_id=$(jget "next(d['id'] for d in r[0][1]['list'] if d['name'] == '$MAIL_DOMAIN')" <<<"$domains")
+  api "[[\"x:Account/set\",{\"create\":{\"n\":{\"@type\":\"User\",\"name\":\"noreply\",\"domainId\":$(jstr "$domain_id"),
+    \"description\":\"System sender (sign-up codes)\",\"credentials\":{\"0\":{\"@type\":\"Password\",\"secret\":$(jstr "$sys_pass")}}}}},\"n\"]]" >/dev/null
+  ( umask 077; printf 'SYSTEM_SMTP_USER=noreply@%s\nSYSTEM_SMTP_PASS=%s\nSYSTEM_SMTP_TLS_NAME=%s\n' "$MAIL_DOMAIN" "$sys_pass" "$MAIL_HOSTNAME" > .system-mail.env )
+  say "System sender noreply@$MAIL_DOMAIN created (sign-up codes)"
+fi
+
 # ---------------------------------------------------------------------------------------------
 # Daily certificate hand-over from Caddy to Stalwart.
 if [ "$LOCAL_TEST" = 0 ]; then

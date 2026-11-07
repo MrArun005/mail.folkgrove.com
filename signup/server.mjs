@@ -7,6 +7,8 @@ import { pathToFileURL } from 'node:url';
 import { checkUsername, checkPassword, RateLimiter, ipKey, Invites } from './lib.mjs';
 import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
+import { sendMail } from './mailer.mjs';
+import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 
 export function configFromEnv(env = process.env) {
   // ADMIN_FILE: JSON {"user","pass"}, or install.sh's .admin-credentials ("user:pass").
@@ -35,6 +37,14 @@ export function configFromEnv(env = process.env) {
     signupsPerHour: Number(env.SIGNUPS_PER_HOUR || 3),
     checksPerMinute: Number(env.CHECKS_PER_MINUTE || 30),
     clientIpHeader: env.CLIENT_IP_HEADER?.toLowerCase() || null, // e.g. cf-connecting-ip behind Cloudflare
+    // System mail (sign-up codes) goes out through our own server as a system account (install.sh creates it).
+    systemMail: env.SYSTEM_SMTP_USER ? {
+      host: env.SYSTEM_SMTP_HOST || 'stalwart', port: Number(env.SYSTEM_SMTP_PORT || 465), user: env.SYSTEM_SMTP_USER,
+      pass: env.SYSTEM_SMTP_PASS, servername: env.SYSTEM_SMTP_TLS_NAME || undefined, insecure: env.SYSTEM_SMTP_INSECURE === 'true',
+      from: env.SYSTEM_MAIL_FROM || `OpenMail <${env.SYSTEM_SMTP_USER}>`,
+    } : null,
+    // New accounts confirm an existing email address first (on by default whenever system mail is set up).
+    verifyEmail: env.VERIFY_EMAIL ? env.VERIFY_EMAIL !== 'off' : !!env.SYSTEM_SMTP_USER,
     maxAliases: Number(env.MAX_ALIASES || 200),
     secureCookies: env.INSECURE_COOKIES !== 'true', // only for plain-http testing
     maxAliasesTotal: Number(env.MAX_ALIASES_TOTAL || 1000), // lifetime, retired included
@@ -50,6 +60,13 @@ const MSG = {
 
 export function createApp(cfg) {
   const signupLimit = new RateLimiter(cfg.signupsPerHour, 3600e3);
+  // Email verification: a 6-digit code, kept only as a hash, valid 15 minutes, 5 tries. Codes per network and per
+  // address are limited so this can't be used to spam someone's inbox.
+  // ponytail: pending codes live in this process; a restart means asking for a new code. Valkey if we run replicas.
+  const pending = new Map(); // username → { hash, email, expires, tries }
+  const codeLimitIp = new RateLimiter(10, 3600e3), codeLimitEmail = new RateLimiter(3, 3600e3);
+  const hashCode = (code) => createHash('sha256').update(`openmail-signup:${code}`).digest();
+  const validEmail = (e) => typeof e === 'string' && e.length <= 254 && /^[^\s@<>()",;]+@[^\s@<>()",;]+\.[^\s@<>()",;]{2,}$/.test(e);
   const checkLimit = new RateLimiter(cfg.checksPerMinute, 60e3);
   const auth = 'Basic ' + Buffer.from(`${cfg.admin.user}:${cfg.admin.pass}`).toString('base64');
   let domainId = null;
@@ -146,6 +163,36 @@ export function createApp(cfg) {
     if (cfg.turnstileSecret && !(await verifyTurnstile(captchaToken, ip)))
       return fail(res, 400, 'captcha_failed', 'Please complete the "I am human" check and try again.', { field: 'captchaToken' });
 
+    // Step 1 of 2 (when verification is on): send a code to the person's existing address, create nothing yet.
+    const recoveryEmail = typeof body.recoveryEmail === 'string' ? body.recoveryEmail.trim().toLowerCase() : '';
+    if (cfg.verifyEmail) {
+      if (!validEmail(recoveryEmail)) return fail(res, 400, 'email_required', 'Enter an email address you already use. We’ll send it a code.', { field: 'recoveryEmail' });
+      if (recoveryEmail.endsWith(`@${cfg.domain}`)) return fail(res, 400, 'email_same_domain', `Use an address outside ${cfg.domain}.`, { field: 'recoveryEmail' });
+      const given = typeof body.verifyCode === 'string' ? body.verifyCode.replace(/\s/g, '') : '';
+      if (!given) {
+        if (await exists(username).catch(() => false)) return fail(res, 409, 'username_taken', MSG.taken, { field: 'username' });
+        const w = codeLimitIp.take(ipKey(ip)) || codeLimitEmail.take(recoveryEmail);
+        if (w) return tooMany(res, w);
+        const c = String(randomInt(0, 1_000_000)).padStart(6, '0');
+        pending.set(username, { hash: hashCode(c), email: recoveryEmail, expires: Date.now() + 15 * 60e3, tries: 0 });
+        try {
+          await (cfg.mailer ?? sendMail)(cfg.systemMail, { from: cfg.systemMail.from, to: recoveryEmail, subject: `Your ${cfg.domain} code: ${c}`,
+            text: `Your code to create ${username}@${cfg.domain} is ${c}.\n\nIt works for 15 minutes. If you didn’t ask for this, ignore this email: nothing was created.` });
+        } catch (e) {
+          pending.delete(username);
+          console.error('signup: sending the code failed:', e.message);
+          return fail(res, 503, 'unavailable', 'We couldn’t send the code right now. Please try again in a few minutes.');
+        }
+        return send(res, 202, { ok: true, needCode: true, sentTo: recoveryEmail.replace(/^(.)[^@]*/, '$1•••') });
+      }
+      const p = pending.get(username);
+      if (!p || p.expires < Date.now() || p.email !== recoveryEmail) return fail(res, 400, 'code_expired', 'That code has expired. Ask for a new one.', { field: 'verifyCode' });
+      if (++p.tries > 5) { pending.delete(username); return fail(res, 429, 'code_tries', 'Too many wrong codes. Ask for a new one.', { field: 'verifyCode' }); }
+      const ok = /^\d{6}$/.test(given) && timingSafeEqual(hashCode(given), p.hash);
+      if (!ok) return fail(res, 400, 'code_wrong', 'That code isn’t right. Check the latest email.', { field: 'verifyCode' });
+      pending.delete(username);
+    }
+
     const code = typeof inviteCode === 'string' ? inviteCode.trim() : '';
     if (cfg.inviteRequired) {
       if (!code) return fail(res, 403, 'invite_required', 'Sign-up is invite-only right now. Please enter your invite code.', { field: 'inviteCode' });
@@ -160,7 +207,7 @@ export function createApp(cfg) {
         '@type': 'User',
         name: username,
         domainId: await getDomainId(),
-        description: `Self sign-up ${new Date().toISOString()}${cfg.inviteRequired ? ` (invite ${code})` : ''}`,
+        description: `Self sign-up ${new Date().toISOString()}${cfg.inviteRequired ? ` (invite ${code})` : ''}${recoveryEmail ? ` · verified ${recoveryEmail}` : ''}`,
         credentials: { 0: { '@type': 'Password', secret: password } },
         ...(cfg.quotaBytes > 0 && { quotas: { maxDiskQuota: cfg.quotaBytes } }),
       } } }, 'c']]);

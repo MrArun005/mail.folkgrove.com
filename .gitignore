@@ -6,3 +6,4 @@ deploy/.dev-admin.json
 deploy/production/.env
 deploy/production/.admin-credentials
 *.age
+deploy/production/.system-mail.env

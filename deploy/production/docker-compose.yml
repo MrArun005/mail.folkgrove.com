@@ -72,6 +72,9 @@ services:
       SIGNUP: ${SIGNUP:-off}
       INVITE_CODES: ${INVITE_CODES:-}
       CLIENT_IP_HEADER: x-real-ip
+    env_file:
+      - path: ./.system-mail.env   # system sender for sign-up codes (install.sh creates it)
+        required: false
     volumes:
       - ./.admin-credentials:/run/secrets/admin:ro
 
