@@ -1,0 +1,264 @@
+{
+ "uid": "openmail-mail",
+ "title": "OpenMail: mail",
+ "schemaVersion": 41,
+ "time": {
+  "from": "now-24h",
+  "to": "now"
+ },
+ "refresh": "1m",
+ "panels": [
+  {
+   "id": 1,
+   "type": "timeseries",
+   "title": "Outgoing queue (messages)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 0
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "openmail_queue_messages",
+     "legendFormat": "queued"
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "type": "timeseries",
+   "title": "Oldest queued message",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 0
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "openmail_queue_oldest_seconds",
+     "legendFormat": "age"
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "type": "timeseries",
+   "title": "Recipients waiting, by destination",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "openmail_queue_recipients",
+     "legendFormat": "{{domain}}"
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "type": "timeseries",
+   "title": "Recipients retrying after a failure, by destination",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "openmail_queue_deferred_recipients",
+     "legendFormat": "{{domain}}"
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "type": "timeseries",
+   "title": "Delivery outcomes per minute (all destinations)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 16
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(sum(rate(stalwart_delivery_dsn_success_total[5m])) or vector(0)) * 60",
+     "legendFormat": "delivered"
+    },
+    {
+     "refId": "B",
+     "expr": "(sum(rate(stalwart_delivery_dsn_temp_fail_total[5m])) or vector(0)) * 60",
+     "legendFormat": "temporary failure (will retry)"
+    },
+    {
+     "refId": "C",
+     "expr": "(sum(rate(stalwart_delivery_dsn_perm_fail_total[5m])) or vector(0)) * 60",
+     "legendFormat": "permanent failure (bounced)"
+    }
+   ]
+  },
+  {
+   "id": 6,
+   "type": "timeseries",
+   "title": "Messages per minute",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 16
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "((sum(rate(stalwart_message_ingest_ham_total[5m])) or vector(0)) + (sum(rate(stalwart_message_ingest_spam_total[5m])) or vector(0))) * 60",
+     "legendFormat": "inbound (delivered to mailboxes)"
+    },
+    {
+     "refId": "B",
+     "expr": "(sum(rate(stalwart_queue_authenticated_message_queued_total[5m])) or vector(0)) * 60",
+     "legendFormat": "outbound (sent by users)"
+    }
+   ]
+  },
+  {
+   "id": 7,
+   "type": "timeseries",
+   "title": "Failed sign-ins per 5 minutes",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 24
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "(sum(increase(stalwart_auth_failed_total[5m])) or vector(0))",
+     "legendFormat": "failed"
+    },
+    {
+     "refId": "B",
+     "expr": "(sum(increase(stalwart_security_authentication_ban_total[5m])) or vector(0))",
+     "legendFormat": "IPs banned"
+    }
+   ]
+  },
+  {
+   "id": 8,
+   "type": "timeseries",
+   "title": "Disk used",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 24
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "1 - node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs|nsfs|ramfs\"} / node_filesystem_size_bytes",
+     "legendFormat": "{{mountpoint}}"
+    }
+   ]
+  }
+ ]
+}

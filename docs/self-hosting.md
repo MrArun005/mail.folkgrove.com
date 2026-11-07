@@ -219,7 +219,42 @@ On a new server, also update the `A` record, the reverse DNS, and the IP in SPF 
 
 The restore procedure was tested by wiping a test install (all its Docker volumes, `.env` and `.admin-credentials`) and restoring it from a backup. The mailbox, its messages, the admin login and the DKIM keys all came back, and re-running `install.sh` worked afterwards.
 
-## 8. Troubleshooting
+## 8. Monitoring (optional)
+
+Prometheus watches the server, Alertmanager emails you when something is wrong, and Grafana shows it all on one dashboard. Turn it on (safe to re-run; the setting is remembered):
+
+```sh
+cd deploy/production
+sudo ./install.sh --yes --monitoring --alert-email you@gmail.com
+```
+
+Use an alert address at **another provider**: if this server breaks, its own mailboxes break with it. Without `--alert-email`, alerts go to the `--email` address you gave for certificates. Alerts are sent through this server's Stalwart as `noreply@example.com`, so a dead Stalwart can't email you about itself. To get that alert on your phone too, uncomment the ntfy or Slack example in `monitoring/alertmanager.yml` and run `docker compose up -d alertmanager`.
+
+The web pages listen only on the server itself. Open them from your computer through an SSH tunnel:
+
+```sh
+ssh -L 3000:127.0.0.1:3000 -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@mx.example.com
+```
+
+Then browse to <http://localhost:3000> (Grafana, dashboard "OpenMail: mail"; first login `admin`/`admin`, then it asks for a new password), <http://localhost:9090/alerts> (Prometheus) or <http://localhost:9093> (Alertmanager, to silence an alert during maintenance).
+
+What each alert means and what to do:
+
+| Alert | Means | Do |
+|---|---|---|
+| StalwartDown | No answer from Stalwart for 2 minutes. | `docker compose ps` and `docker compose logs --tail 100 stalwart`; `docker compose up -d`. Check free disk and memory. |
+| QueueOldMessage | A message has waited over 30 minutes to go out. | Admin UI › Queues › Messages: read the error on that message (see Troubleshooting). |
+| QueueGrowing | The outgoing queue grew for 5 minutes straight (over 20 messages). | Same as above. If one account is sending a lot, it may be compromised: disable it. |
+| QueueBackPressure | Stalwart is turning new mail away because the queue is full. | Find what is stuck (above); free disk space if that is the cause. |
+| DeliveryFailureRatioHigh | Over 5% of deliveries failed for 15 minutes. | Look for a pattern in the queue errors: blocked port 25, a blocklist listing ([MXToolbox](https://mxtoolbox.com/blacklists.aspx)), a broken relay login. |
+| DestinationDeferring | 5+ recipients at one domain (shown in the alert) keep failing for 15 minutes. | That provider is rejecting or rate-limiting you. Read its error in the queue; check its postmaster pages (Gmail Postmaster Tools, Microsoft SNDS). |
+| AuthFailureSpike | Over 200 failed sign-ins in 10 minutes. | Usually password-guessing bots; Stalwart bans IPs after 100 failures. If it's one of your users with an old password, tell them. Raise the threshold in `monitoring/alerts.yml` if your normal level is higher. |
+| DiskAlmostFull | A disk is over 85% full. | `docker system prune` removes old images; `du -sh backups/` (old backups); add disk. Stalwart stops accepting mail when the disk is full. |
+| MonitoringTargetDown | The queue or disk exporter is down, so those alerts can't fire. | `docker compose logs queue-exporter node-exporter`. |
+
+Stalwart 1.0.3 doesn't count deliveries per destination, so the per-destination alert counts recipients stuck in the queue rather than a failure ratio. Data is kept for 30 days. To turn monitoring off: `docker compose rm -sf prometheus alertmanager grafana node-exporter queue-exporter`, then delete the `MONITORING`, `COMPOSE_FILE` and `ALERT_EMAIL` lines from `.env`.
+
+## 9. Troubleshooting
 
 **Webmail doesn't load, or shows a certificate error.** Check that `dig +short mx.example.com` returns your IP and that ports 80 and 443 are open in the cloud firewall. Then look in `docker compose logs caddy` for ACME errors. Let's Encrypt limits retries, so fix DNS before restarting repeatedly.
 

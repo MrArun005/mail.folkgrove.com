@@ -8,6 +8,7 @@
 #   ./install.sh --refresh-certs         copy Caddy's certificate into Stalwart (cron runs this daily)
 #   ./install.sh --dns                   print the DNS records again
 #   ./install.sh --local-test ...        throwaway stack on alternate ports, Caddy's internal CA, no cron
+#   ./install.sh --monitoring [--alert-email you@gmail.com]   add Prometheus + Alertmanager + Grafana (remembered)
 #
 # Run ./install.sh --help for all flags.
 # shellcheck disable=SC1091,SC2034  # .env is generated; settings are read back via ${!name}
@@ -39,6 +40,8 @@ Usage: ./install.sh [options]
   --yes                 never ask; use flags, saved answers and defaults
   --refresh-certs       only copy Caddy's certificate into Stalwart and reload it
   --dns                 only print the DNS records
+  --monitoring          also run Prometheus, Alertmanager and Grafana (monitoring/; remembered in .env)
+  --alert-email E       where alerts go (default: the --email address); use a mailbox on another provider
   --local-test          test stack: project openmail-test, ports 10025/10465/10587/10993/10080/10443,
                         admin API on 127.0.0.1:18080, self-signed certificates, no cron
 EOF
@@ -67,6 +70,8 @@ while [ $# -gt 0 ]; do
     --refresh-certs) MODE=certs; YES=1 ;;
     --dns) MODE=dns; YES=1 ;;
     --local-test) LOCAL_TEST=1 ;;
+    --monitoring) MONITORING=1 ;;
+    --alert-email) ALERT_EMAIL=$2; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage; die "unknown option $1" ;;
   esac
@@ -250,6 +255,17 @@ if [ "$REBUILD_WEB" = 1 ] || [ ! -f "$WEB_DIST/index.html" ]; then
     sh -c 'npm ci --no-audit --no-fund && npm run build'
 fi
 
+# Monitoring: compose picks up the override through COMPOSE_FILE in .env. Prometheus (uid 65534) reads the
+# metrics password, so the file belongs to that uid; still unreadable to other users.
+if [ "${MONITORING:-0}" = 1 ]; then
+  COMPOSE_FILE=docker-compose.yml:monitoring/docker-compose.monitoring.yml
+  ALERT_EMAIL=${ALERT_EMAIL:-$ACME_EMAIL}
+  if [ ! -s .metrics-password ]; then
+    (umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(24))' > .metrics-password)
+    chown 65534:65534 .metrics-password 2>/dev/null || warn "Not root: Prometheus may be unable to read .metrics-password"
+  fi
+fi
+
 # ---------------------------------------------------------------------------------------------
 # .env (secrets: 600). Every value is single-quoted, which both bash and Compose read literally.
 say "Writing $HERE/.env"
@@ -257,7 +273,8 @@ umask 077
 {
   for v in COMPOSE_PROJECT_NAME MAIL_DOMAIN MAIL_HOSTNAME ACME_EMAIL PUBLIC_URL WEB_DIST \
            RELAY_HOST RELAY_PORT RELAY_USER RELAY_PASSWORD RELAY_SPF SERVER_IP CADDY_CERT_ISSUER \
-           ADMIN_PORT HTTP_PORT HTTPS_PORT SMTP_PORT SUBMISSIONS_PORT SUBMISSION_PORT IMAPS_PORT; do
+           ADMIN_PORT HTTP_PORT HTTPS_PORT SMTP_PORT SUBMISSIONS_PORT SUBMISSION_PORT IMAPS_PORT \
+           MONITORING COMPOSE_FILE ALERT_EMAIL; do
     [ -n "${!v:-}" ] && printf "%s='%s'\n" "$v" "${!v}"
   done
 } > .env
@@ -348,6 +365,12 @@ fi
 # schools behind one shared IP (one phone with an old password is enough); an hour still stops password guessing.
 api '[["x:Security/set",{"update":{"singleton":{"authBanPeriod":3600000}}},"s"]]' >/dev/null
 
+# Prometheus metrics at /metrics/prometheus (basic auth, password in .metrics-password); same shape as deploy/scale/setup.mjs.
+if [ "${MONITORING:-0}" = 1 ]; then
+  api "[[\"x:Metrics/set\",{\"update\":{\"singleton\":{\"prometheus\":{\"@type\":\"Enabled\",\"authUsername\":\"prometheus\",
+    \"authSecret\":{\"@type\":\"Value\",\"secret\":$(jstr "$(cat .metrics-password)")}}}}},\"m\"]]" >/dev/null
+fi
+
 # Apply the changes above (listeners only take effect after a restart).
 if [ "$NEED_RESTART" = 1 ]; then restart_stalwart
 else api '[["x:Action/set",{"create":{"a":{"@type":"ReloadSettings"}}},"a"]]' >/dev/null; fi
@@ -408,6 +431,9 @@ if [ ! -f .system-mail.env ]; then
   say "System sender noreply@$MAIL_DOMAIN created (sign-up codes)"
 fi
 
+# On a first install .system-mail.env didn't exist yet when the stack started; this recreates Alertmanager with it.
+if [ "${MONITORING:-0}" = 1 ]; then dc up -d >/dev/null; fi
+
 # ---------------------------------------------------------------------------------------------
 # Daily certificate hand-over from Caddy to Stalwart.
 if [ "$LOCAL_TEST" = 0 ]; then
@@ -435,3 +461,6 @@ Done.
   Mail apps: IMAP $MAIL_HOSTNAME:993 (TLS), SMTP $MAIL_HOSTNAME:465 (TLS) or 587 (STARTTLS)
   Backups:   $HERE/backup.sh   (see docs/self-hosting.md)
 EOF
+if [ "${MONITORING:-0}" = 1 ]; then
+  echo "  Monitoring: alerts to $ALERT_EMAIL; Grafana 127.0.0.1:3000, Prometheus :9090, Alertmanager :9093 (SSH tunnel, see docs)"
+fi

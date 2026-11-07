@@ -1,0 +1,72 @@
+# Optional monitoring: Prometheus + Alertmanager + Grafana, a node exporter (disk/CPU/RAM) and a small queue exporter.
+# Turned on by `./install.sh --monitoring`, which also enables Stalwart's metrics and adds this file to COMPOSE_FILE in
+# .env, so plain `docker compose ...` in deploy/production includes it. Paths are relative to deploy/production.
+#
+# The web UIs listen on 127.0.0.1 only. Open them through an SSH tunnel (docs/self-hosting.md, "Monitoring"):
+#   Prometheus :9090   Alertmanager :9093   Grafana :3000
+services:
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    restart: unless-stopped
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=30d]
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./.metrics-password:/etc/prometheus/stalwart-password:ro   # install.sh creates it (owned by Prometheus's uid 65534)
+      - prometheus-data:/prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.29.0
+    restart: unless-stopped
+    environment:
+      ALERT_EMAIL: ${ALERT_EMAIL:-}
+    env_file:
+      - path: ./.system-mail.env   # SYSTEM_SMTP_USER / _PASS / _TLS_NAME, created by install.sh
+        required: false
+    # Fill the placeholders in alertmanager.yml from the environment (values are URL-safe: no sed escaping needed).
+    entrypoint: [/bin/sh, -c]
+    command:
+      - >-
+        sed -e "s|__ALERT_EMAIL__|$$ALERT_EMAIL|" -e "s|__SMTP_USER__|$$SYSTEM_SMTP_USER|g"
+        -e "s|__SMTP_PASS__|$$SYSTEM_SMTP_PASS|" -e "s|__TLS_NAME__|$$SYSTEM_SMTP_TLS_NAME|"
+        /etc/alertmanager/alertmanager.tmpl.yml > /alertmanager/alertmanager.yml
+        && exec /bin/alertmanager --config.file=/alertmanager/alertmanager.yml --storage.path=/alertmanager
+    ports: ["127.0.0.1:9093:9093"]
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.tmpl.yml:ro
+      - alertmanager-data:/alertmanager
+
+  grafana:
+    image: grafana/grafana:12.2.1
+    restart: unless-stopped
+    environment:
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports: ["127.0.0.1:3000:3000"]   # first login admin/admin, then Grafana makes you change it
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
+  node-exporter:
+    image: prom/node-exporter:v1.10.2
+    restart: unless-stopped
+    pid: host
+    command: [--path.rootfs=/host]
+    volumes:
+      - /:/host:ro,rslave
+
+  queue-exporter:
+    image: python:3.13.9-alpine3.22
+    restart: unless-stopped
+    depends_on: [stalwart]
+    command: [python, /app/queue-exporter.py]
+    volumes:
+      - ./monitoring/queue-exporter.py:/app/queue-exporter.py:ro
+      - ./.admin-credentials:/run/secrets/admin:ro
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:
