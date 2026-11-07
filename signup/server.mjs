@@ -165,6 +165,7 @@ export function createApp(cfg) {
 
     // Step 1 of 2 (when verification is on): send a code to the person's existing address, create nothing yet.
     const recoveryEmail = typeof body.recoveryEmail === 'string' ? body.recoveryEmail.trim().toLowerCase() : '';
+    let verifiedEmail = ''; // only ever set after a code check passes
     if (cfg.verifyEmail) {
       if (!validEmail(recoveryEmail)) return fail(res, 400, 'email_required', 'Enter an email address you already use. We’ll send it a code.', { field: 'recoveryEmail' });
       if (recoveryEmail.endsWith(`@${cfg.domain}`)) return fail(res, 400, 'email_same_domain', `Use an address outside ${cfg.domain}.`, { field: 'recoveryEmail' });
@@ -191,6 +192,7 @@ export function createApp(cfg) {
       const ok = /^\d{6}$/.test(given) && timingSafeEqual(hashCode(given), p.hash);
       if (!ok) return fail(res, 400, 'code_wrong', 'That code isn’t right. Check the latest email.', { field: 'verifyCode' });
       pending.delete(username);
+      verifiedEmail = p.email;
     }
 
     const code = typeof inviteCode === 'string' ? inviteCode.trim() : '';
@@ -207,7 +209,7 @@ export function createApp(cfg) {
         '@type': 'User',
         name: username,
         domainId: await getDomainId(),
-        description: `Self sign-up ${new Date().toISOString()}${cfg.inviteRequired ? ` (invite ${code})` : ''}${recoveryEmail ? ` · verified ${recoveryEmail}` : ''}`,
+        description: `Self sign-up ${new Date().toISOString()}${cfg.inviteRequired ? ` (invite ${code})` : ''}${verifiedEmail ? ` · verified ${verifiedEmail}` : ''}`,
         credentials: { 0: { '@type': 'Password', secret: password } },
         ...(cfg.quotaBytes > 0 && { quotas: { maxDiskQuota: cfg.quotaBytes } }),
       } } }, 'c']]);
