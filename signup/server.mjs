@@ -9,6 +9,7 @@ import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
 import { accountRoutes } from './account.mjs';
 import { adminRoutes } from './admin.mjs';
+import { sharingRoutes } from './sharing.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
@@ -77,11 +78,11 @@ export function createApp(cfg) {
   const auth = 'Basic ' + Buffer.from(`${cfg.admin.user}:${cfg.admin.pass}`).toString('base64');
   let domainId = null;
 
-  async function jmap(methodCalls) {
+  async function jmap(methodCalls, extra = []) {
     const res = await fetch(`${cfg.stalwartUrl}/jmap/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: auth },
-      body: JSON.stringify({ using: ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap'], methodCalls }),
+      body: JSON.stringify({ using: ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap', ...extra], methodCalls }),
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`Stalwart JMAP HTTP ${res.status}`);
@@ -267,6 +268,7 @@ export function createApp(cfg) {
   const account = accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
   const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const sharing = sharingRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter });
 
   return createServer(async (req, res) => {
     try {
@@ -275,6 +277,7 @@ export function createApp(cfg) {
       if (url.pathname === '/api/account' && await account(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
       if (url.pathname.startsWith('/api/admin/') && await admin(req, res, url)) return;
+      if (url.pathname === '/api/principal' && await sharing(req, res, url)) return;
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);

@@ -7,8 +7,8 @@ import type { Jmap } from './jmap';
  * Admin console (/admin): users, blocked addresses and new-account limits, and the outgoing queue. Every call goes
  * to the account service (signup/admin.mjs), which checks that the signed-in account is on its ADMINS list.
  */
-type Tab = 'overview' | 'users' | 'limits' | 'queue';
-const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['limits', 'Blocked & limits'], ['queue', 'Message trace']];
+type Tab = 'overview' | 'users' | 'teams' | 'limits' | 'queue';
+const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['teams', 'Team mailboxes'], ['limits', 'Blocked & limits'], ['queue', 'Message trace']];
 
 interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; admin: boolean; newAccount: boolean }
 interface Blocked { id: string; address: string; reason: string; createdAt: string; expiresAt: string | null }
@@ -49,6 +49,7 @@ export function Admin({ client }: { client: Jmap }) {
       <main>
         {tab === 'overview' && <Overview client={client} go={setTab} />}
         {tab === 'users' && <Users client={client} />}
+        {tab === 'teams' && <Teams client={client} />}
         {tab === 'limits' && <><BlockedIps client={client} /><NewAccounts client={client} /></>}
         {tab === 'queue' && <Queue client={client} />}
       </main>
@@ -252,6 +253,56 @@ function Queue({ client }: { client: Jmap }) {
                     if (await confirmIt({ title: 'Cancel this message?', body: `It won’t be delivered to anyone still waiting (${m.recipients.map((r) => r.to).join(', ')}).`, confirm: 'Cancel delivery', danger: true }))
                       await act(() => client.admin(`queue/${m.id}`, 'DELETE'), reload);
                   }}>Cancel</Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ))}
+    </section>
+  );
+}
+
+interface Team { id: string; name: string; email: string; description: string; members: string[] }
+
+/** Shared team mailboxes (support@, sales@): a Stalwart group account; its members open it from their account menu. */
+function Teams({ client }: { client: Jmap }) {
+  const { data, error, reload } = useLoad(() => client.admin<{ groups: Team[] }>('groups'));
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  return (
+    <section>
+      <p className="fine">A team mailbox has its own address. Mail to it lands in one shared Inbox that every member opens from their account menu. Members can reply as the team and leave comments for each other on a conversation.</p>
+      <form className="admin-bar" onSubmit={async (e) => {
+        e.preventDefault();
+        if (name.trim()) await act(async () => { await client.admin('groups', 'POST', { name: name.trim(), description: description.trim() }); setName(''); setDescription(''); }, reload);
+      }}>
+        <label>New team mailbox<input className="input" placeholder="e.g. support" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label>Name people see<input className="input" placeholder="e.g. Support team" value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+        <Button type="submit" variant="primary">Create team mailbox</Button>
+      </form>
+      {error && <p className="error" role="alert">{error}</p>}
+      {data && (data.groups.length === 0 ? <p className="empty">No team mailboxes yet. Create one above, then add its members.</p> : (
+        <table className="admin-table">
+          <thead><tr><th>Team mailbox</th><th>Members</th><th><span className="sr">Actions</span></th></tr></thead>
+          <tbody>
+            {data.groups.map((g) => (
+              <tr key={g.id}>
+                <td data-label="Team mailbox"><b>{g.email}</b>{g.description && <span className="fine"> {g.description}</span>}</td>
+                <td data-label="Members">{g.members.length === 0 ? <span className="fine">No members yet</span> : g.members.map((m) => (
+                  <div key={m} className="member">{m}
+                    <Button size="sm" variant="quiet" icon="close" label={`Remove ${m} from ${g.email}`} onClick={() => act(() => client.admin(`groups/${g.id}`, 'PATCH', { remove: m }), reload)} />
+                  </div>
+                ))}</td>
+                <td className="acts">
+                  <Button size="sm" variant="quiet" onClick={async () => {
+                    const who = await promptIt({ title: `Add a member to ${g.email}`, body: 'They can read and answer its mail and send as the team.', label: 'Username or address', confirm: 'Add member' });
+                    if (who) await act(() => client.admin(`groups/${g.id}`, 'PATCH', { add: who }), reload);
+                  }}>Add member</Button>
+                  <Button size="sm" variant="quiet" icon="trash" label={`Delete ${g.email}`} onClick={async () => {
+                    if (await confirmIt({ title: `Delete ${g.email}?`, body: 'All of its mail and team comments are deleted, and the address is retired: no one can take it later. This can’t be undone.', confirm: 'Delete team mailbox', danger: true }))
+                      await act(() => client.admin(`groups/${g.id}`, 'DELETE'), reload);
+                  }} />
                 </td>
               </tr>
             ))}

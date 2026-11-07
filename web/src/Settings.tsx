@@ -9,6 +9,7 @@ import { ImportSection } from './Import';
 import { DeleteAccountSection, ExportSection } from './Export';
 import { disablePush, enablePush, notifyOn, notifySupported, setNotify } from './notify';
 import { chooseSignature, textToHtml, type Signature } from './mailutil';
+import { DelegatesSection } from './Sharing';
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -147,6 +148,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         <ScreenerSection client={client} boxes={boxes} />
         <FiltersSection client={client} boxes={boxes} prefill={prefillRule} />
         <FoldersSection client={client} boxes={boxes} onChanged={onFoldersChanged} />
+        <DelegatesSection client={client} />
         <ImportSection client={client} onDone={onFoldersChanged} />
         <ExportSection client={client} />
 

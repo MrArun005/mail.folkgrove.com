@@ -1,4 +1,4 @@
-// Admin console API (/api/admin/*): users, blocked IPs, new-account limits and the outgoing queue.
+// Admin console API (/api/admin/*): users, team mailboxes (groups), blocked IPs, new-account limits and the outgoing queue.
 // Who is an admin: the ADMINS setting (comma-separated usernames on DOMAIN). The caller proves who they are with
 // their own sign-in token (checked by Stalwart, as for aliases); then their name must be on that list.
 // This is a short, explicit list of Stalwart admin operations, never a passthrough.
@@ -147,6 +147,52 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       return {};
     },
 
+    // Team mailboxes (Stalwart group accounts, e.g. support@): mail to the address lands in the group's own Inbox,
+    // every member opens it from their account menu with full access and sends as it (verified on 1.0.3).
+    'GET groups': async () => {
+      const { ids } = await query('x:Account', { filter: { '@type': 'Group' }, sort: [{ property: 'name' }], limit: 200 });
+      const groups = await get('x:Account', ids, ['name', 'emailAddress', 'description']);
+      const members = await Promise.all(groups.map(async (g) => {
+        const r = await query('x:Account', { filter: { '@type': 'User', memberGroupIds: g.id }, limit: 500 });
+        return (await get('x:Account', r.ids, ['emailAddress'])).map((u) => u.emailAddress).sort();
+      }));
+      return { groups: groups.map((g, i) => ({ id: g.id, name: g.name, email: g.emailAddress, description: g.description ?? '', members: members[i] })) };
+    },
+    'POST groups': async (req) => {
+      const body = await readJson(req).catch(() => ({}));
+      const name = typeof body.name === 'string' ? body.name.trim().toLowerCase() : '';
+      const bad = checkUsername(name);
+      if (bad && bad.code !== 'username_reserved') return [400, bad.code, bad.message.replace('username', 'name')]; // support@ is reserved for sign-up, fine here
+      const r = await jmap([['x:Account/set', { create: { g: { '@type': 'Group', name, domainId: await getDomainId(),
+        description: typeof body.description === 'string' && body.description.trim() ? body.description.trim().slice(0, 200) : null } } }, 'c']]);
+      if (r.notCreated?.g?.type === 'primaryKeyViolation') return [409, 'name_taken', 'That address is already taken.'];
+      if (!r.created?.g) throw Object.assign(new Error('create refused'), { detail: r.notCreated?.g });
+      return { group: { id: r.created.g.id, name, email: `${name}@${cfg.domain}`, members: [] } };
+    },
+    // { add: 'sam' } or { remove: 'sam@domain' }: membership lives on the user (memberGroupIds).
+    'PATCH groups/:id': async (req, _url, id) => {
+      const body = await readJson(req).catch(() => ({}));
+      const [g] = await get('x:Account', [id], ['@type']);
+      if (g?.['@type'] !== 'Group') return [404, 'not_found', 'That team mailbox no longer exists.'];
+      const on = typeof body.add === 'string', who = String(on ? body.add : body.remove ?? '').trim().toLowerCase();
+      const [local, domain] = who.split('@');
+      if (!local || (domain && domain !== cfg.domain)) return [400, 'bad_member', `Enter a username or address on ${cfg.domain}.`];
+      const { ids } = await query('x:Account', { filter: { '@type': 'User', name: local, domainId: await getDomainId() } });
+      if (ids.length !== 1) return [404, 'no_such_user', `There’s no account ${local}@${cfg.domain}.`];
+      await set('x:Account', { update: { [ids[0]]: { [`memberGroupIds/${id}`]: on ? true : null } } });
+      return {};
+    },
+    'DELETE groups/:id': async (_req, _url, id) => {
+      const [g] = await get('x:Account', [id], ['@type', 'name']);
+      if (g?.['@type'] !== 'Group') return [404, 'not_found', 'That team mailbox no longer exists.'];
+      // Stalwart refuses to delete a group that still has members (objectIsLinked): take them out first.
+      const { ids } = await query('x:Account', { filter: { '@type': 'User', memberGroupIds: id }, limit: 500 });
+      if (ids.length) await set('x:Account', { update: Object.fromEntries(ids.map((u) => [u, { [`memberGroupIds/${id}`]: null }])) });
+      await retireNames({ cfg, jmap }, id, g.name); // no recycling, as for users
+      await set('x:Account', { destroy: [id] });
+      return {};
+    },
+
     'GET blocked': async () => {
       const { ids } = await query('x:BlockedIp', { limit: 500 });
       const list = await get('x:BlockedIp', ids);
@@ -187,7 +233,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   };
 
   return async function handle(req, res, url) {
-    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue)(?:/(${ID}))?(/retry)?$`));
+    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|groups|blocked|new-accounts|queue)(?:/(${ID}))?(/retry)?$`));
     if (!m) return false;
     if (!admins.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS is set
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);

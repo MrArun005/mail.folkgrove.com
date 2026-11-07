@@ -764,6 +764,7 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   :root:not([data-pane="split"]) .app.reading .reader { border-radius: var(--r-lg); }
   :root:not([data-pane="split"]) .app.reading .only-mobile { display: inline-flex; margin-left: calc((18px - var(--h-md)) / 2); }
   :root:not([data-pane="split"]) .app.reading .toolbar > .only-mobile + * { margin-left: 0; }
+}
 /* ═══ Admin console (/admin) ═══════════════════════════ */
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .admin { min-height: 100%; padding: var(--s4) var(--s8) var(--s10); background: var(--paper); }
@@ -802,3 +803,19 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   .admin-table .acts { display: flex; flex-wrap: wrap; gap: var(--s1); white-space: normal; padding-top: var(--s1); }
   .admin-table .acts .btn--sm { height: var(--h-md); } /* tap targets on phones (DESIGN §10) */
 }
+
+/* Sharing: "Shared with me" in the rail, share panel in Settings → Folders, team comments under a conversation */
+.shared-rail .rail-link { margin: var(--s1) var(--s3); font-size: var(--t-sm); }
+.shared-banner { margin: 0; overflow-wrap: anywhere; }
+.rule-list li:has(.share-panel) { flex-wrap: wrap; padding-bottom: var(--s3); }
+.share-panel { flex-basis: 100%; display: grid; gap: var(--s2); }
+.share-panel .inline-form, .settings .inline-form { flex-wrap: wrap; }
+.team-comments { display: grid; gap: var(--s3); margin: var(--s6) 0 0 var(--text-col); padding-top: var(--s4); border-top: 1px solid var(--rule); }
+.team-comments .rail-label { padding: 0; margin: 0; }
+.comment { padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--hover); }
+.comment-meta { display: flex; align-items: center; gap: var(--s2); color: var(--muted); font-size: var(--t-sm); }
+.comment-meta b { color: var(--ink); font-weight: 600; }
+.comment-meta .btn { margin-left: auto; }
+.comment-text { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--t-md); color: var(--ink); }
+@media (max-width: 860px) { .shared-banner { flex: none; white-space: nowrap; } .shared-rail .rail-label, .shared-rail .rail-link { display: none; } .team-comments { margin-left: 0; } }
+.admin-table .member { display: flex; align-items: center; gap: var(--s1); }

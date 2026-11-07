@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { confirmIt, notify } from './Dialog';
 import { createPortal } from 'react-dom';
 import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
@@ -14,7 +14,7 @@ import { Menu, TimeChoices } from './Menu';
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
 export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task';
 
-export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt }: {
+export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt, footer }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
   /** Folders the user created (moving/labelling targets). */
   folders: Mailbox[];
@@ -26,6 +26,8 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   onMore: (what: MoreAction, m: EmailFull) => void;
   onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void>;
   onReceipt: (m: EmailFull, send: boolean) => void;
+  /** Shown under the conversation (team comments in a shared mailbox). */
+  footer?: ReactNode;
 }) {
   // Newest message open, older ones folded, like a paper trail. A message that arrives while reading opens too.
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -109,6 +111,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
           <Button icon="replyAll" title="Reply all (a)" onClick={() => onReply('replyAll', last)}>Reply all</Button>}
         <Button icon="forward" title="Forward (f)" onClick={() => onReply('forward', last)}>Forward</Button>
       </div>
+      {footer}
     </article>
   );
 }

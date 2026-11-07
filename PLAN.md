@@ -24,6 +24,7 @@ Browser (web app / PWA) ── JMAP over HTTPS ──► Stalwart ── SMTP �
 | **Hosted instance runs on PostgreSQL + S3 from its first user.** Self-hosters keep RocksDB (simpler). There is no supported RocksDB → PostgreSQL migration. | Moving stores later means migrating every mailbox ([scale.md](docs/research/scale.md) §1). | — |
 | **Per-user settings live in the Sieve script** (filters, vacation, signatures, saved searches, Screener allow list), saved with `ifInState` and re-applied on conflict. | Synced to every device with no extra storage. Ceiling: ~1,500 Screener senders before the script size limit. | The ceiling is reached: move the allow list to the address book. |
 | **Sessions**: per tab by default (access token in memory, refresh token in sessionStorage). **“Keep me signed in”** moves the refresh token into an HttpOnly, Secure, SameSite=Strict cookie held by the account service (`/api/session`, CSRF header required, rotated on every refresh, one refresh per token at a time). Page scripts never see it. | XSS can't steal a long-lived credential; reopening the browser goes straight to your mail. | — |
+| **Sharing is JMAP sharing on Stalwart** (verified on 1.0.3, 2026-11-08): folders via `Mailbox.shareWith`; team mailboxes are group accounts (mail to the group lands in its own Inbox; members get full access and its sending identity); delegation is a full share of every folder. The account service resolves an exact address to a principal id (`/api/principal`), because Stalwart's directory search for users (`x:Sharing.allowDirectoryQueries`) would list everyone. | Open standards; any JMAP or IMAP client sees the same shares. | Stalwart adds send-as for delegates. |
 | **Sending limits** apply to webmail (JMAP) and mail apps (SMTP) alike, as one per-account counter of outside **recipients** per day (verified on the dev server, 2026-11-07). 500 recipients per message for signed-in senders, 100 on port 25. | One limit, one place; can't be dodged by switching apps. | Before public sign-up: add new-account tiers (scale.md §10.2). |
 
 ## Phases and gates
@@ -65,6 +66,11 @@ Shared team inboxes, notes and tasks, native mobile apps.
 - Spam filtering won't equal Gmail's on day one: Stalwart's filter plus per-user learning plus blocklists.
 - No free 15 GB: quotas or a paid tier on the hosted instance.
 - No Docs/Drive/Meet; we integrate with other tools instead of rebuilding them.
+
+## Known gaps we accept (sharing)
+- Delegates send “on behalf of”, never as the owner: Stalwart 1.0.3 refuses another account's envelope sender. Their Sent copy and Undo stay in their own mailbox.
+- **Stalwart accepts any From header** on mail a signed-in user submits (only the envelope must be theirs). So the “may send on my behalf” switch is enforced by our app, not the server, and anyone on the server could already forge a From of a colleague. Fix belongs in Stalwart (or a DATA-stage check) before public sign-up; tracked with the Gate 1 abuse items.
+- Team comments are keyed by conversation id and their author is the From address (members could forge it); search inside a team mailbox can find them.
 
 ## Biggest risks
 1. **Deliverability.** Unproven until Phase 1 runs on a real server. That is the next milestone that needs the owner (a server).
