@@ -277,6 +277,41 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     expect(subs.some((x) => x.from.email === 'carol@example.org')).toBe(false); // people aren't subscriptions
   });
 
+  it('address book: create, update, list and delete a contact', async () => {
+    const c = await login();
+    const id = await c.saveContact({ given: 'Priya', surname: 'Raman', emails: ['priya@example.org'], phones: ['+44 20 7946 0000'], org: 'Example Ltd', note: 'Offsite organiser' });
+    await c.saveContact({ id, given: 'Priya', surname: 'Raman', emails: ['priya@example.org', 'p.raman@work.example'], phones: [], org: 'Example Ltd', note: '' });
+    const p = (await c.addressBook()).find((x) => x.id === id)!;
+    expect(p).toMatchObject({ given: 'Priya', surname: 'Raman', emails: ['priya@example.org', 'p.raman@work.example'], phones: [], org: 'Example Ltd' });
+    await c.deleteContact(id);
+    expect((await c.addressBook()).some((x) => x.id === id)).toBe(false);
+  });
+
+  it('delete-all-from-sender matches the exact address only and never touches Sent', async () => {
+    const c = await login();
+    const boxes = await c.mailboxes();
+    const inbox = boxes.find((b) => b.role === 'inbox')!.id;
+    const stamp = Date.now();
+    const imp = async (from: string, subject: string, mailbox = inbox) => {
+      const raw = `From: ${from}\r\nTo: alice@openmail.test\r\nSubject: ${subject}\r\nMessage-ID: <${subject}@t>\r\n\r\nx\r\n`;
+      const blob = await c.upload(Object.assign(new Blob([raw], { type: 'message/rfc822' }), { name: 'm.eml' }));
+      const [r] = await c.call([['Email/import', { accountId: c.accountId, emails: { e: { blobId: blob.blobId, mailboxIds: { [mailbox]: true } } } }, 'i']]);
+      return r.created.e.id as string;
+    };
+    const target = await imp('Shop <shop@x.example>', `exact-${stamp}`);
+    const lookalike = await imp('Evil <shop@x.example.evil.net>', `lookalike-${stamp}`);
+    const named = await imp('"shop@x.example" <someone@else.example>', `named-${stamp}`);
+    expect(await c.trashFrom('shop@x.example', boxes)).toBe(1);
+    const trash = boxes.find((b) => b.role === 'trash')!.id;
+    const [g] = await c.call([['Email/get', { accountId: c.accountId, ids: [target, lookalike, named], properties: ['mailboxIds'] }, 'g']]);
+    const where = Object.fromEntries((g.list as { id: string; mailboxIds: Record<string, boolean> }[]).map((e) => [e.id, Object.keys(e.mailboxIds)]));
+    expect(where[target]).toEqual([trash]);
+    expect(where[lookalike]).toEqual([inbox]);
+    expect(where[named]).toEqual([inbox]);
+    await expect(c.trashFrom('not an address', boxes)).rejects.toThrow('valid sender');
+    await c.call([['Email/set', { accountId: c.accountId, destroy: [target, lookalike, named] }, 'd']]);
+  });
+
   it('suggests contacts, people I write to first, never me', async () => {
     const c = await login();
     const people = (await c.contacts()).map((a) => a.email);

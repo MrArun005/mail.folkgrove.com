@@ -2,7 +2,7 @@
 import { SCRIPT_NAME, UPDATES } from './rules';
 
 
-const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve'];
+const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve', 'urn:ietf:params:jmap:contacts'];
 export const UNDO_SECONDS = 10;
 
 export interface Mailbox { id: string; name: string; role: string | null; unreadEmails: number; sortOrder: number }
@@ -35,6 +35,8 @@ export class JmapError extends Error {}
 
 export const TEMPLATES = 'Templates';
 export interface Subscription { from: Address; count: number; lastAt: string; unsubscribe: { urls: string[]; oneClick: boolean } }
+/** A contact in the address book (a simplified JSContact card, RFC 9553). */
+export interface Contact { id?: string; given: string; surname: string; emails: string[]; phones: string[]; org: string; note: string }
 export interface Template { id: string; subject: string; html: string; attachments: Attachment[] }
 
 const clean = (a: Address) => (a.name ? { name: a.name, email: a.email } : { email: a.email });
@@ -384,12 +386,25 @@ export class Jmap {
     return [...by.values()].sort((a, b) => b.count - a.count || b.lastAt.localeCompare(a.lastAt));
   }
 
-  /** Move every message from a sender to Deleted Items. Returns how many. */
+  /**
+   * Move every message from exactly this sender to Deleted Items. Returns how many.
+   * JMAP's `from` filter is a text match (it would also catch "bob@x.com.evil" or a display name containing the
+   * address), so each hit is re-checked against the exact address. Sent and Drafts are never touched.
+   */
   async trashFrom(email: string, boxes: Mailbox[]): Promise<number> {
+    const target = email.trim().toLowerCase();
+    if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(target)) throw new JmapError('That isn’t a valid sender address');
     const trash = boxes.find((b) => b.role === 'trash')?.id;
     if (!trash) throw new JmapError('The trash folder is missing');
-    const [q] = await this.call([['Email/query', { accountId: this.accountId, filter: { from: email }, limit: 1000 }, 'q']]);
-    const ids: string[] = q.ids;
+    const keep = new Set(boxes.filter((b) => b.role === 'sent' || b.role === 'drafts').map((b) => b.id));
+    const [, r] = await this.call([
+      ['Email/query', { accountId: this.accountId, filter: { from: target }, limit: 1000 }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: ['from', 'mailboxIds'] }, 'g'],
+    ]);
+    const ids = (r.list as { id: string; from: Address[] | null; mailboxIds: Record<string, boolean> }[])
+      .filter((e) => e.from?.some((a) => a.email.toLowerCase() === target))
+      .filter((e) => !Object.keys(e.mailboxIds).some((id) => keep.has(id)))
+      .map((e) => e.id);
     if (ids.length) await this.call([['Email/set', { accountId: this.accountId,
       update: Object.fromEntries(ids.map((id) => [id, { mailboxIds: { [trash]: true } }])) }, 's']]);
     return ids.length;
@@ -490,6 +505,46 @@ export class Jmap {
       } } }, 'm'],
     ]);
   }
+
+  // ── Address book (JMAP Contacts, RFC 9610) ─────────────
+
+  async addressBook(): Promise<Contact[]> {
+    const [, r] = await this.call([
+      ['ContactCard/query', { accountId: this.accountId }, 'q'],
+      ['ContactCard/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'ContactCard/query', path: '/ids' } }, 'g'],
+    ]);
+    const part = (c: any, kind: string) => c.name?.components?.find((x: { kind: string }) => x.kind === kind)?.value ?? '';
+    return (r.list as any[]).map((c) => ({
+      id: c.id,
+      given: part(c, 'given') || (c.name?.full ?? ''), surname: part(c, 'surname'),
+      emails: Object.values(c.emails ?? {}).map((e: any) => e.address).filter(Boolean),
+      phones: Object.values(c.phones ?? {}).map((p: any) => p.number).filter(Boolean),
+      org: (Object.values(c.organizations ?? {})[0] as any)?.name ?? '',
+      note: (Object.values(c.notes ?? {})[0] as any)?.note ?? '',
+    })).sort((a, b) => `${a.given} ${a.surname}`.localeCompare(`${b.given} ${b.surname}`));
+  }
+
+  async saveContact(c: Contact): Promise<string> {
+    const card = {
+      '@type': 'Card', version: '1.0',
+      name: { components: [{ kind: 'given', value: c.given.trim() }, ...(c.surname.trim() ? [{ kind: 'surname', value: c.surname.trim() }] : [])], isOrdered: true },
+      emails: Object.fromEntries(c.emails.filter(Boolean).map((e, i) => [`e${i}`, { address: e.trim() }])),
+      phones: Object.fromEntries(c.phones.filter(Boolean).map((p, i) => [`p${i}`, { number: p.trim() }])),
+      organizations: c.org.trim() ? { o0: { name: c.org.trim() } } : {},
+      notes: c.note.trim() ? { n0: { note: c.note.trim() } } : {},
+    };
+    if (c.id) {
+      await this.call([['ContactCard/set', { accountId: this.accountId, update: { [c.id]: card } }, 's']]);
+      return c.id;
+    }
+    const [books] = await this.call([['AddressBook/get', { accountId: this.accountId, properties: ['isDefault'] }, 'b']]);
+    const book = (books.list as { id: string; isDefault: boolean }[]).find((b) => b.isDefault) ?? books.list[0];
+    if (!book) throw new JmapError('This account has no address book');
+    const [r] = await this.call([['ContactCard/set', { accountId: this.accountId, create: { c: { ...card, addressBookIds: { [book.id]: true } } } }, 's']]);
+    return r.created.c.id;
+  }
+
+  async deleteContact(id: string) { await this.call([['ContactCard/set', { accountId: this.accountId, destroy: [id] }, 'd']]); }
 
   /**
    * People you correspond with, most frequent first, for recipient autocomplete.
