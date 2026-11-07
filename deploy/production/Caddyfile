@@ -37,7 +37,7 @@
 	# limits work. Run the signup container with CLIENT_IP_HEADER=x-real-ip.
 	# /api/events is left out on purpose: only Stalwart posts to it, on the internal network.
 	# /api/files and /f/*: large-file links (upload, and the public download page).
-	@signup path /api/signup /api/username-available /api/aliases /api/aliases/* /api/session/* /api/account /api/admin/* /api/domains /api/domains/* /api/sending /api/sending/* /api/blocked /api/files /api/files/* /f/* /api/principal
+	@signup path /api/signup /api/username-available /api/aliases /api/aliases/* /api/session/* /api/account /api/admin/* /api/domains /api/domains/* /api/sending /api/sending/* /api/blocked /api/files /api/files/* /f/* /api/principal /.well-known/openpgpkey/*
 	handle @signup {
 		reverse_proxy signup:3000 {
 			header_up X-Real-IP {remote_host}
@@ -48,6 +48,16 @@
 	handle {
 		reverse_proxy stalwart:8080
 	}
+}
+
+# Web Key Directory (advanced method): other mail apps find our users' OpenPGP keys here. DNS: CNAME openpgpkey → mail host.
+openpgpkey.{$MAIL_DOMAIN} {
+	handle /.well-known/openpgpkey/* {
+		reverse_proxy signup:3000 {
+			header_up X-Real-IP {remote_host}
+		}
+	}
+	respond 404
 }
 
 # Discovery hosts from Stalwart's suggested DNS zone (all CNAMEs to the mail host).

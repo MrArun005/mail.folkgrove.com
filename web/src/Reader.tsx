@@ -10,6 +10,7 @@ import { buildSrcdoc } from './safeHtml';
 import { span, type CalEvent } from './calendar';
 import type { PartStat } from './ics';
 import { Menu, TimeChoices } from './Menu';
+import { isCryptoPart, SecureBanner, useSecureMail } from './Encryption';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
 export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task';
@@ -95,7 +96,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
       <h1 className="subject">{last.subject?.replace(/^((re|fwd?|aw|sv)\s*:\s*)+/i, '') || '(no subject)'}</h1>
 
       {messages.map((m) => open.has(m.id)
-        ? <Message key={m.id} client={client} m={m} me={me} onUnsubscribe={onUnsubscribe} onRsvp={onRsvp} onReceipt={onReceipt} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
+        ? <Message key={m.id} client={client} m={m} me={me} inJunk={inJunk} onUnsubscribe={onUnsubscribe} onRsvp={onRsvp} onReceipt={onReceipt} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
         : (
           <button key={m.id} className="folded" onClick={() => setOpen((s) => new Set(s).add(m.id))}>
             <span className="who">{displayName(m.from?.[0], me)}</span>
@@ -116,8 +117,8 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   );
 }
 
-function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
-  client: Jmap; m: EmailFull; me: string; onFold?: () => void; onUnsubscribe: (m: EmailFull) => void;
+function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onReceipt }: {
+  client: Jmap; m: EmailFull; me: string; inJunk: boolean; onFold?: () => void; onUnsubscribe: (m: EmailFull) => void;
   onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void>;
   onReceipt: (m: EmailFull, send: boolean) => void;
 }) {
@@ -126,8 +127,12 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
   const [preview, setPreview] = useState<Attachment | null>(null);
   const [assist, setAssist] = useState<{ kind: 'translation' | 'summary'; text: string; note: string } | null>(null);
   const [assisting, setAssisting] = useState('');
+  // Encrypted mail is opened here, on this device; what's shown is the decrypted message.
+  // Encrypted or signed: show exactly the part that was decrypted / checked, never the server's own parse of it.
+  const secure = useSecureMail(client, m, me, inJunk);
+  const shown = secure.state?.mail ?? m;
   // Prefer the sender's plain-text part; from HTML, only what a reader can actually see (see visibleText).
-  const plain = (m.text || (m.html ? visibleText(m.html) : '')).trim();
+  const plain = (shown.text || (shown.html ? visibleText(shown.html) : '')).trim();
   async function help(kind: 'translation' | 'summary') {
     setAssisting(kind === 'translation' ? 'Translating on this device…' : 'Summarising on this device…');
     try {
@@ -147,10 +152,10 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
       .then((pairs) => live && setInline(Object.fromEntries(pairs)), () => {});
     return () => { live = false; };
   }, [embedded]);
-  const html = useMemo(() => (m.html ? buildSrcdoc(m.html, showImages, inline) : null), [m, showImages, inline]);
-  const files = m.attachments.filter((a) => !embedded.includes(a));
+  const html = useMemo(() => (shown.html ? buildSrcdoc(shown.html, showImages, { ...inline, ...secure.state?.inline }) : null), [shown.html, showImages, inline, secure.state]);
+  const files = secure.state?.mail ? [] /* SecureBanner lists the checked files */ : m.attachments.filter((a) => !embedded.includes(a) && !(secure.kind && isCryptoPart(a)));
   // Large files sent as download links (signup/files.mjs) look like attachments too.
-  const links = useMemo(() => fileLinks(`${m.html ?? ''} ${m.text ?? ''}`, location.origin), [m]);
+  const links = useMemo(() => fileLinks(`${shown.html ?? ''} ${shown.text ?? ''}`, location.origin), [shown.html, shown.text]);
   const sender = m.from?.[0];
   return (
     <section className="message">
@@ -181,6 +186,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
         </div>
       )}
       <Invitation client={client} m={m} onRsvp={onRsvp} />
+      <SecureBanner me={me} m={m} {...secure} />
       {m.receiptTo?.length && !m.keywords.$mdnsent && m.from?.[0]?.email.toLowerCase() !== me.toLowerCase() ? (
         <p className="banner banner--info">
           <Icon name="receipt" size={16} />
@@ -207,7 +213,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
         </>
       ) : html
         ? <MessageFrame title={`Message from ${displayName(sender)}`} srcdoc={html.srcdoc} />
-        : <div className="letter">{m.text}</div>}
+        : <div className="letter">{shown.text}</div>}
       {files.length + links.length > 0 && (
         <ul className="chips" aria-label="Attachments">
           {files.map((a) => (

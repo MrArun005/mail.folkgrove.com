@@ -12,7 +12,7 @@ interface Ask {
   confirm?: string;      // button label; omitted for a plain notice (alert)
   cancel?: string | false;
   danger?: boolean;      // destructive: the confirm button is red
-  input?: { label: string; value?: string; placeholder?: string };
+  input?: { label: string; value?: string; placeholder?: string; secret?: boolean };
   choose?: { label: string; value: string; options: [value: string, label: string][] };
   resolve: (v: string | boolean) => void;
 }
@@ -26,9 +26,10 @@ const open = (a: Omit<Ask, 'resolve'>) => new Promise<string | boolean>((resolve
 export const confirmIt = (a: { title: string; body?: string; confirm: string; danger?: boolean }) =>
   open(a).then((v) => v === true);
 /** Resolves with the trimmed text, or null when cancelled or left empty. */
-export const promptIt = (a: { title: string; body?: string; label: string; value?: string; placeholder?: string; confirm: string }) =>
-  open({ title: a.title, body: a.body, confirm: a.confirm, input: { label: a.label, value: a.value, placeholder: a.placeholder } })
-    .then((v) => (typeof v === 'string' && v.trim() ? v.trim() : null));
+/** secret: a password field, and the text is returned as typed (a passphrase's spaces matter). */
+export const promptIt = (a: { title: string; body?: string; label: string; value?: string; placeholder?: string; confirm: string; secret?: boolean }) =>
+  open({ title: a.title, body: a.body, confirm: a.confirm, input: { label: a.label, value: a.value, placeholder: a.placeholder, secret: a.secret } })
+    .then((v) => (typeof v === 'string' && v.trim() ? (a.secret ? v : v.trim()) : null));
 /** Resolves with the chosen option's value, or null when cancelled. */
 export const chooseIt = (a: { title: string; body?: string; label: string; value: string; options: [string, string][]; confirm: string }) =>
   open({ title: a.title, body: a.body, confirm: a.confirm, choose: { label: a.label, value: a.value, options: a.options } })
@@ -57,7 +58,7 @@ export function DialogHost() {
         {ask.body && <p id="dlg-body">{ask.body}</p>}
         {ask.input && (
           <label>{ask.input.label}
-            <input className="input" autoFocus value={value} placeholder={ask.input.placeholder} onChange={(e) => setValue(e.target.value)} />
+            <input className="input" autoFocus type={ask.input.secret ? 'password' : 'text'} autoComplete={ask.input.secret ? 'current-password' : undefined} value={value} placeholder={ask.input.placeholder} onChange={(e) => setValue(e.target.value)} />
           </label>
         )}
         {ask.choose && (

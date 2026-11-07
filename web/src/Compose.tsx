@@ -7,6 +7,7 @@ import { cleanHtml, fileLinkHtml, fileSize, formatAddresses, htmlToText, parseAd
 import { RecipientInput } from './RecipientInput';
 import { canRewrite, rewrite, type RewriteStyle } from './ai';
 import { Menu, TimeChoices } from './Menu';
+import { ensureUnlocked, useRecipientKeys } from './Encryption';
 
 export interface ComposeApi {
   upload: (f: File) => Promise<Attachment>;
@@ -49,6 +50,10 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
   const [files, setFiles] = useState<Attachment[]>(initial.attachments);
   const [receipt, setReceipt] = useState(!!initial.receipt);
   const [followUp, setFollowUp] = useState<number | undefined>(initial.followUpDays);
+  const [encrypt, setEncrypt] = useState(!!initial.encrypt);
+  // ponytail: your key is kept under the account's main address (identities[0]), which is its sign-in name.
+  const me = identities[0]?.email ?? '';
+  const keys = useRecipientKeys([to, showCc ? cc : '', showBcc ? bcc : ''], me);
   const [uploading, setUploading] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState('');
@@ -130,7 +135,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
     return {
       ...initial, id: draftId.current, subject: subject.trim(), html, text: htmlToText(html), attachments, receipt,
       to: parseAddresses(to).list, cc: parseAddresses(showCc ? cc : '').list, bcc: parseAddresses(showBcc ? bcc : '').list,
-      from: from || undefined, followUpDays: followUp,
+      from: from || undefined, followUpDays: followUp, encrypt: encrypt || undefined,
     };
   };
 
@@ -198,6 +203,10 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
     if (bad.length) return setError(`Check ${bad.length > 1 ? 'these addresses' : 'this address'}: ${bad.join(', ')}`);
     if (!t.list.length && !c.list.length && !b.list.length) return setError('Add at least one recipient');
     if (uploading) return setError('Wait for attachments to finish uploading');
+    if (encrypt) {
+      if (!keys.ready) return setError(keys.checking ? 'Still looking up encryption keys. Try again in a moment.' : `No usable encryption key for ${keys.missing.join(', ')} (none found, or it changed: see Settings → Security). Remove them or turn off encryption.`);
+      if (!(await ensureUnlocked(me))) return;
+    }
     const text = htmlToText(editor.current!.innerHTML);
     if (!files.length && /\battach(ed|ment|ing)\b/i.test(text.split('\n> ')[0]) && !(await confirmIt({ title: 'Forgot the attachment?', body: 'You mention an attachment, but nothing is attached.', confirm: 'Send anyway' }))) return;
     if (!subject.trim() && !(await confirmIt({ title: 'Send without a subject?', body: 'Messages with a subject are easier to find and less likely to look like spam.', confirm: 'Send anyway' }))) return;
@@ -289,7 +298,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
 
       <footer>
         <span className="split">
-          <Button variant="primary" onClick={() => send()} title={`Send (${mod}Enter)`}>Send</Button>
+          <Button variant="primary" onClick={() => send()} title={`Send (${mod}Enter)`}>{encrypt ? 'Send encrypted' : 'Send'}</Button>
           <Menu label="Schedule send" up button={<Button variant="primary" icon="clock" label="Schedule send" />}>
             {(close) => <><p className="menu-title">Schedule send</p><TimeChoices verb="Schedule" close={close} onPick={(d) => send(d)} /></>}
           </Menu>
@@ -305,6 +314,9 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
           <Button variant="quiet" icon="clip" label="Attach files" onClick={() => fileInput.current?.click()} />
           <Button variant="quiet" icon="receipt" label={receipt ? 'Read receipt requested (click to cancel)' : 'Request a read receipt'} pressed={receipt}
             onClick={() => { setReceipt(!receipt); changed(); }} />
+          {keys.mine && <Button variant="quiet" icon="lock" pressed={encrypt} disabled={!encrypt && !keys.ready}
+            label={encrypt ? 'Encrypted end to end (click to turn off)' : keys.ready ? 'Encrypt end to end' : keys.missing.length ? `Can’t encrypt: no usable key for ${keys.missing.join(', ')}` : 'Encrypt end to end (looking up keys…)'}
+            onClick={() => { setEncrypt(!encrypt); changed(); }} />}
           <Menu label="Templates" up align="right" button={<Button variant="quiet" icon="templates" label="Templates" />}>
             {(close) => <TemplatesMenu api={api} close={close}
               onInsert={(t) => {

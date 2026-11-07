@@ -504,7 +504,7 @@ fi
 # The iOS, Android and desktop apps (apps/) open this same address and sign in on it, so this one redirect covers them.
 clients=$(api '[["x:OAuthClient/get",{"ids":null,"properties":["clientId"]},"c"]]')
 client_id=$(jget "next((c['id'] for c in r[0][1]['list'] if c['clientId'] == 'openmail-web'), None)" <<<"$clients")
-oauth="\"redirectUris\":{$(jstr "$PUBLIC_URL/"):true},\"scopes\":{\"mail\":true,\"contacts\":true,\"calendars\":true,\"security\":true},\"description\":\"Webmail\""
+oauth="\"redirectUris\":{$(jstr "$PUBLIC_URL/"):true},\"scopes\":{\"mail\":true,\"contacts\":true,\"calendars\":true,\"security\":true,\"settings\":true},\"description\":\"Webmail\""
 if [ -n "$client_id" ]; then
   api "[[\"x:OAuthClient/set\",{\"update\":{$(jstr "$client_id"):{$oauth}}},\"c\"]]" >/dev/null
 else

@@ -201,6 +201,9 @@ DOMAIN=openmail.test ADMIN_FILE=../deploy/.dev-admin.json SIGNUP=off ADMINS=alic
 ```
 
 The test `test/hold.test.mjs` sets up its own hook (for its throwaway sender only) and removes it afterwards.
+### `GET /.well-known/openpgpkey/…` (Web Key Directory)
+
+Serves users' OpenPGP public keys (the ones they uploaded in Settings → Security, Stalwart `x:PublicKey`) so other mail apps can encrypt to them: `/.well-known/openpgpkey/hu/<hash>?l=<local>` (direct) and `/.well-known/openpgpkey/<domain>/hu/<hash>?l=<local>` (advanced, on `openpgpkey.<domain>`), plus an empty `policy`. Binary key, `Access-Control-Allow-Origin: *`, 60 lookups a minute per network. Only keys made out to the address asked about; requests without `?l=` get 404.
 
 ### `GET /healthz`
 

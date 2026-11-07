@@ -5,6 +5,7 @@ import { Button } from './Button';
 import { Jmap, type AppPassword } from './jmap';
 import { stepUp } from './oauth';
 import { newSecret, otpauthUrl, verifyTotp } from './totp';
+import { EncryptionSection } from './Encryption';
 
 /**
  * Settings → Security. Nothing here works with the everyday session: "Manage security" asks for the password
@@ -39,7 +40,7 @@ export function SecuritySection({ username }: { username: string }) {
     <section onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }}>
       <h3>Security</h3>
       {!sec ? <>
-        <p className="fine">Two-factor sign-in, app passwords and your password. You’ll be asked for your password again to change these.</p>
+        <p className="fine">Two-factor sign-in, app passwords, your password and encryption. You’ll be asked for your password again to change these.</p>
         {!asking
           ? <Button size="sm" icon="shield" className="start" onClick={() => setAsking(true)}>Manage security</Button>
           : <div className="row2">
@@ -51,6 +52,7 @@ export function SecuritySection({ username }: { username: string }) {
         <TwoFactor sec={sec} on={state.twoFactor} username={username} onChange={reload} />
         <AppPasswords sec={sec} list={state.appPasswords} onChange={reload} />
         <ChangePassword sec={sec} />
+        <EncryptionSection sec={sec} username={username} />
       </>}
       {error && <p className="error" role="alert">{error}</p>}
     </section>
