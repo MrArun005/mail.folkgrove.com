@@ -35,6 +35,7 @@ export function configFromEnv(env = process.env) {
     checksPerMinute: Number(env.CHECKS_PER_MINUTE || 30),
     clientIpHeader: env.CLIENT_IP_HEADER?.toLowerCase() || null, // e.g. cf-connecting-ip behind Cloudflare
     maxAliases: Number(env.MAX_ALIASES || 200),
+    maxAliasesTotal: Number(env.MAX_ALIASES_TOTAL || 1000), // lifetime, retired included
     aliasesPerHour: Number(env.ALIASES_PER_HOUR || 30),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
   };

@@ -2,98 +2,67 @@
 
 **Goal:** an open-source email platform that works like Gmail or Zoho Mail, or better. Anyone can self-host it or use a public hosted instance.
 
-**Core decision:** Stalwart is the mail engine. We build what users touch: the web client, a one-command installer, signup, and the hosted instance.
+**Core decision:** Stalwart is the mail engine. We build what users touch: the web client, a one-command installer, a small account service, and the hosted instance.
+
+**Feature status lives in [PARITY.md](PARITY.md) only.** This file holds the architecture, the decisions behind it, the phases with their gates, and the risks. Last reviewed: 2026-11-07 (after an EGM design review: [docs/reviews/egm-2026-11-07.md](docs/reviews/egm-2026-11-07.md)).
 
 ```
-Browser (local-first web app / PWA)
-   │  JMAP over HTTPS
-   ▼
-Stalwart ── SMTP ──► internet        IMAP for Thunderbird/phones, CalDAV/CardDAV
-   │
-Storage (RocksDB; later Postgres + S3)
-Signup service ──► Stalwart management API   (hosted instance only)
+Browser (web app / PWA) ── JMAP over HTTPS ──► Stalwart ── SMTP ──► internet
+        │                                         │        IMAP, CalDAV/CardDAV for other apps
+        └── /api/aliases, /api/signup ──► Account service (signup/) ── admin API ──► Stalwart
+                                                  │
+                         Self-host: RocksDB (default) · Hosted: PostgreSQL + S3 from day one
 ```
 
-## Phase 0: Foundation ✅
-- [x] Repo, AGPL-3.0 license
-- [x] Local Stalwart via docker-compose + one-command bootstrap (`deploy/dev-setup.mjs`)
-- [x] Web client scaffold: login, folders, message list, safe reader, read state, local cache
-- [x] CI (GitHub Actions): type-check, tests against a real Stalwart, build, signup tests
-- [x] CONTRIBUTING.md, SECURITY.md, issue and PR templates
+## Decisions
 
-## Phase 1: Real mail on a real domain
-- [ ] VPS with outbound port 25 open; domain; reverse DNS (PTR)
-- [ ] MX, SPF, DKIM, DMARC, MTA-STS, TLS-RPT, autoconfig records
-- [ ] TLS via ACME (Let's Encrypt)
-- [ ] 10/10 on mail-tester.com; mail lands in the Gmail and Outlook **inbox**
+| Decision | Why | Revisit when |
+|---|---|---|
+| **Account service** (`signup/`) is the only backend we run. It holds the admin credentials and does what users can't do themselves: masked addresses (everyone) and public sign-up (hosted only, `SIGNUP=on`). It talks to Stalwart on the internal network and accepts users' sign-in tokens, never passwords. | Adding an address to an account needs admin rights. One small service is easier to secure than many. | Stalwart offers a scoped admin role we can use instead of full admin. |
+| **Masked addresses are ordinary account aliases**, capped at 200 per account and 30 new per hour. | Stalwart's own masked-email feature is Enterprise-only. Aliases are open source and work in every mail app. | Users need more than 200. |
+| **No address recycling, ever.** Deleting a masked address retires it (kept, switched off); usernames can't be reused. | A recycled address receives the old owner's password resets. Stalwart refuses any account or alias that clashes with an existing one. | Never. |
+| **Hosted instance runs on PostgreSQL + S3 from its first user.** Self-hosters keep RocksDB (simpler). There is no supported RocksDB → PostgreSQL migration. | Moving stores later means migrating every mailbox ([scale.md](docs/research/scale.md) §1). | — |
+| **Per-user settings live in the Sieve script** (filters, vacation, signatures, saved searches, Screener allow list), saved with `ifInState` and re-applied on conflict. | Synced to every device with no extra storage. Ceiling: ~1,500 Screener senders before the script size limit. | The ceiling is reached: move the allow list to the address book. |
+| **Sessions are per tab**: access token in memory, refresh token in sessionStorage, revoked at sign-out. | A stolen refresh token stays short-lived. Cost: a new tab or browser restart asks to sign in again. | We add "keep me signed in" (an httpOnly cookie via the account service). |
+| **Sending limits** apply to webmail (JMAP) and mail apps (SMTP) alike, as one per-account counter of outside **recipients** per day (verified on the dev server, 2026-11-07). 500 recipients per message for signed-in senders, 100 on port 25. | One limit, one place; can't be dodged by switching apps. | Before public sign-up: add new-account tiers (scale.md §10.2). |
 
-## Phase 2: Tier 1 parity (needed at launch)
-- [x] Folders, unread counts, message list, read/unread
-- [x] Safe HTML rendering, remote images blocked by default
-- [x] Conversation threading (thread view)
-- [x] Archive, delete, spam / not spam, mark unread; Gmail-style keyboard shortcuts
-- [x] Star + Starred view
-- [ ] Labels, multi-select, command palette
-- [x] Compose: reply, reply all, forward with quoting and correct threading headers (plain text)
-- [x] Compose: rich text (bold, italic, links, lists, quote), safe paste, attachments (button, drag-drop, paste), "forgot attachment?" check
-- [x] Drafts: autosave every few seconds, resume from Drafts, discard
-- [ ] Signatures, multiple identities; keep inline images when forwarding
-- [x] Undo send (delayed submission)
-- [x] Full-text search across all mail
-- [ ] Search operators (`from:`, `to:`, `has:attachment`, `before:`/`after:`)
-- [ ] Live updates via JMAP push (replace 30-second polling); needs token auth first
-- [ ] Auth: OAuth/token sign-in, 2FA, passkeys (replace Basic auth)
-- [ ] Filters/rules (Sieve), vacation responder, spam / not-spam buttons that train the filter
-- [x] Recipient autocomplete from people you email
-- [ ] Address book (JMAP contacts)
-- [x] Inline (`cid:`) images and attachment download
-- [ ] Attachment preview (images, PDF)
-- [ ] Phone-friendly layout and installable app (PWA)
-- [ ] Import from Gmail or Zoho (IMAP)
+## Phases and gates
 
-- [x] Design pass: tokens, self-hosted fonts, dark mode, phone layout, keyboard focus, reduced motion
-- [x] Stay signed in across reloads (sessionStorage; replaced by token auth)
+**Gate 1 (before any public sign-up):** Phase 1 passes and Phase 4's abuse items are done. Feature work may continue in parallel; **public users wait for this gate.**
 
-## Phase 2.5: Tier 2
-- [ ] Snooze, schedule send (Stalwart supports FUTURERELEASE), follow-up reminders
-- [ ] Inbox tabs: Primary / Updates / Promotions
-- [ ] Calendar; show and RSVP to invites inside emails
-- [ ] Templates, multiple accounts, full offline mode (IndexedDB + `Email/changes` sync)
-- [ ] Custom domains for hosted users
+### Phase 0: Foundation ✅
+Repo, AGPL-3.0, local Stalwart + one-command bootstrap, web client, CI against a real Stalwart, contributor docs.
 
-## Where we aim to be better than Gmail and Zoho
-- [ ] Instant UI: local-first cache, optimistic updates (started)
-- [x] Tracker blocking by default (remote images)
-- [ ] "This email tried to track you" indicator; strip tracking parameters from links
-- [ ] Unlimited masked aliases, each can be turned off on its own
-- [ ] One-click unsubscribe plus a subscriptions manager
-- [ ] Optional end-to-end encryption (OpenPGP.js)
-- [ ] Optional AI (summaries, smart reply): bring your own provider or a local model, off by default
+### Phase 1: Real mail on a real domain (not started: needs a server)
+- [ ] VPS with outbound port 25 open; domain; reverse DNS (PTR). Plan: `lab.folkgrove.com`.
+- [ ] MX, SPF, DKIM, DMARC (p=none → quarantine → reject), MTA-STS, TLS-RPT, autoconfig (`install.sh` prints them; `check-dns.sh` verifies)
+- [ ] 10/10 on mail-tester.com; inbox placement at Gmail, Outlook and Yahoo recorded **in this repo** (screenshots + Postmaster Tools)
+- [ ] Register Google Postmaster Tools, Microsoft SNDS/JMRP, Yahoo CFL (feedback loops)
 
-## Phase 3: One-command self-hosting
-- [x] `install.sh`: asks for a domain, starts the stack, bootstraps, prints DNS records; `check-dns.sh` verifies them ([docs/self-hosting.md](docs/self-hosting.md))
-- [x] Production compose: Caddy HTTPS + same-origin web client, TLS on all mail ports, optional outbound relay
-- [x] Backups (encrypted with age, restore tested) and upgrade guide
-- [x] Self-hosting guide (docs/self-hosting.md); full docs site later
+### Phases 2 / 2.5: Parity with Zoho, then Gmail
+Tracked row by row in [PARITY.md](PARITY.md).
 
-## Phase 4: Public hosted instance
-- [x] Signup service: invite codes, per-IP limits, reserved names, quotas, optional Turnstile ([signup/README.md](signup/README.md))
-- [x] Signup form in the web client (live username check)
+### Phase 3: One-command self-hosting ✅
+`install.sh`, production compose (Caddy + Stalwart + account service), backups (age-encrypted, restore tested), [self-hosting guide](docs/self-hosting.md).
+
+### Phase 4: Public hosted instance (blocked by Gate 1)
+- [x] Sign-up: invite codes, per-IP limits, reserved names, quotas, optional Turnstile
+- [ ] Hosted stack on PostgreSQL + S3 (reuse `deploy/scale/`), with PostgreSQL backups (pg_dump + WAL archiving)
 - [ ] Email verification step
-- [ ] Abuse controls: new-account sending limits, outbound spam scanning, abuse@ mailbox, blocklist monitoring, fast suspension
-- [ ] Quotas; paid tier to fund storage
-- [ ] Terms of service, privacy policy, GDPR export/delete, law-enforcement request process
-- [ ] Monitoring and alerting
+- [ ] Abuse controls (each with numbers in [scale.md](docs/research/scale.md) §10): new-account sending tiers, outbound spam held for review, forwarding limits (one confirmed forwarding address per account), abuse@ mailbox, complaint/bounce-rate suspension (e.g. > 0.3% complaints over 7 days with ≥ 200 sends)
+- [ ] Monitoring: Prometheus + Alertmanager. Alerts: queue age > 30 min, delivery failures > 5% per provider for 15 min, back-pressure rising 5 min
+- [ ] Terms, privacy policy, GDPR export/delete, law-enforcement request process
+- Expected volume: invite-only, under 100k messages a day at launch. Scale stages 2–3 in scale.md are reference, not commitments.
 
-## Phase 5: Later
-- [ ] Shared team inboxes, notes and tasks, native mobile apps
+### Phase 5: Later
+Shared team inboxes, notes and tasks, native mobile apps.
 
 ## Known gaps we accept
-- Spam filtering won't equal Gmail's on day one: rspamd plus per-user learning plus blocklists.
+- Spam filtering won't equal Gmail's on day one: Stalwart's filter plus per-user learning plus blocklists.
 - No free 15 GB: quotas or a paid tier on the hosted instance.
 - No Docs/Drive/Meet; we integrate with other tools instead of rebuilding them.
 
 ## Biggest risks
-1. **Deliverability.** Prove it in Phase 1 before investing further.
-2. **Abuse on the public instance.** Launch invite-only.
-3. **Scope creep.** Finish Phase 2 before anything else.
+1. **Deliverability.** Unproven until Phase 1 runs on a real server. That is the next milestone that needs the owner (a server).
+2. **Abuse on the public instance.** Gate 1 above; invite-only at first.
+3. **Scope creep.** New PARITY rows only for what users ask for or what Gmail/Zoho users expect.

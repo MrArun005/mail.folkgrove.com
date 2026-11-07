@@ -26,16 +26,26 @@ misaligned, every action where the hand expects it. These rules are binding for 
    - `quiet` — no chrome until hover; toolbars, row actions, close buttons.
    - `link` — inline text action inside a sentence (Load images, Undo, Unsubscribe).
    Shape: buttons are pills; icon-only buttons are circles. No square buttons.
-7. **Spacing comes from the scale.** 4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 (`--s1`…`--s10`). No other values.
+   Destructive confirmations: `variant="primary"` plus `className="btn--danger"` (red), only in dialogs.
+   **Allowed native `<button>`s** (they are list items, not buttons): message-list rows (`.open`), rail items
+   (`.nav-item`), menu rows (`.menu-item`), tabs (`.tab`), attachment chips (`.chip`), folded messages (`.folded`)
+   and calendar events/cells. Anything that reads as an action button uses `<Button>`.
+7. **Spacing comes from the scale.** 4 · 8 · 12 · 16 · 20 · 24 · 32 · 40: `--s1 --s2 --s3 --s4 --s5 --s6 --s8 --s10`.
+   Exceptions: 2px gaps inside dense lists and 6px icon-to-label gaps (optical, not layout).
 8. **Radius has three steps.** `--r-sm` 6px for inputs and chips, `--r-md` 10px for cards and menus, `--r-lg` 14px
    for sheets and dialogs, plus `--r-full` for pills and circles.
-9. **Type has five sizes.** 12 meta · 13 secondary · 14 body UI · 17 reading · 24/30 headings. Weights 400/500/600/700.
-10. **States are always visible.** Hover, focus (2px accent ring), pressed, selected, disabled. Focus is never removed.
-11. **Motion answers the user.** Sheets rise, toasts slide in; nothing animates on its own. Three named easings
+9. **Type has six sizes** (`--t-xs` 12 meta · `--t-sm` 13 secondary · `--t-md` 14 body UI · `--t-read` 17 reading ·
+   `--t-h2` 24 · `--t-h1` 30 headings), plus 15 for large buttons and pane titles, 20 for dialog titles and 23 for
+   the wordmark. Weights 400/500/600/700.
+10. **Contrast and reach.** Text meets WCAG AA (4.5:1; 3:1 for large text and icons) in light *and* dark. On
+    phones, tap targets are at least 36px (`md`); `sm` controls are for pointer layouts only. HTML email always
+    renders on `--white` (senders design for white), in both themes.
+11. **States are always visible.** Hover, focus (2px accent ring), pressed, selected, disabled. Focus is never removed.
+12. **Motion answers the user.** Sheets rise, toasts slide in; nothing animates on its own. Three named easings
     (`--ease-out`, `--ease-in`, `--ease-in-out`) and `--dur`; never bounce. Respect reduced motion.
-12. **No browser dialogs.** `confirm()`, `prompt()` and `alert()` are banned: use `confirmIt` / `promptIt` / `notify`
+13. **No browser dialogs.** `confirm()`, `prompt()` and `alert()` are banned: use `confirmIt` / `promptIt` / `notify`
     from `src/Dialog.tsx`. Destructive confirmations use the red primary and say what is lost.
-13. **Words are plain.** Buttons say what happens ("Save settings", not "Submit"). Errors say what went wrong and how
+14. **Words are plain.** Buttons say what happens ("Save settings", not "Submit"). Errors say what went wrong and how
     to fix it. Empty states invite the next action.
 
 ## Tokens

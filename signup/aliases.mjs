@@ -80,6 +80,9 @@ export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       if (wait) return fail(res, 429, 'rate_limited', 'You’ve made a lot of addresses recently. Try again in a little while.', { retryAfter: wait }), true;
       const body = await readJson(req).catch(() => ({})); // label is optional
       const current = await aliasesOf(id);
+      // Retired addresses stay on the account forever, so they count toward a lifetime ceiling too (create-then-delete
+      // can't grow the list without end). Raise MAX_ALIASES_TOTAL per account if a real user ever needs more.
+      if (Object.keys(current).length >= (cfg.maxAliasesTotal ?? 1000)) return fail(res, 409, 'too_many_total', 'This account has used all of its addresses. Contact support to raise the limit.'), true;
       if (Object.values(current).filter(live).length >= (cfg.maxAliases ?? 200)) return fail(res, 409, 'too_many', 'You’ve reached the limit for addresses. Delete ones you no longer use.'), true;
       // Writing any new key appends to Stalwart's list. A name clash is very rare and Stalwart refuses duplicates: retry.
       return serial(id, async () => {

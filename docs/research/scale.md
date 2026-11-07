@@ -288,7 +288,9 @@ The laptop numbers measure **acceptance** (SMTP, spam filter, queue write and lo
 ## 12. What I could not verify
 
 - **Real internet delivery throughput** (outbound msgs/s to Gmail, Outlook and Yahoo). It's estimated from thread count and latency. Running it needs real IPs, PTR records and warm-up.
-- Whether JMAP `EmailSubmission` has **any** recipient cap above 150, and whether **inbound throttles keyed on `authenticatedAs` count JMAP submissions** (web client), or only SMTP AUTH sessions. Test both before relying on the per-account cap for webmail users.
+- ~~Whether throttles keyed on `authenticatedAs` count JMAP submissions~~ **Verified 2026-11-07:** they do. With a test cap of 3/day, SMTP AUTH accepted 3 outside recipients and refused the rest with 452; a following JMAP `EmailSubmission` to 5 outside recipients got `452 4.4.5 Rate limit exceeded` for all 5. One shared counter across webmail and mail apps, counting **recipients** (each RCPT TO), not messages. (signup/README's "counts each MAIL FROM" was wrong.)
+- Whether JMAP `EmailSubmission` has a per-message recipient cap: `x:MtaStageRcpt.maxRecipients` doesn't apply to it (150 accepted). The daily recipient cap above does apply, so volume is bounded either way.
+- Whether Sieve `redirect` (filter forwarding) counts against the per-account cap. Untested: treat forwarding as uncapped until tested; PLAN.md Phase 4 limits it to one confirmed forwarding address per account.
 - Whether a custom `key_exists('<list>', authenticated_as)` lookup list works in throttle `match` expressions (the pattern exists for `spam-block`).
 - How Stalwart splits a single 150-recipient delivery when a remote MX accepts only N recipients per transaction (I expect per-recipient temporary failures followed by retries, but didn't test it).
 - Whether Stalwart reuses one SMTP connection for several messages to the same MX. This affects the Little's-law estimate.

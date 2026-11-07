@@ -3,10 +3,10 @@
 An open-source email platform you can self-host or sign up for. The goal is everything people expect from Gmail and Zoho Mail, plus being faster, private by default, and owned by its users.
 
 - **Mail engine:** [Stalwart](https://stalw.art), which provides SMTP, IMAP, JMAP, spam filtering, DKIM and CalDAV/CardDAV. We don't write a mail server.
-- **Web client (this repo, `web/`):** a JMAP-native, local-first web app. It talks to Stalwart directly, so there's no backend of our own.
+- **Web client (this repo, `web/`):** a JMAP-native web app. It talks to Stalwart directly. The only service of our own is a small account service (`signup/`) for the few admin-only actions: masked addresses and, on a hosted instance, sign-up.
 - **License:** AGPL-3.0
 
-Status: **pre-release.** Reading, writing, search, filters, snooze, scheduled send, privacy protections and self-hosting work; OAuth sign-in, calendar and contacts are next. See [PARITY.md](PARITY.md) and [PLAN.md](PLAN.md).
+Status: **pre-release.** Mail, calendar, contacts, filters, the Screener, masked addresses, import from Gmail and self-hosting work; delivery from a real server is not proven yet (PLAN.md, Phase 1). Feature status: [PARITY.md](PARITY.md). Plan and decisions: [PLAN.md](PLAN.md).
 
 ## Run it locally (about 2 minutes)
 
@@ -43,7 +43,7 @@ Email HTML is untrusted. Each message renders in a sandboxed `<iframe>` with no 
 
 ## Contributing
 
-Pick an unchecked item in [PLAN.md](PLAN.md), open an issue saying you're on it, and send a PR. Keep changes small; prefer platform features over new dependencies.
+Pick a ⬜ or 🟡 row in [PARITY.md](PARITY.md), open an issue saying you're on it, and send a PR. Keep changes small; prefer platform features over new dependencies.
 
 ## Self-hosting
 

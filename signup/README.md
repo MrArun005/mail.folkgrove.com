@@ -106,7 +106,7 @@ This endpoint checks account names only. An alias that collides is caught at sig
 
 Stalwart v1.0.3 has **no per-account sending-rate setting**. Account `quotas` covers storage and object counts only. `maxSubmissions` limits how many JMAP EmailSubmission objects an account can store; it is not a rate. Sending is limited with **server-wide throttles** instead:
 
-- **Inbound/submission throttle per authenticated user** (`x:MtaInboundThrottle`, key `authenticatedAs`). It counts `MAIL FROM` per account and answers `452 4.4.5` when the limit is exceeded. It applies to every account, not only new ones. A suggested starting point for the public instance:
+- **Inbound/submission throttle per authenticated user** (`x:MtaInboundThrottle`, key `authenticatedAs`). It counts **recipients** (each `RCPT TO`) per account, for webmail (JMAP) and mail apps (SMTP) alike, and answers `452 4.4.5` when the limit is exceeded (verified 2026-11-07). It applies to every account, not only new ones. A suggested starting point for the public instance:
 
   ```json
   ["x:MtaInboundThrottle/set", {"create": {"t": {
