@@ -65,6 +65,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const toastTimer = useRef<number>(0);
   const lastClicked = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const goPending = useRef(false);
 
   const inbox = boxes.find((b) => b.role === 'inbox')?.id ?? null;
   /** Cache key for a list: the Inbox has one per category tab. */
@@ -541,11 +542,20 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       if (compose || overlay || e.metaKey || e.ctrlKey || e.altKey || t.closest('input, textarea, [contenteditable], [role=menu]')) return;
       const ids = list?.map((x) => x.threadId) ?? [];
       const i = threadId ? ids.indexOf(threadId) : -1;
+      // Gmail-style "g then a letter" to jump between places.
+      if (goPending.current) {
+        goPending.current = false;
+        const role = { i: 'inbox', t: 'sent', d: 'drafts' }[e.key];
+        const to = role ? boxes.find((b) => b.role === role)?.id : { s: STARRED, c: CONTACTS, k: CALENDAR }[e.key];
+        if (to) { e.preventDefault(); openFolder(to); }
+        return;
+      }
+      if (e.key === 'g') { goPending.current = true; setTimeout(() => { goPending.current = false; }, 1500); return; }
       const keys: Record<string, () => void> = {
         j: () => ids.length && openThread(ids[Math.min(i + 1, ids.length - 1)]),
         k: () => ids.length && openThread(ids[Math.max(i - 1, 0)]),
         x: () => threadId && toggleSelect(threadId, false),
-        m: () => act('mute'), e: () => act('archive'), '#': () => act('trash'), '!': () => act('junk'), u: () => act('unread'), s: () => act('star'),
+        m: () => act('mute'), e: () => act('archive'), ']': () => act('archive'), z: () => toast?.undo?.(), '#': () => act('trash'), '!': () => act('junk'), u: () => act('unread'), s: () => act('star'),
         I: () => act('read'), U: () => act('unread'),
         r: () => last && reply('reply', last), a: () => last && reply('replyAll', last), f: () => last && reply('forward', last),
         c: newMessage, '/': () => searchRef.current?.focus(), '?': () => setOverlay('help'),
@@ -562,6 +572,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
   const heading = query ? `Results for “${query}”` : navItems.find((b) => b.id === current)?.name ?? 'Inbox';
   const inScreener = !role && currentBox?.name === SCREENER;
+  /** Folders you made (labels): shown as chips on rows that are also filed there. */
+  const userFolders = useMemo(() => new Map(boxes.filter((b) => !b.role && b.name !== SCREENER).map((b) => [b.id, b.name])), [boxes]);
   const emptyText = query ? `No messages match “${query}”. Try from:, subject: or has:attachment.`
     : role === 'inbox' ? 'You’re all caught up.'
     : role === STARRED ? 'Star a conversation to keep it here. Press s while reading.'
@@ -697,7 +709,9 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
                     <span className="from">{role === 'sent' || role === 'drafts'
                       ? `To ${e.to?.map((a) => displayName(a)).join(', ') || '(no recipients)'}` : displayName(e.from?.[0], client.username)}</span>
                     <time dateTime={e.receivedAt}>{e.keywords.$flagged && <span className="starmark" aria-label="Starred"><Icon name="star" size={13} filled /></span>}{shortDate(e.receivedAt)}</time>
-                    <span className="subject">{e.keywords.$nudge && role === 'inbox' && <span className="pill pill--warn">No reply yet</span>}{e.subject || '(no subject)'}{e.hasAttachment && <Icon name="clip" size={14} />}</span>
+                    <span className="subject">{e.keywords.$nudge && role === 'inbox' && <span className="pill pill--warn">No reply yet</span>}
+                      {Object.keys(e.mailboxIds ?? {}).filter((id) => id !== current && userFolders.has(id)).slice(0, 2).map((id) => <span key={id} className="pill">{userFolders.get(id)}</span>)}
+                      {e.subject || '(no subject)'}{e.hasAttachment && <Icon name="clip" size={14} />}</span>
                     <span className="preview">{e.preview}</span>
                   </button>
                   {inScreener && !selected.size && e.from?.[0] && (
@@ -767,7 +781,9 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
             <dl>
               {[['c', 'Compose'], ['/', 'Search'], ['⌘K', 'Find any action'], ['j / k', 'Next / previous'], ['x', 'Select'], ['r', 'Reply'],
                 ['a', 'Reply all'], ['f', 'Forward'], ['e', 'Archive'], ['#', 'Delete'], ['!', 'Report spam'], ['s', 'Star'],
-                ['u', 'Mark unread'], ['Shift+I', 'Mark read'], ['⌘/Ctrl Enter', 'Send'], ['Esc', 'Close or clear']]
+                ['u', 'Mark unread'], ['Shift+I', 'Mark read'], ['m', 'Mute'], [']', 'Archive, open next'], ['z', 'Undo'],
+                ['g then i', 'Go to Inbox'], ['g then s', 'Go to Starred'], ['g then t', 'Go to Sent'], ['g then d', 'Go to Drafts'],
+                ['g then c', 'Go to Contacts'], ['g then k', 'Go to Calendar'], ['⌘/Ctrl Enter', 'Send'], ['Esc', 'Close or clear']]
                 .map(([k, v]) => <div key={k}><dt><kbd>{k}</kbd></dt><dd>{v}</dd></div>)}
             </dl>
             <p className="fine">Search tips: <code>from:priya</code> <code>has:attachment</code> <code>is:unread</code> <code>in:archive</code> <code>after:2026-10-01</code></p>

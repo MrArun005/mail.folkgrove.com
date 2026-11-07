@@ -184,8 +184,9 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
   );
 }
 
-// Images (as <img>: an SVG can't run scripts there), PDFs (the browser's viewer) and plain text open in place.
-const previewKind = (a: Attachment) => /^image\/(png|jpe?g|gif|webp|avif|bmp|svg\+xml)$/i.test(a.type) ? 'image'
+// Raster images, PDFs (the browser's viewer) and plain text open in place. Never SVG: its blob: URL would be
+// same-origin, and "open image in new tab" would run its scripts as this app. SVGs download like any file.
+const previewKind = (a: Attachment) => /^image\/(png|jpe?g|gif|webp|avif|bmp)$/i.test(a.type) ? 'image'
   : /^application\/pdf$/i.test(a.type) ? 'pdf' : /^text\/(plain|csv)$/i.test(a.type) && a.size < 1_000_000 ? 'text' : null;
 
 function Preview({ client, a, onClose }: { client: Jmap; a: Attachment; onClose: () => void }) {

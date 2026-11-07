@@ -19,6 +19,7 @@ export interface Attachment { blobId: string; name: string | null; type: string;
 export interface EmailSummary {
   id: string; threadId: string; subject: string | null; from: Address[] | null; to: Address[] | null;
   preview: string; receivedAt: string; keywords: Record<string, boolean>; hasAttachment: boolean;
+  mailboxIds?: Record<string, boolean>;
 }
 export interface EmailFull extends EmailSummary {
   cc: Address[] | null; bcc: Address[] | null; replyTo: Address[] | null;
@@ -71,7 +72,7 @@ export interface Template { id: string; subject: string; html: string; attachmen
 const clean = (a: Address) => (a.name ? { name: a.name, email: a.email } : { email: a.email });
 const pathOnly = (url: string) => url.replace(/^https?:\/\/[^/]+/, ''); // keep {placeholders} intact
 
-const SUMMARY = ['threadId', 'subject', 'from', 'to', 'preview', 'receivedAt', 'keywords', 'hasAttachment'];
+const SUMMARY = ['threadId', 'subject', 'from', 'to', 'preview', 'receivedAt', 'keywords', 'hasAttachment', 'mailboxIds'];
 const FULL = [...SUMMARY, 'blobId', 'cc', 'bcc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
   'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses'];
 
