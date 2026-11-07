@@ -841,3 +841,15 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 /* Sending suspended (Sending.tsx) */
 .banner--warn { background: color-mix(in srgb, var(--star) 18%, transparent); color: var(--ink); }
 .banner--warn .grow { flex-basis: 100%; } /* the action goes under the explanation */
+
+/* A long account address shrinks (ellipsis) instead of pushing the footer icons out of the rail. */
+.me .menu > * { min-width: 0; max-width: 100%; }
+.me .menu .btn { overflow: hidden; }
+
+/* Settings on phones: folder rows (Share, rename, delete…) and display choices wrap instead of scrolling sideways. */
+@media (max-width: 860px) {
+  .rule-list li { flex-wrap: wrap; padding-block: var(--s1); }
+  .rule-list .row-btns { flex-wrap: wrap; }
+  .pref-row { flex-wrap: wrap; }
+  .pref-row .segmented { max-width: 100%; overflow-x: auto; }
+}

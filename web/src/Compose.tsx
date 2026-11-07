@@ -3,7 +3,7 @@ import { chooseIt, confirmIt, promptIt } from './Dialog';
 import type { Address, Attachment, Draft, SharedFile, Template } from './jmap';
 import { Button } from './Button';
 import { Icon, type IconName } from './icons';
-import { cleanHtml, fileLinkHtml, fileSize, formatAddresses, htmlToText, parseAddresses, signatureHtml, type Signature } from './mailutil';
+import { cleanHtml, fileLinkHtml, fileLinks, fileSize, formatAddresses, htmlToText, parseAddresses, signatureHtml, type Signature } from './mailutil';
 import { RecipientInput } from './RecipientInput';
 import { canRewrite, rewrite, type RewriteStyle } from './ai';
 import { Menu, TimeChoices } from './Menu';
@@ -208,7 +208,8 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
       if (!(await ensureUnlocked(me))) return;
     }
     const text = htmlToText(editor.current!.innerHTML);
-    if (!files.length && /\battach(ed|ment|ing)\b/i.test(text.split('\n> ')[0]) && !(await confirmIt({ title: 'Forgot the attachment?', body: 'You mention an attachment, but nothing is attached.', confirm: 'Send anyway' }))) return;
+    // A large file sent as a download link counts as attached.
+    if (!files.length && !fileLinks(editor.current!.innerHTML, location.origin).length && /\battach(ed|ment|ing)\b/i.test(text.split('\n> ')[0]) && !(await confirmIt({ title: 'Forgot the attachment?', body: 'You mention an attachment, but nothing is attached.', confirm: 'Send anyway' }))) return;
     if (!subject.trim() && !(await confirmIt({ title: 'Send without a subject?', body: 'Messages with a subject are easier to find and less likely to look like spam.', confirm: 'Send anyway' }))) return;
     await saving.current;
     onSend(snapshot(), sendAt);
