@@ -299,6 +299,10 @@ if [ "${MONITORING:-0}" = 1 ]; then
   fi
 fi
 
+# Outgoing spam hold (signup/hold.mjs): the secret Stalwart's hook sends to the account service. Created once,
+# before the stack starts, so the signup container reads it (.hold.env, root only).
+[ -s .hold.env ] || (umask 077; printf 'HOLD_HOOK_SECRET=%s\n' "$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > .hold.env)
+
 # ---------------------------------------------------------------------------------------------
 # .env (secrets: 600). Every value is single-quoted, which both bash and Compose read literally.
 # Hosted mode: COMPOSE_FILE adds hosted/docker-compose.yml to every `docker compose` run here, and the
@@ -462,6 +466,21 @@ if ! api '[["x:MtaInboundThrottle/get",{"ids":null,"properties":["description"]}
   api '[["x:MtaInboundThrottle/set",{"create":{"t":{"description":"Per-account daily recipient cap","enable":true,"key":{"authenticatedAs":true},
     "match":{"match":{},"else":"!is_empty(authenticated_as) && !is_local_domain(rcpt_domain)"},"rate":{"count":2000,"period":86400000}}}},"t"]]' >/dev/null
 fi
+
+# Outgoing spam held for review (signup/hold.mjs): every message a signed-in user sends goes past the account
+# service first (an MTA hook at DATA); likely spam is refused with "held for review" and kept for an admin.
+# Released mail goes back in as the admin login, so that one login may send with any sender address.
+# If the account service is down, sending waits (temporary failure) rather than going out unchecked.
+admin_login=${ADMIN_AUTH%%:*}
+[[ $admin_login =~ ^[A-Za-z0-9@._-]+$ ]] || die "Unexpected admin login name in .admin-credentials: $admin_login"
+hold_secret=$(sed -n 's/^HOLD_HOOK_SECRET=//p' .hold.env)
+hook="\"url\":\"http://signup:3000/internal/outbound-hook\",\"stages\":{\"data\":true},\"timeout\":30000,\"tempFailOnError\":true,
+  \"enable\":{\"match\":{},\"else\":\"!is_empty(authenticated_as)\"},
+  \"httpAuth\":{\"@type\":\"Bearer\",\"bearerToken\":{\"@type\":\"Value\",\"secret\":$(jstr "$hold_secret")}}"
+hook_id=$(api '[["x:MtaHook/get",{"ids":null,"properties":["url"]},"h"]]' | jget "next((h['id'] for h in r[0][1]['list'] if h['url'].endswith('/internal/outbound-hook')), None)")
+if [ -n "$hook_id" ]; then api "[[\"x:MtaHook/set\",{\"update\":{$(jstr "$hook_id"):{$hook}}},\"h\"]]" >/dev/null
+else api "[[\"x:MtaHook/set\",{\"create\":{\"h\":{$hook}}},\"h\"]]" >/dev/null; fi
+api "[[\"x:MtaStageAuth/set\",{\"update\":{\"singleton\":{\"mustMatchSender\":{\"match\":{\"0\":{\"if\":\"authenticated_as == '$admin_login'\",\"then\":\"false\"}},\"else\":\"true\"}}}},\"a\"]]" >/dev/null
 
 # Login abuse: Stalwart bans an IP after 100 failed sign-ins a day, by default forever. Forever locks out whole offices or
 # schools behind one shared IP (one phone with an old password is enough); an hour still stops password guessing.

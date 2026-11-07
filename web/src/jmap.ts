@@ -873,14 +873,17 @@ export class Jmap {
   async deleteTemplate(id: string) { await this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
 
   /** Newsletters you receive (anything with List-Unsubscribe in recent mail), grouped by sender, busiest first. */
-  async subscriptions(limit = 500): Promise<Subscription[]> {
-    const [, r] = await this.call([
-      ['Email/query', { accountId: this.accountId, sort: [{ property: 'receivedAt', isAscending: false }], limit }, 'q'],
-      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' },
-        properties: ['from', 'receivedAt', 'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText'] }, 'g'],
-    ]);
+  // ponytail: the newest 2,000 messages; a sender who last wrote before that is missing. Stalwart 1.0.3 can't filter by
+  // List-Unsubscribe header, so a full scan would need paging.
+  async subscriptions(pages = 4): Promise<Subscription[]> {
+    // 500 per page: Stalwart's maxObjectsInGet. All pages go in one request (query + get per page).
+    const res = await this.call(Array.from({ length: pages }, (_, i) => [
+      ['Email/query', { accountId: this.accountId, sort: [{ property: 'receivedAt', isAscending: false }], position: i * 500, limit: 500 }, `q${i}`],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: `q${i}`, name: 'Email/query', path: '/ids' },
+        properties: ['from', 'receivedAt', 'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText'] }, `g${i}`],
+    ] as [string, object, string][]).flat());
     const by = new Map<string, Subscription>();
-    for (const e of r.list as any[]) {
+    for (const e of res.filter((_, i) => i % 2).flatMap((r) => r.list) as any[]) {
       const urls: string[] | null = e['header:List-Unsubscribe:asURLs'];
       const from: Address | undefined = e.from?.[0];
       if (!urls?.length || !from) continue;

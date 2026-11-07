@@ -9,5 +9,6 @@ deploy/production/signup-data/
 retired-names.txt
 *.age
 deploy/production/.system-mail.env
+deploy/production/.hold.env
 deploy/production/.metrics-password
 .claude/

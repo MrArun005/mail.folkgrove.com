@@ -83,6 +83,7 @@ services:
       STATE_FILE: /data/state.json  # sending suspensions and last sign-in per account (abuse.mjs)
       EVENTS_URL: http://signup:3000/api/events  # Stalwart posts sign-ins, refusals and bounces here (internal only)
       INACTIVE_MONTHS: ${INACTIVE_MONTHS:-}  # inactive-account reminders; empty = 12 with SIGNUP=on, else off
+      HOLD_DIR: /data/held   # outgoing mail held as likely spam, waiting for an admin (signup/hold.mjs)
       RETENTION_FILE: /data/retention.json   # retention rules (signup/retention.mjs)
       # Single sign-on (install.sh --oidc-*); empty = off.
       OIDC_ISSUER: ${OIDC_ISSUER:-}
@@ -94,6 +95,8 @@ services:
       PUBLIC_URL: ${PUBLIC_URL}
     env_file:
       - path: ./.system-mail.env   # system sender for sign-up codes (install.sh creates it)
+        required: false
+      - path: ./.hold.env          # HOLD_HOOK_SECRET: Stalwart's outgoing-spam hook (install.sh creates it)
         required: false
     volumes:
       - ./.admin-credentials:/run/secrets/admin:ro

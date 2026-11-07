@@ -97,7 +97,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Admin console (users, groups, aliases, policies) | ✅ | 🟡 | Ours at `/admin` (`ADMINS`): users, blocked IPs, new-account limits, outgoing queue, users' domains, suspended and inactive accounts, team mailboxes (groups and members). Policies, audit log: Stalwart's admin UI (`/admin/`) |
 | SSO (OpenID Connect) | ✅ | 🟡 | `install.sh --oidc-issuer`: Google Workspace, Microsoft Entra, Okta, Keycloak; accounts made on first sign-in, own domains only, verified addresses only, optional tenant lock. Webmail only (the OpenMail console is off: admin names are refused via SSO), server-wide (no IMAP/SMTP for SSO users; per-domain is Stalwart Enterprise). SAML ⬜ |
 | Retention policies, legal hold | ✅ | 🟡 | Console → Retention: Trash/Junk auto-empty (Stalwart), delete-older-than per server or account with a dry-run count first, users' own Trash/Junk setting, legal hold (blocks every delete). Hold doesn't stop Stalwart's server-wide Trash auto-empty. eDiscovery ⬜ |
-| Public sign-up with abuse controls | n/a | ✅ | Invites, rate limits, quotas (signup/) |
+| Public sign-up with abuse controls | n/a | ✅ | Invites, rate limits, quotas (signup/); outgoing spam held for admin review, repeat senders paused |
 | Automatic sending block on abuse, self-service unblock | ✅ | ✅ | Repeated throttle refusals or a bounce spike suspend sending (reading still works); a banner explains it and lifts it once, a second time within 7 days needs an admin (signup/abuse.mjs) |
 | Inactive-account reminders | ✅ | 🟡 | Daily job emails reminders 60/30/7 days before 12 months without sign-in and lists due accounts for an admin; blocking is the admin's click, not automatic |
 

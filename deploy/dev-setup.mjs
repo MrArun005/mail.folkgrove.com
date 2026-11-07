@@ -74,6 +74,19 @@ const admin = JSON.parse(readFileSync(SECRET_FILE, 'utf8'));
 await jmap(admin, [['x:MtaStageRcpt/set', { update: { singleton: { maxRecipients: { match: {
   0: { if: "key_exists('new-accounts', authenticated_as)", then: '50' }, 1: { if: '!is_empty(authenticated_as)', then: '500' } }, else: '100' } } } }, 'r']]);
 
+// Outgoing spam held for review (signup/hold.mjs), as install.sh sets it up: an MTA hook to the account service on
+// this machine (port 3000; run it with HOLD_HOOK_SECRET=dev-hold-secret, see signup/README.md), and the admin login
+// may send as anyone so released mail can go back out. Dev only: if the service isn't running, mail goes out unchecked.
+{
+  const hook = { url: 'http://host.docker.internal:3000/internal/outbound-hook', stages: { data: true }, timeout: 30000, tempFailOnError: false,
+    enable: { match: {}, else: '!is_empty(authenticated_as)' }, httpAuth: { '@type': 'Bearer', bearerToken: { '@type': 'Value', secret: 'dev-hold-secret' } } };
+  const [[, hooks]] = await jmap(admin, [['x:MtaHook/get', { ids: null, properties: ['url'] }, 'h']]);
+  const id = hooks.list.find((h) => h.url.endsWith('/internal/outbound-hook'))?.id;
+  await jmap(admin, [['x:MtaHook/set', id ? { update: { [id]: hook } } : { create: { h: hook } }, 'h'],
+    ['x:MtaStageAuth/set', { update: { singleton: { mustMatchSender: { match: { 0: { if: `authenticated_as == '${admin.user}'`, then: 'false' } }, else: 'true' } } } }, 'a'],
+    ['x:Action/set', { create: { r: { '@type': 'ReloadSettings' } } }, 'r']]);
+}
+
 // Dev only: the test suite deliberately fails sign-ins (wrong passwords, 2FA codes). Don't let that ban this machine.
 await jmap(admin, [['x:Security/set', { update: { singleton: { authBanRate: { count: 100000, period: 86400000 } } } }, 's']]);
 

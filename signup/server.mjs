@@ -15,6 +15,7 @@ import { sharingRoutes } from './sharing.mjs';
 import { fileRoutes } from './files.mjs';
 import { domainRoutes } from './domains.mjs';
 import { abuseRoutes } from './abuse.mjs';
+import { holdRoutes } from './hold.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
@@ -88,6 +89,12 @@ export function configFromEnv(env = process.env) {
     abuseLimitHits: Number(env.ABUSE_LIMIT_HITS || 10), // throttle refusals per hour before sending is suspended
     abuseBounces: Number(env.ABUSE_BOUNCES || 20), // hard bounces per hour before sending is suspended
     inactiveMonths: env.INACTIVE_MONTHS ? Number(env.INACTIVE_MONTHS) : signupEnabled ? 12 : 0, // 0 = off
+    // Outgoing spam held for review (hold.mjs): on when HOLD_HOOK_SECRET is set (install.sh sets it and the hook).
+    hold: env.HOLD_HOOK_SECRET ? {
+      secret: env.HOLD_HOOK_SECRET, dir: env.HOLD_DIR || null, score: Number(env.HOLD_SCORE || 5), suspendAfter: Number(env.HOLD_SUSPEND_AFTER || 3),
+      // Released mail goes back in by SMTP submission as the admin login, like system mail.
+      smtp: { host: env.SYSTEM_SMTP_HOST || 'stalwart', port: Number(env.SYSTEM_SMTP_PORT || 465), servername: env.SYSTEM_SMTP_TLS_NAME || undefined, insecure: env.SYSTEM_SMTP_INSECURE === 'true' },
+    } : null,
   };
 }
 
@@ -300,7 +307,8 @@ export function createApp(cfg) {
   const retentionStore = policyStore(cfg.retentionFile);
   const files = fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const abuse = abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
-  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, abuse, ipOf: (req) => ipKey(clientIp(req)), retention: retentionStore });
+  const hold = holdRoutes({ cfg, jmap, getDomainId, send, fail, readJson, abuse });
+  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, abuse, hold, ipOf: (req) => ipKey(clientIp(req)), retention: retentionStore });
   const domains = cfg.customDomains === false ? null : domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   // Re-check every claimed domain's TXT record every 6 hours (a missing one pauses the domain after 7 days).
   if (domains) setInterval(() => domains.recheckAll().catch((e) => console.error('domains:', e.message)), 6 * 3600e3).unref();
@@ -334,6 +342,8 @@ export function createApp(cfg) {
       if (/^\/api\/(events|blocked|sending)/.test(url.pathname) && await abuse(req, res, url)) return;
       if (url.pathname === '/api/retention' && await retention(req, res, url)) return;
       if (sso && url.pathname.startsWith('/api/sso') && await sso.handle(req, res, url)) return;
+      // Called by Stalwart only (not under /api/, so the proxy never forwards it), with the hook secret.
+      if (url.pathname === '/internal/outbound-hook' && req.method === 'POST' && hold) return await hold.hook(req, res);
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);
