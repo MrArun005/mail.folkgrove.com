@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import { callerOf } from './aliases.mjs';
 import { retireNames } from './account.mjs';
+import { forgetFiles } from './files.mjs';
 import { checkUsername } from './lib.mjs';
 
 const NEW = 'new-accounts'; // x:MemoryLookupKey namespace for the stricter sending tier (key = full address)
@@ -142,6 +143,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       if (id === who.id) return [400, 'self', 'You can’t delete your own account.'];
       await retireNames({ cfg, jmap }, id, a.name); // no recycling: the name and its aliases stay taken
       await set('x:Account', { destroy: [id] });
+      forgetFiles(cfg, id); // its shared files went with it; so do their links
       const stale = (await newTier()).filter((k) => k.key.toLowerCase() === String(a.emailAddress).toLowerCase()).map((k) => k.id);
       if (stale.length) await set('x:MemoryLookupKey', { destroy: stale });
       return {};

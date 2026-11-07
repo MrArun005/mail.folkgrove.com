@@ -40,7 +40,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Signatures | ✅ (many) | ✅ | Named signatures synced on the server; separate defaults for new messages and replies; switch or remove per message |
 | Send-as / aliases | ✅ | ✅ | From menu for every address you own; replies come from the address the mail was sent to |
 | Templates | ✅ | ✅ | Synced to every device; insert, save, delete from compose |
-| Large file links (WorkDrive) | ✅ | ⬜ | Phase 5: integrate, don't rebuild |
+| Large file links (WorkDrive) | ✅ | ✅ | Files over 25 MB go to your own storage (counts toward your quota) as a link that expires in 7 or 30 days, or never; always downloaded, never opened in the browser; downloads counted and links revocable in Settings → Shared files; recipients on OpenMail see it like an attachment |
 | Spell check | ✅ | ✅ | Browser's own, in the user's languages |
 | AI writing (Zia) | ✅ | ✅ | More formal / more casual / shorter, on this device; one ⌘Z undoes it |
 

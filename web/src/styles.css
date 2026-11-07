@@ -306,6 +306,9 @@ button.chip:hover { background: var(--hover); border-color: var(--muted); }
 .chip .fsize { color: var(--muted); white-space: nowrap; }
 .chip .btn { margin-right: calc(-1 * var(--s2)); color: var(--muted); }
 .chip.pending { color: var(--muted); border-style: dashed; }
+a.chip { text-decoration: none; }
+a.chip:hover { background: var(--hover); border-color: var(--muted); }
+.chip .flink { color: var(--accent); font-weight: 500; white-space: nowrap; }
 
 /* ═══ Compose sheet ════════════════════════════════════ */
 .compose {
@@ -764,6 +767,7 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   :root:not([data-pane="split"]) .app.reading .reader { border-radius: var(--r-lg); }
   :root:not([data-pane="split"]) .app.reading .only-mobile { display: inline-flex; margin-left: calc((18px - var(--h-md)) / 2); }
   :root:not([data-pane="split"]) .app.reading .toolbar > .only-mobile + * { margin-left: 0; }
+}
 /* ═══ Admin console (/admin) ═══════════════════════════ */
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .admin { min-height: 100%; padding: var(--s4) var(--s8) var(--s10); background: var(--paper); }
@@ -802,3 +806,6 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   .admin-table .acts { display: flex; flex-wrap: wrap; gap: var(--s1); white-space: normal; padding-top: var(--s1); }
   .admin-table .acts .btn--sm { height: var(--h-md); } /* tap targets on phones (DESIGN §10) */
 }
+
+/* Settings → Shared files: name and details wrap on narrow screens instead of hiding the expiry. */
+.files-list li > .grow { white-space: normal; overflow-wrap: anywhere; padding: var(--s2) 0; }

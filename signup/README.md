@@ -27,6 +27,10 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `CLIENT_IP_HEADER` | | Header that carries the real client IP when the service runs behind a proxy, for example `cf-connecting-ip` or `x-real-ip`. Set this **only** if the proxy overwrites that header, because otherwise clients can spoof it. If unset, the socket address is used. |
 | `ADMINS` | | Usernames on `DOMAIN` (comma-separated, e.g. `ann,raj`) who may use the admin console at `/admin`. Empty: the console is off and `/api/admin/*` answers 404. See [Admin console](#admin-console-apiadmin). |
 | `RESERVED_NAMES` | | Extra reserved usernames, comma-separated. They are added to the built-in list in `lib.mjs`. |
+| `FILES_DB` | | JSON file with the large-file links (`/api/files`). Set it in production (`docker-compose.yml` does); without it links last until restart. The files themselves live in each user's own storage in Stalwart. |
+| `MAX_FILE_BYTES` | `2147483648` (2 GiB) | Biggest file one link can hold. |
+| `FILES_QUOTA_BYTES` | `5368709120` (5 GiB) | All of one user's live links together. Their Stalwart storage quota applies as well. |
+| `FILES_PER_HOUR`, `DOWNLOADS_PER_HOUR` | `20`, `200` | Uploads per user, and downloads per client IP (IPv6: per /64), per hour. |
 | `RETIRED_FILE` | | File (one name per line) where the names of deleted accounts and their aliases are kept, so they are never given out again. Stalwart itself frees them on delete. Set it in production (`docker-compose.yml` does); without it the list lasts until restart. |
 
 Docker:
@@ -99,6 +103,21 @@ This endpoint checks account names only. An alias that collides is caught at sig
 ### `DELETE /api/account`
 
 Deletes the caller's own account and all its mail, contacts and calendars. Needs the caller's sign-in token (`Authorization: Bearer …`; passwords are refused as on `/api/aliases`) and a JSON body `{ "password": "…", "code": "123456", "confirm": "jane.doe@DOMAIN" }`: the current password (`code` only with two-factor sign-in on; checked through Stalwart's sign-in API, so an app password doesn't count) and the full address typed as confirmation. Before the account is destroyed, its username and every alias go into `RETIRED_FILE`, so sign-up and masked-address generation never hand them out again. Errors: `401 unauthorized`, `400 confirm_mismatch` / `password_required` / `code_required`, `403 wrong_password` (5 per account per hour, then `429`), `503 unavailable` (nothing removed).
+### Large-file links: `/api/files` and `/f/:id`
+
+Compose offers this for a file that would take the message over 25 MB (most mail servers refuse bigger messages). The file goes into the sender's **own** Stalwart file storage (JMAP FileNode, top-level folder "Shared files", created when first needed), so it counts toward their storage quota and is deleted with their account. The message carries a link `https://HOST/f/<id>#n=<name>&s=<bytes>`; the part after `#` never reaches a server and lets OpenMail's reader show the link as a file chip.
+
+| Request | What it does |
+|---|---|
+| `POST /api/files?name=<file name>&expires=7\|30\|0` | Body: the raw file, `Content-Length` required (`411` without). `expires` in days, `0` = never (default 30). Streams straight to Stalwart (`/jmap/upload/<account>/` with admin rights, then `FileNode/set`). `201 {ok, file: {id, url: "/f/<id>", name, size, created, expires, downloads}}` (`expires`: ms, or `null`). Errors: `400 bad_expiry`, `413 too_large` (`MAX_FILE_BYTES`), `413 quota` (`FILES_QUOTA_BYTES`), `413 over_quota` (their Stalwart storage is full), `429 rate_limited` (`FILES_PER_HOUR`), `503 unavailable`. |
+| `GET /api/files` | The caller's live links, newest first. Links whose file the owner deleted from their storage (e.g. over WebDAV) are dropped here. |
+| `DELETE /api/files/:id` | Revoke: the link answers 404 from now on and the file is deleted from their storage. Only the owner can (`404` for anyone else). |
+| `GET /f/:id` (also `HEAD`) | **Public**, no sign-in. The file as `application/octet-stream`, `Content-Disposition: attachment`, `nosniff`, `CSP: default-src 'none'; sandbox`, `Cache-Control: private, no-store`: never rendered as a page. Counts a download. `404` (plain text) when unknown, expired, revoked or gone; `429` past `DOWNLOADS_PER_HOUR` per network. |
+
+`/api/files` uses the same token check and per-network failed-sign-in limit as `/api/aliases`. Link ids are 18 random bytes (144 bits, base64url). Expired links stop working at once; an hourly sweep then deletes their files. Deleting an account (`DELETE /api/account` or the admin console) drops its links.
+
+Limits worth knowing: the service accepts requests for up to an hour so large uploads can finish (`requestTimeout`; idle connections still close after a minute). There is no resumable upload: a dropped connection means starting again. Stalwart 1.0.3's own limits (`x:Jmap` `maxUploadSize` 50 MB and `uploadQuota` 50 MB per hour per user, `x:FileStorage` `maxSize` 25 MiB for WebDAV) apply to users, not to the admin uploads this service makes; verified on the dev server 2026-11-08.
+
 ### Admin console (`/api/admin/*`)
 
 The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change is logged with the admin's name.

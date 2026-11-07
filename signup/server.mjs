@@ -9,6 +9,7 @@ import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
 import { accountRoutes } from './account.mjs';
 import { adminRoutes } from './admin.mjs';
+import { fileRoutes } from './files.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
@@ -55,6 +56,13 @@ export function configFromEnv(env = process.env) {
     retiredFile: env.RETIRED_FILE || null, // names of deleted accounts, never given out again (account.mjs)
     // Admin console (/admin): usernames on DOMAIN allowed to use it. Empty = console off.
     admins: (env.ADMINS || '').split(',').map((s) => s.trim().toLowerCase().replace(/@.*$/, '')).filter(Boolean),
+    // Large-file links (files.mjs): where links are kept, biggest file, total per user, uploads per user and downloads
+    // per network an hour.
+    filesDb: env.FILES_DB || null,
+    maxFileBytes: Number(env.MAX_FILE_BYTES || 2 * 1024 ** 3),
+    filesQuotaBytes: Number(env.FILES_QUOTA_BYTES || 5 * 1024 ** 3),
+    filesPerHour: Number(env.FILES_PER_HOUR || 20),
+    downloadsPerHour: Number(env.DOWNLOADS_PER_HOUR || 200),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
   };
 }
@@ -266,6 +274,7 @@ export function createApp(cfg) {
   }
   const account = accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
   const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const files = fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
   return createServer(async (req, res) => {
@@ -275,6 +284,7 @@ export function createApp(cfg) {
       if (url.pathname === '/api/account' && await account(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
       if (url.pathname.startsWith('/api/admin/') && await admin(req, res, url)) return;
+      if ((url.pathname.startsWith('/api/files') || url.pathname.startsWith('/f/')) && await files(req, res, url)) return;
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);
@@ -291,7 +301,10 @@ export function createApp(cfg) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const cfg = configFromEnv();
   const server = createApp(cfg);
-  server.requestTimeout = 15_000;
+  // ponytail: one request may take up to an hour so large files can upload (files.mjs); idle connections still close
+  // after a minute. Upgrade path if slow clients become a problem: a short limit everywhere except POST /api/files.
+  server.requestTimeout = 3600e3;
+  server.timeout = 60_000;
   server.headersTimeout = 10_000;
   server.listen(cfg.port, cfg.host, () =>
     console.log(`signup service on ${cfg.host}:${cfg.port} → ${cfg.stalwartUrl}, domain ${cfg.domain}, invites ${cfg.inviteRequired ? 'required' : 'off'}, captcha ${cfg.turnstileSecret ? 'on' : 'off'}`));

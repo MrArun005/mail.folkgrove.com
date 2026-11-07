@@ -23,6 +23,23 @@ export function fileSize(n: number) {
   return n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`;
 }
 
+// ── Large-file links (signup/files.mjs) ──────────────────
+// A link looks like https://host/f/<id>#n=<name>&s=<bytes>. The part after # never reaches any server; it lets the
+// recipient's reader show the file like an attachment without fetching anything.
+
+export const fileLinkHtml = (f: { url: string; name: string; size: number; expires: number | null }) =>
+  `<div><a href="${escapeHtml(`${f.url}#n=${encodeURIComponent(f.name)}&s=${f.size}`)}">${escapeHtml(f.name)}</a> (${fileSize(f.size)}, ${
+    f.expires ? `download link until ${new Date(f.expires).toLocaleDateString([], { dateStyle: 'medium' })}` : 'download link'})</div>`;
+
+/** Large-file links in a message body (HTML or text), once each. */
+export function fileLinks(body: string): { url: string; host: string; name: string; size: number }[] {
+  const out = new Map<string, { url: string; host: string; name: string; size: number }>();
+  for (const [, url, host, name, size] of body.replace(/&amp;|&#38;/g, '&').matchAll(/(https?:\/\/([a-z0-9.-]+(?::\d+)?)\/f\/[A-Za-z0-9_-]{24})#n=([^&\s"'<>]+)&s=(\d+)/gi)) {
+    try { if (!out.has(url)) out.set(url, { url, host: host.toLowerCase(), name: decodeURIComponent(name), size: Number(size) }); } catch { /* bad %-escape: not ours */ }
+  }
+  return [...out.values()];
+}
+
 // ── HTML ↔ text ──────────────────────────────────────────
 
 const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);

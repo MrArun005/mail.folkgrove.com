@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it } from 'vitest';
 import type { EmailFull } from './jmap';
-import { cleanHtml, draftFor, htmlToText, parseAddresses, textToHtml } from './mailutil';
+import { cleanHtml, draftFor, fileLinkHtml, fileLinks, htmlToText, parseAddresses, textToHtml } from './mailutil';
 
 it('parses address lists and flags junk', () => {
   expect(parseAddresses('Ann Lee <ann@x.org>, bob@y.org; "Cee" <c@z.io>, nope, ')).toEqual({
@@ -161,4 +161,17 @@ it('deceptive link text', () => {
   expect(sameSite('www.bank.com', 'bank.com')).toBe(true);
   expect(sameSite('bank.com', 'login.bank.com')).toBe(true);
   expect(sameSite('northwind.example', 'evil.example')).toBe(false);
+});
+
+it('large-file links: written into the message, found again by the reader', () => {
+  const f = { url: 'https://mail.example.com/f/AbCdEfGhIjKlMnOpQrStUv_-', name: 'Q3 report & “final”.pdf', size: 120e6, expires: null };
+  const html = fileLinkHtml(f);
+  expect(html).toContain('(114.4 MB, download link)');
+  const want = [{ url: f.url, host: 'mail.example.com', name: f.name, size: 120e6 }];
+  expect(fileLinks(html)).toEqual(want);
+  // After the editor re-serialises it (& → &amp;), in the text part, and twice in one message: still one file.
+  const div = document.createElement('div'); div.innerHTML = html;
+  expect(fileLinks(div.innerHTML + htmlToText(div.innerHTML))).toEqual(want);
+  // Not ours: wrong id length, no name, a broken escape.
+  expect(fileLinks('https://x.org/f/short#n=a&s=1 https://x.org/f/AbCdEfGhIjKlMnOpQrStUv_-#s=1 https://x.org/f/AbCdEfGhIjKlMnOpQrStUv_-#n=%E0%A4&s=1')).toEqual([]);
 });

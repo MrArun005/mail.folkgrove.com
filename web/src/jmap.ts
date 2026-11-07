@@ -87,6 +87,8 @@ const FULL = [...SUMMARY, 'blobId', 'cc', 'bcc', 'replyTo', 'messageId', 'inRepl
   'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses'];
 
 export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
+/** A large file sent as a download link (signup/files.mjs). url is absolute; expires is ms since 1970, null = never. */
+export interface SharedFile { id: string; url: string; name: string; size: number; created: number; expires: number | null; downloads: number }
 async function aliasReply(r: Response) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.ok) throw Object.assign(new JmapError(j.error?.message ?? `The server returned an error (${r.status})`), { code: j.error?.code as string | undefined });
@@ -163,6 +165,7 @@ export class Jmap {
     c.maxConcurrent = Math.max(1, Number(s.capabilities?.['urn:ietf:params:jmap:core']?.maxConcurrentRequests) || 4);
     c.vapidKey = s.capabilities?.['urn:ietf:params:jmap:webpush-vapid']?.applicationServerKey ?? null;
     c.offline = !!offlineUser;
+    c.maxUpload = Number(s.capabilities?.['urn:ietf:params:jmap:core']?.maxSizeUpload) || 50e6;
     return c;
   }
 
@@ -187,6 +190,8 @@ export class Jmap {
   // with one slot left for the live-update stream, which the server counts as a request too.
   private static gates = new Map<string, { inFlight: number; waiting: (() => void)[] }>();
   maxConcurrent = 4;
+  /** Biggest file the server takes as an attachment upload (session maxSizeUpload). */
+  maxUpload = 50e6;
   /** Offline mode (trusted devices only): reads are saved locally and served from there when the network is gone. */
   offline = false;
   private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
@@ -607,6 +612,26 @@ export class Jmap {
     if (r.status === 404 || r.status === 502) throw new JmapError('This server can’t delete accounts from here. Ask its administrator.');
     await aliasReply(r);
   }
+
+  // ── Large-file links (the account service, signup/files.mjs) ──
+
+  /** Upload a file that's too big to attach into your own storage; returns its download link. */
+  async shareFile(file: File, expiresDays: 7 | 30 | 0): Promise<SharedFile> {
+    const r = await this.fetch(`${this.base}/api/files?name=${encodeURIComponent(file.name)}&expires=${expiresDays}`,
+      { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+    if (r.status === 404 || r.status === 502) throw new JmapError('This server can’t send large files as links. Ask its administrator.');
+    return this.absolute((await aliasReply(r)).file);
+  }
+  /** null = this server doesn't run the account service. */
+  async sharedFiles(): Promise<SharedFile[] | null> {
+    const r = await this.fetch(`${this.base}/api/files`);
+    if (r.status === 404 || r.status === 502 || r.status === 503) return null;
+    return (await aliasReply(r)).files.map((f: SharedFile) => this.absolute(f));
+  }
+  async revokeFile(id: string): Promise<void> {
+    await aliasReply(await this.fetch(`${this.base}/api/files/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+  }
+  private absolute = (f: SharedFile): SharedFile => ({ ...f, url: (this.base || location.origin) + f.url });
 
   // ── Export (Settings → Export your data) ──────────────
 

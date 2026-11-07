@@ -475,6 +475,8 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
     templates: () => client.templates(),
     saveTemplate: (d) => client.saveTemplate(d),
     deleteTemplate: (id) => client.deleteTemplate(id),
+    share: (f, days) => client.shareFile(f, days),
+    maxUpload: client.maxUpload,
   };
   function closeCompose(outcome: 'saved' | 'discarded' | 'closed') {
     setCompose(null);
