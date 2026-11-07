@@ -203,4 +203,6 @@ console.log(`
 Ready.
   Web client:  cd web && npm run dev   → http://localhost:5173
   Login:       ${USER.name}@${DOMAIN} / ${USER.pass}
-  Admin UI:    ${BASE}/admin  (${admin.user} / see deploy/.dev-admin.json)`);
+  Admin UI:    ${BASE}/admin  (${admin.user} / see deploy/.dev-admin.json)
+  Account service (masked addresses, large-file links; optional):
+               cd signup && DOMAIN=${DOMAIN} ADMIN_FILE=../deploy/.dev-admin.json SIGNUP=off FILES_DB=/tmp/openmail-file-links.json node server.mjs`);

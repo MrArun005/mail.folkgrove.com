@@ -306,6 +306,9 @@ button.chip:hover { background: var(--hover); border-color: var(--muted); }
 .chip .fsize { color: var(--muted); white-space: nowrap; }
 .chip .btn { margin-right: calc(-1 * var(--s2)); color: var(--muted); }
 .chip.pending { color: var(--muted); border-style: dashed; }
+a.chip { text-decoration: none; }
+a.chip:hover { background: var(--hover); border-color: var(--muted); }
+.chip .flink { color: var(--accent); font-weight: 500; white-space: nowrap; }
 
 /* ═══ Compose sheet ════════════════════════════════════ */
 .compose {
@@ -815,6 +818,8 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   .admin-table .acts .btn--sm { height: var(--h-md); } /* tap targets on phones (DESIGN §10) */
 }
 
+/* Settings → Shared files: name and details wrap on narrow screens instead of hiding the expiry. */
+.files-list li > .grow { white-space: normal; overflow-wrap: anywhere; padding: var(--s2) 0; }
 /* Sending suspended (Sending.tsx) */
 .banner--warn { background: color-mix(in srgb, var(--star) 18%, transparent); color: var(--ink); }
 .banner--warn .grow { flex-basis: 100%; } /* the action goes under the explanation */

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
 import { Button } from './Button';
 import { Icon } from './icons';
-import { displayName, fileSize, formatAddresses, type ReplyMode } from './mailutil';
+import { displayName, fileLinks, fileSize, formatAddresses, type ReplyMode } from './mailutil';
 import { canSuggestReplies, canSummarize, canTranslate, languageName, suggestReplies, summarize, translate, visibleText } from './ai';
 import { buildSrcdoc } from './safeHtml';
 import { span, type CalEvent } from './calendar';
@@ -146,6 +146,8 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
   }, [embedded]);
   const html = useMemo(() => (m.html ? buildSrcdoc(m.html, showImages, inline) : null), [m, showImages, inline]);
   const files = m.attachments.filter((a) => !embedded.includes(a));
+  // Large files sent as download links (signup/files.mjs) look like attachments too.
+  const links = useMemo(() => fileLinks(`${m.html ?? ''} ${m.text ?? ''}`, location.origin), [m]);
   const sender = m.from?.[0];
   return (
     <section className="message">
@@ -203,7 +205,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
       ) : html
         ? <MessageFrame title={`Message from ${displayName(sender)}`} srcdoc={html.srcdoc} />
         : <div className="letter">{m.text}</div>}
-      {files.length > 0 && (
+      {files.length + links.length > 0 && (
         <ul className="chips" aria-label="Attachments">
           {files.map((a) => (
             <li key={a.blobId + a.name}>
@@ -212,6 +214,14 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
                 <Icon name="file" size={16} /><span className="fname">{a.name ?? 'Untitled file'}</span>
                 <span className="fsize">{fileSize(a.size)}</span><Icon name={previewKind(a) ? 'search' : 'download'} size={16} />
               </button>
+            </li>
+          ))}
+          {links.map((l) => (
+            <li key={l.url}>
+              <a className="chip" href={l.url} target="_blank" rel="noopener noreferrer" title={`Download ${l.name}`}>
+                <Icon name="file" size={16} /><span className="fname">{l.name}</span>
+                <span className="fsize">{fileSize(l.size)}</span><span className="flink">Download</span>
+              </a>
             </li>
           ))}
         </ul>

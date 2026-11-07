@@ -13,6 +13,7 @@ interface Ask {
   cancel?: string | false;
   danger?: boolean;      // destructive: the confirm button is red
   input?: { label: string; value?: string; placeholder?: string };
+  choose?: { label: string; value: string; options: [value: string, label: string][] };
   resolve: (v: string | boolean) => void;
 }
 
@@ -28,18 +29,22 @@ export const confirmIt = (a: { title: string; body?: string; confirm: string; da
 export const promptIt = (a: { title: string; body?: string; label: string; value?: string; placeholder?: string; confirm: string }) =>
   open({ title: a.title, body: a.body, confirm: a.confirm, input: { label: a.label, value: a.value, placeholder: a.placeholder } })
     .then((v) => (typeof v === 'string' && v.trim() ? v.trim() : null));
+/** Resolves with the chosen option's value, or null when cancelled. */
+export const chooseIt = (a: { title: string; body?: string; label: string; value: string; options: [string, string][]; confirm: string }) =>
+  open({ title: a.title, body: a.body, confirm: a.confirm, choose: { label: a.label, value: a.value, options: a.options } })
+    .then((v) => (typeof v === 'string' ? v : null));
 export const notify = (title: string, body?: string) => open({ title, body, confirm: 'OK', cancel: false }).then(() => undefined);
 
 export function DialogHost() {
   const [ask, setAsk] = useState<Ask | null>(null);
   const [value, setValue] = useState('');
   const confirmRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => { show = (a) => { setValue(a.input?.value ?? ''); setAsk(a); }; return () => { show = null; }; }, []);
+  useEffect(() => { show = (a) => { setValue(a.input?.value ?? a.choose?.value ?? ''); setAsk(a); }; return () => { show = null; }; }, []);
   useEffect(() => { if (ask && !ask.input) confirmRef.current?.focus(); }, [ask]);
   if (!ask) return null;
 
   const done = (v: string | boolean) => { ask.resolve(v); setAsk(null); };
-  const ok = () => done(ask.input ? value : true);
+  const ok = () => done(ask.input || ask.choose ? value : true);
   return createPortal(
     <div className="overlay" onMouseDown={() => done(false)}>
       <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title" aria-describedby={ask.body ? 'dlg-body' : undefined}
@@ -53,6 +58,13 @@ export function DialogHost() {
         {ask.input && (
           <label>{ask.input.label}
             <input className="input" autoFocus value={value} placeholder={ask.input.placeholder} onChange={(e) => setValue(e.target.value)} />
+          </label>
+        )}
+        {ask.choose && (
+          <label>{ask.choose.label}
+            <select className="input" value={value} onChange={(e) => setValue(e.target.value)}>
+              {ask.choose.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
           </label>
         )}
         <div className="dialog-actions">

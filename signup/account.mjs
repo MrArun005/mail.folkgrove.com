@@ -8,6 +8,7 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { callerOf } from './aliases.mjs';
+import { forgetFiles } from './files.mjs';
 import { readMeta, writeMeta } from './domains.mjs';
 
 export const readRetired = (file) =>
@@ -101,6 +102,7 @@ export function accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Ra
       console.error('account: Stalwart refused destroy:', JSON.stringify(d.notDestroyed?.[who.id]));
       return fail(res, 503, 'unavailable', 'Your account couldn’t be deleted right now. Nothing was removed. Try again later.'), true;
     }
+    forgetFiles(cfg, who.id); // Stalwart deleted the files with the account; their links go too
     console.log(`account: deleted ${email} (${names.length} names retired)`);
     return send(res, 200, { ok: true }), true;
   };

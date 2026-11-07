@@ -9,6 +9,7 @@ import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
 import { accountRoutes } from './account.mjs';
 import { adminRoutes } from './admin.mjs';
+import { fileRoutes } from './files.mjs';
 import { domainRoutes } from './domains.mjs';
 import { abuseRoutes } from './abuse.mjs';
 import { sendMail } from './mailer.mjs';
@@ -57,6 +58,13 @@ export function configFromEnv(env = process.env) {
     retiredFile: env.RETIRED_FILE || null, // names of deleted accounts, never given out again (account.mjs)
     // Admin console (/admin): usernames on DOMAIN allowed to use it. Empty = console off.
     admins: (env.ADMINS || '').split(',').map((s) => s.trim().toLowerCase().replace(/@.*$/, '')).filter(Boolean),
+    // Large-file links (files.mjs): where links are kept, biggest file, total per user, uploads per user and downloads
+    // per network an hour.
+    filesDb: env.FILES_DB || null,
+    maxFileBytes: Number(env.MAX_FILE_BYTES || 2 * 1024 ** 3),
+    filesQuotaBytes: Number(env.FILES_QUOTA_BYTES || 5 * 1024 ** 3),
+    filesPerHour: Number(env.FILES_PER_HOUR || 20),
+    downloadsPerHour: Number(env.DOWNLOADS_PER_HOUR || 200),
     // Users' own domains (domains.mjs). CUSTOM_DOMAINS=off switches the feature off.
     customDomains: env.CUSTOM_DOMAINS !== 'off',
     maxDomains: Number(env.MAX_DOMAINS || 3),
@@ -150,7 +158,7 @@ export function createApp(cfg) {
       const chunks = [];
       req.on('data', (c) => {
         size += c.length;
-        if (size > limit) reject(413); // keep draining (bounded by requestTimeout) so the 413 can still be sent
+        if (size > limit) reject(413); // keep draining (bounded by the request timer in createApp) so the 413 can still be sent
         else chunks.push(c);
       });
       req.on('end', () => {
@@ -279,6 +287,7 @@ export function createApp(cfg) {
     setTimeout(run, 60_000).unref(); setInterval(run, 3600e3).unref();
   }
   const account = accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
+  const files = fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const abuse = abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
   const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, abuse, ipOf: (req) => ipKey(clientIp(req)) });
   const domains = cfg.customDomains === false ? null : domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
@@ -286,13 +295,20 @@ export function createApp(cfg) {
   if (domains) setInterval(() => domains.recheckAll().catch((e) => console.error('domains:', e.message)), 6 * 3600e3).unref();
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
-  return Object.assign(createServer(async (req, res) => {
+  const server = Object.assign(createServer(async (req, res) => {
+    // Our own request timeout instead of server.requestTimeout, so that one route can lengthen it: a client gets
+    // 15 s to send the whole request. Only a signed-in file upload (files.mjs) may ask for more, by size.
+    const limit = (ms) => setTimeout(() => { if (!req.complete) req.destroy(); }, ms).unref();
+    let timer = limit(cfg.requestTimeoutMs ?? 15_000);
+    req.allowSlowBody = (ms) => { clearTimeout(timer); timer = limit(ms); };
+    res.once('close', () => clearTimeout(timer));
     try {
       const url = new URL(req.url, 'http://x');
       if (url.pathname.startsWith('/api/aliases') && await aliases(req, res, url)) return;
       if (url.pathname === '/api/account' && await account(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
       if (url.pathname.startsWith('/api/admin/') && await admin(req, res, url)) return;
+      if ((url.pathname.startsWith('/api/files') || url.pathname.startsWith('/f/')) && await files(req, res, url)) return;
       if (domains && url.pathname.startsWith('/api/domains') && await domains(req, res, url)) return;
       if (/^\/api\/(events|blocked|sending)/.test(url.pathname) && await abuse(req, res, url)) return;
       if (cfg.signupEnabled !== false) {
@@ -306,12 +322,13 @@ export function createApp(cfg) {
       if (!res.headersSent) fail(res, 500, 'internal', 'Something went wrong on our side. Please try again.');
     }
   }), { domains, abuse }); // tests drive the domain re-check and the abuse jobs directly
+  server.requestTimeout = 0; // the timer above replaces it (headersTimeout still applies)
+  return server;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const cfg = configFromEnv();
   const server = createApp(cfg);
-  server.requestTimeout = 15_000;
   server.headersTimeout = 10_000;
   server.listen(cfg.port, cfg.host, () =>
     console.log(`signup service on ${cfg.host}:${cfg.port} → ${cfg.stalwartUrl}, domain ${cfg.domain}, invites ${cfg.inviteRequired ? 'required' : 'off'}, captcha ${cfg.turnstileSecret ? 'on' : 'off'}`));

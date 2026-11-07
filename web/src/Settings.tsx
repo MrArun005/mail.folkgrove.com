@@ -5,6 +5,7 @@ import type { Rule, Vacation } from './rules';
 import { Button } from './Button';
 import { SecuritySection } from './Security';
 import { AddressesSection } from './Addresses';
+import { SharedFilesSection } from './SharedFiles';
 import { DomainsSection } from './Domains';
 import { ImportSection } from './Import';
 import { DeleteAccountSection, ExportSection } from './Export';
@@ -144,6 +145,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         </section>
 
         <AddressesSection client={client} onChanged={onIdentitiesChanged} />
+        <SharedFilesSection client={client} />
         <DomainsSection client={client} onChanged={onIdentitiesChanged} />
         <SecuritySection username={client.username} />
         <CategoriesSection client={client} boxes={boxes} />
