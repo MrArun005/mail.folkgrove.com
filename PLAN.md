@@ -34,7 +34,8 @@ Browser (web app / PWA) ── JMAP over HTTPS ──► Stalwart ── SMTP �
 Repo, AGPL-3.0, local Stalwart + one-command bootstrap, web client, CI against a real Stalwart, contributor docs.
 
 ### Phase 1: Real mail on a real domain (not started: needs a server)
-- [ ] VPS with outbound port 25 open; domain; reverse DNS (PTR). Plan: `lab.folkgrove.com`.
+- [ ] Server: Oracle Cloud Always Free (ARM). Domain: `folkgrove.com` itself (Google Workspace was cancelled, so its MX can move to us; mail host `mx.folkgrove.com`). Reverse DNS (PTR) via Oracle support.
+- [ ] Outgoing relay, because Oracle blocks port 25: Brevo free tier (300 mails/day) to start; switch to direct sending (port 25 + warm-up) or a paid relay as volume grows.
 - [ ] MX, SPF, DKIM, DMARC (p=none → quarantine → reject), MTA-STS, TLS-RPT, autoconfig (`install.sh` prints them; `check-dns.sh` verifies)
 - [ ] 10/10 on mail-tester.com; inbox placement at Gmail, Outlook and Yahoo recorded **in this repo** (screenshots + Postmaster Tools)
 - [ ] Register Google Postmaster Tools, Microsoft SNDS/JMRP, Yahoo CFL (feedback loops)
