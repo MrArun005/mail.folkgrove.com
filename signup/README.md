@@ -37,6 +37,7 @@ docker run -e DOMAIN=example.com -e ADMIN_FILE=/run/secrets/admin.json -e INVITE
 
 ### Deployment notes
 
+- **Behind the production Caddy** (`deploy/production/Caddyfile`), set `CLIENT_IP_HEADER=x-real-ip`. Caddy overwrites that header with the real client address; without it every visitor shares Caddy's IP and one rate-limit bucket.
 - **Serve it from the same origin as the web client** (for example, proxy `/api/` to this service). The service sends no CORS headers. It accepts only `Content-Type: application/json`, so a browser on another site can't submit the form without a CORS preflight, which fails.
 - Rate limits and env-configured invite counts live in one process's memory. Run **one instance**, or move the limits to the proxy or Cloudflare. See the `ponytail:` note in `lib.mjs`.
 - Logs record why Stalwart refused or failed a request. They never include passwords or the admin credentials.
