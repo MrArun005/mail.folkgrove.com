@@ -12,6 +12,15 @@ import { callerOf } from './aliases.mjs';
 export const readRetired = (file) =>
   file && existsSync(file) ? readFileSync(file, 'utf8').split('\n').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
 
+/** Reserve every name an account uses (username + aliases) for good, before it's destroyed. Shared with admin.mjs. */
+export async function retireNames({ cfg, jmap }, id, name) {
+  const acct = (await jmap([['x:Account/get', { ids: [id], properties: ['aliases'] }, 'g']])).list?.[0];
+  const names = [...new Set([String(name).toLowerCase(), ...Object.values(acct?.aliases ?? {}).map((a) => String(a.name).toLowerCase())])];
+  if (cfg.retiredFile) appendFileSync(cfg.retiredFile, names.join('\n') + '\n');
+  (cfg.extraReserved ??= []).push(...names);
+  return names;
+}
+
 export function accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, clientIp = () => '' }) {
   const caller = callerOf({ cfg, jmap, getDomainId });
   // ponytail: retired names join extraReserved, a list scanned on every username check. Fine to ~100k names;
@@ -70,10 +79,7 @@ export function accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Ra
     badPass.refund(who.id, pwin);
 
     // Retire first: if the destroy then fails, the names are merely reserved, never free.
-    const acct = (await jmap([['x:Account/get', { ids: [who.id], properties: ['aliases'] }, 'g']])).list?.[0];
-    const names = [...new Set([who.name, ...Object.values(acct?.aliases ?? {}).map((a) => String(a.name).toLowerCase())])];
-    if (cfg.retiredFile) appendFileSync(cfg.retiredFile, names.join('\n') + '\n');
-    cfg.extraReserved.push(...names);
+    const names = await retireNames({ cfg, jmap }, who.id, who.name);
 
     const d = await jmap([['x:Account/set', { destroy: [who.id] }, 'x']]);
     if (!d.destroyed?.includes(who.id)) {

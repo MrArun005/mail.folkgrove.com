@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
 import { Jmap, JmapError, SESSION_EXPIRED } from './jmap';
 import { Mail } from './Mail';
+import { Admin } from './Admin';
 import { DialogHost } from './Dialog';
 import { signOutPush } from './notify';
 import { offlineStore } from './offline';
@@ -69,6 +70,8 @@ export default function App() {
   if (booting) return <div className="reader-loading" aria-busy="true" />;
   if (!client || adding) return <Login key={error} initialError={error} onCancel={adding ? () => setAdding(false) : undefined}
     onLogin={(c, s) => { session.current = s; c.offline = s.remembered; setError(''); setAdding(false); setClient(c); }} />;
+  // The admin console is a separate screen of the same app (no router): /admin, for admins only (checked by the server).
+  if (location.pathname === '/admin') return <><Admin client={client} /><DialogHost /></>;
   return <><Mail key={client.username} client={client} onLogout={signOut} accounts={signedInAccounts()}
     onSwitch={switchTo} onAddAccount={() => setAdding(true)} /><DialogHost /></>;
 }

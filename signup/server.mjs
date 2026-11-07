@@ -8,6 +8,7 @@ import { checkUsername, checkPassword, RateLimiter, ipKey, Invites } from './lib
 import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
 import { accountRoutes } from './account.mjs';
+import { adminRoutes } from './admin.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
@@ -52,6 +53,8 @@ export function configFromEnv(env = process.env) {
     maxAliasesTotal: Number(env.MAX_ALIASES_TOTAL || 1000), // lifetime, retired included
     aliasesPerHour: Number(env.ALIASES_PER_HOUR || 30),
     retiredFile: env.RETIRED_FILE || null, // names of deleted accounts, never given out again (account.mjs)
+    // Admin console (/admin): usernames on DOMAIN allowed to use it. Empty = console off.
+    admins: (env.ADMINS || '').split(',').map((s) => s.trim().toLowerCase().replace(/@.*$/, '')).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
   };
 }
@@ -262,6 +265,7 @@ export function createApp(cfg) {
     setTimeout(run, 60_000).unref(); setInterval(run, 3600e3).unref();
   }
   const account = accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
+  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
   return createServer(async (req, res) => {
@@ -270,6 +274,7 @@ export function createApp(cfg) {
       if (url.pathname.startsWith('/api/aliases') && await aliases(req, res, url)) return;
       if (url.pathname === '/api/account' && await account(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
+      if (url.pathname.startsWith('/api/admin/') && await admin(req, res, url)) return;
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);

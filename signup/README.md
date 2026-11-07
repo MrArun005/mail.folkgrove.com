@@ -25,6 +25,7 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `SIGNUPS_PER_HOUR` | `3` | Sign-up attempts allowed per client IP (IPv6: per /64) per hour. |
 | `CHECKS_PER_MINUTE` | `30` | Username-availability checks allowed per client IP per minute. |
 | `CLIENT_IP_HEADER` | | Header that carries the real client IP when the service runs behind a proxy, for example `cf-connecting-ip` or `x-real-ip`. Set this **only** if the proxy overwrites that header, because otherwise clients can spoof it. If unset, the socket address is used. |
+| `ADMINS` | | Usernames on `DOMAIN` (comma-separated, e.g. `ann,raj`) who may use the admin console at `/admin`. Empty: the console is off and `/api/admin/*` answers 404. See [Admin console](#admin-console-apiadmin). |
 | `RESERVED_NAMES` | | Extra reserved usernames, comma-separated. They are added to the built-in list in `lib.mjs`. |
 | `RETIRED_FILE` | | File (one name per line) where the names of deleted accounts and their aliases are kept, so they are never given out again. Stalwart itself frees them on delete. Set it in production (`docker-compose.yml` does); without it the list lasts until restart. |
 
@@ -98,6 +99,23 @@ This endpoint checks account names only. An alias that collides is caught at sig
 ### `DELETE /api/account`
 
 Deletes the caller's own account and all its mail, contacts and calendars. Needs the caller's sign-in token (`Authorization: Bearer …`; passwords are refused as on `/api/aliases`) and a JSON body `{ "password": "…", "code": "123456", "confirm": "jane.doe@DOMAIN" }`: the current password (`code` only with two-factor sign-in on; checked through Stalwart's sign-in API, so an app password doesn't count) and the full address typed as confirmation. Before the account is destroyed, its username and every alias go into `RETIRED_FILE`, so sign-up and masked-address generation never hand them out again. Errors: `401 unauthorized`, `400 confirm_mismatch` / `password_required` / `code_required`, `403 wrong_password` (5 per account per hour, then `429`), `503 unavailable` (nothing removed).
+### Admin console (`/api/admin/*`)
+
+The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change is logged with the admin's name.
+
+| Request | What it does (Stalwart object) |
+|---|---|
+| `GET overview` | Counts: user accounts, messages waiting in the queue, blocked IPs, accounts on new-account limits |
+| `GET users?q=` | Up to 200 user accounts by name; `q` matches whole words (Stalwart's text search). Each: email, created, storage used and limit, live alias count, enabled, server admin, on new-account limits (`x:Account`) |
+| `POST users` `{name, quotaBytes?, description?}` | Creates `name@DOMAIN` with a generated password, returned once. `quotaBytes` 0 = no limit; omitted = `QUOTA_BYTES` |
+| `PATCH users/:id` `{enabled?, quotaBytes?, resetPassword?}` | Disable/enable sign-in (removes the `authenticate` permission: sign-in, sending and existing sessions stop; mail still arrives), set the storage limit (`null` = none), or replace the main password with a generated one (returned once; signs them out everywhere; app passwords stay) |
+| `DELETE users/:id` | Deletes the account and its mail. Its username and aliases are retired (`RETIRED_FILE`), never given out again |
+| `GET blocked`, `DELETE blocked/:id` | IPs Stalwart blocked (reason, when, until) and unblock (`x:BlockedIp`) |
+| `GET new-accounts`, `POST new-accounts {address}`, `DELETE new-accounts/:id` | The stricter new-account sending tier: `x:MemoryLookupKey` entries in namespace `new-accounts`, key = full address |
+| `GET queue?q=` | Outgoing queue (`x:QueuedMessage`), up to 200, by sender or recipient (substring): per recipient status, attempts, next try, last error |
+| `POST queue/:id/retry`, `DELETE queue/:id` | Retry now (next attempt due immediately) or cancel delivery |
+
+Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) and the caller's own account can't be changed or deleted here; names in `ADMINS` are also reserved at sign-up. Delivered or bounced mail leaves the queue; Stalwart's delivery history (`x:Trace`) needs its Enterprise edition, so it isn't shown.
 
 ### `GET /healthz`
 
