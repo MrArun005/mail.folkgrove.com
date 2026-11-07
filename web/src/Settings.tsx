@@ -7,6 +7,7 @@ import { SecuritySection } from './Security';
 import { AddressesSection } from './Addresses';
 import { ImportSection } from './Import';
 import { DeleteAccountSection, ExportSection } from './Export';
+import { InstallSection } from './Install';
 import { disablePush, enablePush, notifyOn, notifySupported, setNotify } from './notify';
 import { chooseSignature, textToHtml, type Signature } from './mailutil';
 
@@ -164,6 +165,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
             <p className="fine">{pushNote || 'On this device, while OpenMail isn’t the window you’re looking at.'}</p>
           </section>
         )}
+        <InstallSection />
 
         <section>
           <h3>Appearance</h3>

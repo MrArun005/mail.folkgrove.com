@@ -18,6 +18,7 @@ import { NotesView } from './Notes';
 import { addRule, loadScript, saveScript } from './Filters';
 import { SCREENER, UPDATES, type Rule, type ScriptData } from './rules';
 import { enablePush, notifyOn, showMail } from './notify';
+import { setBadge, takeLaunch } from './launch';
 import { offlineStore } from './offline';
 import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
@@ -476,6 +477,18 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
     saveTemplate: (d) => client.saveTemplate(d),
     deleteTemplate: (id) => client.deleteTemplate(id),
   };
+  // Opened from outside: the Compose shortcut, an email link or "Share to OpenMail" (launch.ts).
+  useEffect(() => {
+    takeLaunch().then(async (l) => {
+      if (!l) return;
+      const attachments = await Promise.all(l.files.map((f) => client.upload(f))).catch((e) => { fail(e); return []; });
+      setCompose(withSignature({ ...EMPTY_DRAFT, to: l.to, cc: l.cc, bcc: l.bcc, subject: l.subject, html: l.body ? textToHtml(l.body) : '', text: l.body, attachments }));
+    });
+  }, [client]);
+  // Unread Inbox mail on the app icon.
+  // ponytail: the active account's Inbox only; other signed-in accounts don't add to it.
+  useEffect(() => setBadge(boxes.find((b) => b.role === 'inbox')?.unreadEmails ?? 0), [boxes]);
+  useEffect(() => () => setBadge(0), []); // signed out
   function closeCompose(outcome: 'saved' | 'discarded' | 'closed') {
     setCompose(null);
     if (outcome === 'saved') say({ text: 'Draft saved' });

@@ -19,7 +19,7 @@
 		file_server
 	}
 	# Installable-app files at the root of the build.
-	@pwa path /sw.js /manifest.webmanifest /icon.svg /legal/*
+	@pwa path /sw.js /manifest.webmanifest /icon.svg /icons/* /legal/*
 	handle @pwa {
 		root * /srv
 		header /sw.js Cache-Control "no-cache"

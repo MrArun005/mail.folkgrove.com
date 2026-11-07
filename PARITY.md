@@ -90,8 +90,9 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Feature | Zoho | Us | Plan |
 |---|---|---|---|
 | Web app | ✅ | ✅ | Local-first: instant UI, light and dark, phone layout |
-| Installable app / offline | 🟡 | 🟡 | Installable (PWA), shell works offline; mail offline in Phase 2.5 |
-| Native mobile apps | ✅ | ⬜ | PWA first; native in Phase 5 |
+| Installable app / offline | 🟡 | 🟡 | Installable (PWA: install button, unread badge, Compose shortcut, “Share to OpenMail”, mailto handler), shell works offline; mail offline in Phase 2.5 |
+| Desktop app | ✅ | 🟡 | `apps/desktop` (Electron): any server, opens mailto: links, Dock badge; unsigned, no installers yet |
+| Native mobile apps | ✅ | 🟡 | `apps/mobile` (Capacitor) shells for any server, generated but not yet built; native push needs FCM/APNs + a push gateway (apps/README.md) |
 | Custom domains | ✅ | 🟡 | Self-hosting: yes. Hosted: Phase 2.5 |
 | Admin console (users, groups, aliases, policies) | ✅ | 🟡 | Ours at `/admin` (`ADMINS`): users, blocked IPs, new-account limits, outgoing queue. Groups, policies, audit log: Stalwart's admin UI (`/admin/`) |
 | SSO / SAML, eDiscovery, retention | ✅ | ⬜ | Phase 5 (business tier) |

@@ -62,7 +62,9 @@ const admin = JSON.parse(readFileSync(SECRET_FILE, 'utf8'));
 {
   const [[, cl]] = await jmap(admin, [['x:OAuthClient/get', { ids: null, properties: ['clientId'] }, 'c']]);
   const existing = cl.list.find((c) => c.clientId === 'openmail-web');
-  const fields = { redirectUris: { 'http://localhost:5173/': true }, scopes: { mail: true, contacts: true, calendars: true, security: true }, description: 'OpenMail web (dev)' };
+  // The apps (apps/) load the server's own web app, so they sign in with its address too: localhost for the desktop
+  // app and the iOS Simulator, 10.0.2.2 for the Android emulator (its name for this computer; run Vite with --host).
+  const fields = { redirectUris: { 'http://localhost:5173/': true, 'http://10.0.2.2:5173/': true }, scopes: { mail: true, contacts: true, calendars: true, security: true }, description: 'OpenMail web (dev)' };
   await jmap(admin, [['x:OAuthClient/set', existing
     ? { update: { [existing.id]: fields } }
     : { create: { c: { clientId: 'openmail-web', ...fields } } }, 'c']]);
