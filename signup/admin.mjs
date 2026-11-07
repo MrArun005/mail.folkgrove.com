@@ -183,13 +183,18 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     // { add: 'sam' } or { remove: 'sam@domain' }: membership lives on the user (memberGroupIds).
     'PATCH groups/:id': async (req, _url, id) => {
       const body = await readJson(req).catch(() => ({}));
-      const [g] = await get('x:Account', [id], ['@type']);
+      const [g] = await get('x:Account', [id], ['@type', 'roles', 'permissions']);
       if (g?.['@type'] !== 'Group') return [404, 'not_found', 'That team mailbox no longer exists.'];
+      // Only plain team mailboxes (default roles, inherited permissions, as this console creates them): a group that
+      // grants extra rights is managed in Stalwart's own admin, or adding someone here would hand them those rights.
+      if (g.roles?.['@type'] !== 'Default' || g.permissions?.['@type'] !== 'Inherit') return [403, 'protected', 'This group grants extra rights; manage it in Stalwart’s own admin.'];
       const on = typeof body.add === 'string', who = String(on ? body.add : body.remove ?? '').trim().toLowerCase();
       const [local, domain] = who.split('@');
       if (!local || (domain && domain !== cfg.domain)) return [400, 'bad_member', `Enter a username or address on ${cfg.domain}.`];
       const { ids } = await query('x:Account', { filter: { '@type': 'User', name: local, domainId: await getDomainId() } });
-      if (ids.length !== 1) return [404, 'no_such_user', `There’s no account ${local}@${cfg.domain}.`];
+      const [u] = ids.length === 1 ? await get('x:Account', ids, ['name', 'roles']) : [];
+      if (!u || String(u.name).toLowerCase() !== local) return [404, 'no_such_user', `There’s no account ${local}@${cfg.domain}.`];
+      if (on && isAdmin(u)) return [403, 'protected', 'Administrator accounts are managed in Stalwart’s own admin.'];
       await set('x:Account', { update: { [ids[0]]: { [`memberGroupIds/${id}`]: on ? true : null } } });
       return {};
     },
