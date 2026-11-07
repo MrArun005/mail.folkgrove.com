@@ -87,3 +87,11 @@ Manager, so CocoaPods isn't needed. App id: `org.openmail.app` (change it in `ca
 Also open: store listings (Google Play $25 once, App Store $99/yr), signing keys (Android upload key, iOS certificates
 and profiles), the splash screen (Capacitor's default), and native "Share to OpenMail" (Android intent filter / iOS
 share extension; the installed PWA on Android already has it).
+
+## Known security gap (mobile)
+
+`apps/mobile/capacitor.config.json` allows navigation to any address (`allowNavigation: ["*"]`), because the server is
+chosen at first launch. A link that opens inside the app instead of the browser can therefore load any site in the app's
+web view. Before publishing: a small native plugin that keeps only the saved server's origin in the web view and sends
+every other address to the system browser (Android `shouldOverrideUrlLoading`, iOS `decidePolicyFor`), or a build fixed
+to one server with `allowNavigation` set to it.
