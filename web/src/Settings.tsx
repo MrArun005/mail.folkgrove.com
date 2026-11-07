@@ -3,6 +3,7 @@ import type { Jmap, Mailbox } from './jmap';
 import { FiltersSection, FoldersSection, loadScript, saveScript } from './Filters';
 import type { Rule, Vacation } from './rules';
 import { Button } from './Button';
+import { SecuritySection } from './Security';
 import { textToHtml } from './mailutil';
 
 export type Theme = 'system' | 'light' | 'dark';
@@ -81,6 +82,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
           </> : <p className="fine">Loading…</p>}
         </section>
 
+        <SecuritySection username={client.username} />
         <CategoriesSection client={client} boxes={boxes} />
         <FiltersSection client={client} boxes={boxes} prefill={prefillRule} />
         <FoldersSection client={client} boxes={boxes} onChanged={onFoldersChanged} />

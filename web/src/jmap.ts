@@ -9,6 +9,7 @@ const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ie
 // Contacts are asked for only on contact calls: a session without contacts access (or a server without it)
 // must still be able to do everything else.
 const CONTACTS = 'urn:ietf:params:jmap:contacts';
+const STALWART = 'urn:stalwart:jmap';
 const CALENDARS = ['urn:ietf:params:jmap:calendars', 'urn:ietf:params:jmap:calendars:parse'];
 export const UNDO_SECONDS = 10;
 
@@ -42,6 +43,14 @@ export interface Draft {
 /** An Email/query filter: { inMailbox }, { text }, { hasKeyword }, … */
 export type Filter = Record<string, unknown>;
 
+// Stalwart permission names, checked one by one against the server (unknown names are rejected).
+const APP_PASSWORD_PERMISSIONS = ['authenticate', 'emailSend', 'emailReceive',
+  ...'Append Authenticate Capability Copy Create Delete Enable Examine Expunge Fetch Idle List ListRights Lsub MetadataGet MetadataSet Move MyRights Namespace Rename Search Select Sort Status Store Subscribe Thread'.split(' ').map((x) => `imap${x}`),
+  ...'Authenticate List Dele Retr Stat Uidl'.split(' ').map((x) => `pop3${x}`),
+  ...'Authenticate CheckScript GetScript HaveSpace ListScripts PutScript SetActive DeleteScript RenameScript'.split(' ').map((x) => `sieve${x}`),
+  ...['Cal', 'Card'].flatMap((k) => 'Copy Delete Move Acl Get Lock MkCol MultiGet PropFind PropPatch Put Query'.split(' ').map((x) => `dav${k}${x}`)), 'davCalFreeBusyQuery',
+  ...'List Search Acl Match'.split(' ').map((x) => `davPrincipal${x}`), 'davSyncCollection', 'davExpandProperty'];
+
 export class JmapError extends Error {}
 /** Fired on window when the sign-in can't be renewed; the app returns to the sign-in screen. */
 export const SESSION_EXPIRED = 'om:session-expired';
@@ -50,6 +59,7 @@ export const TEMPLATES = 'Templates';
 export interface Subscription { from: Address; count: number; lastAt: string; unsubscribe: { urls: string[]; oneClick: boolean } }
 /** A contact in the address book (a simplified JSContact card, RFC 9553). */
 export interface Contact { id?: string; given: string; surname: string; emails: string[]; phones: string[]; org: string; note: string }
+export interface AppPassword { id: string; description: string; createdAt?: string; expiresAt?: string | null }
 export interface Template { id: string; subject: string; html: string; attachments: Attachment[] }
 
 const clean = (a: Address) => (a.name ? { name: a.name, email: a.email } : { email: a.email });
@@ -86,7 +96,8 @@ export class Jmap {
     if (res.status === 401) throw new JmapError('Wrong email or password');
     if (!res.ok) throw new JmapError(`The mail server returned an error (${res.status})`);
     const s = await res.json();
-    const accountId = s.primaryAccounts?.['urn:ietf:params:jmap:mail'];
+    // A mail session has a mail account; a security-only session (step-up) has just the Stalwart one.
+    const accountId = s.primaryAccounts?.['urn:ietf:params:jmap:mail'] ?? s.primaryAccounts?.['urn:stalwart:jmap'] ?? Object.keys(s.accounts ?? {})[0];
     if (!accountId) throw new JmapError('This account has no mailbox');
     // Session URLs may be absolute with the server's internal hostname (e.g. behind a proxy).
     // Keep only the path and use the origin we actually reached.
@@ -555,6 +566,41 @@ export class Jmap {
       } } }, 'm'],
     ]);
   }
+
+  // ── Account security (needs a security-scoped client from a step-up sign-in) ──
+  // Password and two-factor changes also require the current password (the server checks it).
+
+  async security(): Promise<{ twoFactor: boolean; appPasswords: AppPassword[] }> {
+    const [pw, apps] = await this.call([
+      ['x:AccountPassword/get', { accountId: this.accountId, ids: ['singleton'] }, 'p'],
+      ['x:AppPassword/get', { accountId: this.accountId, ids: null, properties: ['description', 'createdAt', 'expiresAt'] }, 'a'],
+    ], [STALWART]);
+    return {
+      twoFactor: !!pw.list[0]?.otpAuth?.otpUrl,
+      appPasswords: (apps.list as AppPassword[]).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
+    };
+  }
+
+  /** otpUrl null turns two-factor off. `code` is a current code from the authenticator app. */
+  async setTwoFactor(currentPassword: string, otpUrl: string | null, code: string) {
+    await this.call([['x:AccountPassword/set', { accountId: this.accountId, update: { singleton: {
+      currentSecret: currentPassword, otpAuth: { otpUrl, otpCode: code } } } }, 's']], [STALWART]);
+  }
+
+  async changePassword(currentPassword: string, next: string) {
+    await this.call([['x:AccountPassword/set', { accountId: this.accountId, update: { singleton: { currentSecret: currentPassword, secret: next } } }, 's']], [STALWART]);
+  }
+
+  /** Returns the new app password: shown once, never readable again. */
+  /** App passwords get only what a mail, calendar or contacts app needs (IMAP, POP3, SMTP, ManageSieve, CalDAV,
+   *  CardDAV), never admin or account-security rights, so a leaked one can't change the password or 2FA. */
+  async createAppPassword(description: string): Promise<string> {
+    const permissions = Object.fromEntries(APP_PASSWORD_PERMISSIONS.map((p) => [p, true]));
+    const [r] = await this.call([['x:AppPassword/set', { accountId: this.accountId, create: { p: { description, permissions: { '@type': 'Replace', permissions } } } }, 'c']], [STALWART]);
+    return r.created.p.secret;
+  }
+
+  async deleteAppPassword(id: string) { await this.call([['x:AppPassword/set', { accountId: this.accountId, destroy: [id] }, 'd']], [STALWART]); }
 
   // ── Calendar (JMAP Calendars) ──────────────────────────
 

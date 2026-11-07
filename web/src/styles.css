@@ -549,3 +549,19 @@ select.input { appearance: auto; }
 
 .banner .grow { flex: 1; min-width: 200px; }
 .banner .grow + .btn--link { margin-left: 0; }
+
+/* Settings → Security */
+.sec-block { display: grid; gap: var(--s2); padding: var(--s3) 0; border-top: 1px solid var(--rule); }
+.sec-block:first-of-type { border-top: 0; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: var(--h-sm); }
+.pill { display: inline-flex; align-items: center; height: 20px; padding: 0 var(--s2); border-radius: var(--r-full); background: var(--hover); color: var(--ink-2); font-size: var(--t-xs); font-weight: 600; }
+.pill.on { background: color-mix(in srgb, var(--safe) 18%, transparent); color: var(--safe); }
+.totp-setup { display: grid; grid-template-columns: 168px 1fr; gap: var(--s4); align-items: start; }
+.totp-setup .qr { width: 168px; height: 168px; image-rendering: pixelated; border: 1px solid var(--rule); border-radius: var(--r-md); background: #fff; padding: var(--s1); }
+.totp-setup .steps { display: grid; gap: var(--s3); }
+.totp-setup .actions { display: flex; gap: var(--s2); }
+code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
+.inline-form { display: flex; gap: var(--s2); }
+.inline-form .input { flex: 1; min-width: 0; }
+.settings .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s3); }
+@media (max-width: 860px) { .totp-setup { grid-template-columns: 1fr; } .settings .row3 { grid-template-columns: 1fr; } }

@@ -87,3 +87,49 @@ export class Session {
     }).catch(() => {});
   }
 }
+
+// ── Step-up: a fresh sign-in for security settings ──────
+// Security changes (two-factor, app passwords, password) need a token with the security scope. The everyday
+// session never gets it: a stolen mail token must not be able to mint permanent app passwords. Instead a small
+// window asks for the password (and code) again; the resulting short-lived token lives only in memory.
+
+const STEP_UP = 'stepup.';
+// ponytail: app passwords inherit the creating token's permissions, so the step-up token also carries the mail scopes.
+const SECURITY_SCOPE = 'openid urn:ietf:params:oauth:scope:mail urn:ietf:params:oauth:scope:contacts urn:ietf:params:oauth:scope:calendars urn:stalwart:oauth:scope:security';
+
+/** True in the step-up window when the server sends it back to us. */
+export function isStepUpReturn(): boolean {
+  return !!window.opener && (new URLSearchParams(location.search).get('state') ?? '').startsWith(STEP_UP);
+}
+
+/** In the step-up window: hand the result to the window that opened us (same origin only), then close. */
+export function relayStepUp() {
+  const p = new URLSearchParams(location.search);
+  window.opener?.postMessage({ type: 'om-stepup', code: p.get('code'), state: p.get('state'), error: p.get('error_description') || p.get('error') }, location.origin);
+  window.close();
+}
+
+/** In the app: open the sign-in window and resolve with a security-scoped access token. */
+export async function stepUp(loginHint: string): Promise<string> {
+  const verifier = random(48), state = STEP_UP + random(16);
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  const q = new URLSearchParams({
+    response_type: 'code', client_id: CLIENT_ID, redirect_uri: redirectUri(), scope: SECURITY_SCOPE,
+    code_challenge: challenge, code_challenge_method: 'S256', state, prompt: 'login', login_hint: loginHint,
+  });
+  const w = window.open(`/login?${q}`, 'om-stepup', 'width=480,height=680');
+  if (!w) throw new Error('Your browser blocked the sign-in window. Allow pop-ups for this site and try again.');
+  return new Promise((resolve, reject) => {
+    const done = () => { window.removeEventListener('message', onMessage); clearInterval(watch); };
+    const onMessage = async (e: MessageEvent) => {
+      if (e.origin !== location.origin || e.source !== w || e.data?.type !== 'om-stepup') return; // only our own window
+      done();
+      if (e.data.state !== state) return reject(new Error('That sign-in didn’t match. Please try again.'));
+      if (e.data.error || !e.data.code) return reject(new Error(e.data.error || 'Sign-in was cancelled.'));
+      try { resolve((await tokenRequest({ grant_type: 'authorization_code', code: e.data.code, redirect_uri: redirectUri(), code_verifier: verifier })).access); }
+      catch (err) { reject(err); }
+    };
+    const watch = setInterval(() => { if (w.closed) { done(); reject(new Error('The sign-in window was closed.')); } }, 500);
+    window.addEventListener('message', onMessage);
+  });
+}

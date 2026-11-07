@@ -407,6 +407,42 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     expect(mdn, 'the receipt is delivered').toBeTruthy();
   }, 45_000);
 
+  it('account security: app passwords, password change and two-factor (on a throwaway account)', async () => {
+    const admin = JSON.parse((await import('node:fs')).readFileSync(new URL('../../deploy/.dev-admin.json', import.meta.url), 'utf8'));
+    const adminAuth = 'Basic ' + Buffer.from(`${admin.user}:${admin.pass}`).toString('base64');
+    const adm = async (calls: unknown[]) => (await (await fetch(`${BASE}/jmap/`, { method: 'POST', headers: { Authorization: adminAuth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ using: ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap'], methodCalls: calls }) })).json()).methodResponses;
+    const name = `sec${Date.now()}`;
+    const [[, dom]] = await adm([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']]);
+    const domainId = dom.list.find((d: { name: string }) => d.name === 'openmail.test').id;
+    const [[, made]] = await adm([['x:Account/set', { create: { u: { '@type': 'User', name, domainId, credentials: { 0: { '@type': 'Password', secret: 'first-password-123' } } } } }, 'a']]);
+    const accountId = made.created.u.id;
+    try {
+      let c = await Jmap.login(`${name}@openmail.test`, 'first-password-123', BASE);
+      expect(await c.security()).toEqual({ twoFactor: false, appPasswords: [] });
+      const secret = await c.createAppPassword('Thunderbird on laptop');
+      expect(secret).toMatch(/^app_/);
+      const apps = (await c.security()).appPasswords;
+      expect(apps.map((a) => a.description)).toEqual(['Thunderbird on laptop']);
+      // The app password signs in on its own (what Thunderbird would do over IMAP/SMTP).
+      expect((await fetch(`${BASE}/jmap/session`, { headers: { Authorization: 'Basic ' + Buffer.from(`${name}@openmail.test:${secret}`).toString('base64') } })).status).toBe(200);
+      await c.deleteAppPassword(apps[0].id);
+      expect((await c.security()).appPasswords).toEqual([]);
+
+      await expect(c.changePassword('wrong-password', 'second-password-456')).rejects.toThrow();
+      await c.changePassword('first-password-123', 'second-password-456');
+      c = await Jmap.login(`${name}@openmail.test`, 'second-password-456', BASE);
+
+      const { newSecret, otpauthUrl, totp } = await import('./totp');
+      const s = newSecret();
+      await c.setTwoFactor('second-password-456', otpauthUrl(s, `${name}@openmail.test`), await totp(s));
+      // Two-factor is on: a plain password sign-in (like this test's client) is now refused with "MFA required".
+      expect((await fetch(`${BASE}/jmap/session`, { headers: { Authorization: 'Basic ' + Buffer.from(`${name}@openmail.test:second-password-456`).toString('base64') } })).status).toBe(402);
+    } finally {
+      await adm([['x:Account/set', { destroy: [accountId] }, 'x']]);
+    }
+  });
+
   it('suggests contacts, people I write to first, never me', async () => {
     const c = await login();
     const people = (await c.contacts()).map((a) => a.email);

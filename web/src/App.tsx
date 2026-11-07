@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
 import { Jmap, JmapError, SESSION_EXPIRED } from './jmap';
 import { Mail } from './Mail';
-import { finishSignIn, Session, startSignIn } from './oauth';
+import { finishSignIn, isStepUpReturn, relayStepUp, Session, startSignIn } from './oauth';
 import { applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
@@ -18,6 +18,8 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
+        // The security sign-in window: pass the result back to the app window and close.
+        if (isStepUpReturn()) { relayStepUp(); return; }
         // Returning from the server's sign-in page, or resuming in this tab after a reload.
         const fresh = await finishSignIn();
         const s = fresh ? new Session(fresh) : Session.resume();
