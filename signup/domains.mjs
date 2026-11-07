@@ -162,6 +162,12 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     const r = await jmap([['x:Account/set', { update: { [id]: patch } }, 'u']]);
     if (!r.updated || !(id in r.updated)) throw Object.assign(new Error('account update refused'), { detail: r.notUpdated?.[id] });
   };
+  // The account's creation time is part of the token: Stalwart may hand a deleted account's id to a new account, and
+  // an old record left in DNS must never verify the newcomer's claim.
+  const tokenOf = async (who, name) => {
+    const at = (await jmap([['x:Account/get', { ids: [who.id], properties: ['createdAt'] }, 'c']])).list[0]?.createdAt ?? '';
+    return tokenFor(secret, `${who.id}/${at}`, name);
+  };
   const setMeta = (d, meta) => jmap([['x:Domain/set', { update: { [d.id]: { description: writeMeta(meta) } } }, 'm']]);
   /** Switch every address on the domain on or off (paused domains neither send nor receive). */
   const switchAll = (owner, domainId, enable) => serial(owner, async () => {
@@ -214,7 +220,7 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
 
   /** What Settings shows for one domain: its status, the records with live status, and its addresses. */
   async function view(d, who) {
-    const recs = wantedRecords(d.name, { token: d.meta?.token ?? tokenFor(secret, who.id, d.name), mailHost: await host(), spfDomain: cfg.domain, zone: d.id ? await zoneOf(d.id) : '' });
+    const recs = wantedRecords(d.name, { token: d.meta?.token ?? await tokenOf(who, d.name), mailHost: await host(), spfDomain: cfg.domain, zone: d.id ? await zoneOf(d.id) : '' });
     const records = await Promise.all(recs.map(async (r) => ({ ...r, ok: await hasRecord(dns, r) })));
     if (d.id) await refresh(d, records[0].ok);
     const addresses = d.id ? Object.values(await aliasesOf(who.id)).filter((a) => a.domainId === d.id)
@@ -280,7 +286,7 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
       const wait = claims.take(who.id);
       if (wait) return [429, 'rate_limited', 'You’ve added a lot of domains recently. Try again tomorrow.', { retryAfter: wait }];
       const now = new Date().toISOString();
-      const meta = { owner: who.id, token: tokenFor(secret, who.id, name), added: now, checked: now, missing: null, paused: false };
+      const meta = { owner: who.id, token: await tokenOf(who, name), added: now, checked: now, missing: null, paused: false };
       const r = await jmap([['x:Domain/set', { create: { d: { name, description: writeMeta(meta) } } }, 'c']]);
       if (r.notCreated?.d?.type === 'primaryKeyViolation') return [409, 'taken', 'That domain is already in use on this server.'];
       if (!r.created?.d) throw Object.assign(new Error('domain create refused'), { detail: r.notCreated?.d });
