@@ -117,7 +117,7 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 | 150+ recipients from mail apps | ✅ | ✅ | 500 per message for signed-in senders (was 100) |
 | Priority Inbox / important | ✅ | ✅ | Unread mail from people you write to comes first; no scanning, no AI: it uses your own Sent mail |
 | Search chips + typeahead | ✅ | ✅ | One-click filters (unread, starred, attachments, last 7 days, sent) and “From <person>” as you type |
-| AI (summarise, smart reply) | ✅ | 🟡 | Summaries and writing help on this device; smart reply next |
+| AI (summarise, smart reply) | ✅ | ✅ | Summaries, smart replies and writing help, all on this device; nothing goes to an AI company |
 | Offline mail | ✅ | ⬜ | Installable today; mail offline later |
 | Large files as links | ✅ | ⬜ | |
 

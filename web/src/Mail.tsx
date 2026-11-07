@@ -418,7 +418,12 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
   const withSignature = (d: Draft, kind: 'new' | 'reply' = 'new'): Draft =>
     ({ ...d, html: addSignature(d.html, chooseSignature(signatures, kind === 'new' ? sigData.sigNew : sigData.sigReply)) });
   const newMessage = () => setCompose(withSignature(EMPTY_DRAFT));
-  function reply(mode: ReplyMode, e: EmailFull) { setCompose(withSignature(draftFor(mode, e, client.username, identities.map((i) => i.email)), 'reply')); }
+  function reply(mode: ReplyMode, e: EmailFull, text?: string) {
+    const d = draftFor(mode, e, client.username, identities.map((i) => i.email));
+    // A picked suggestion goes on the first line; the user edits it like anything they typed.
+    if (text) d.html = d.html.replace('<div><br></div>', `<div>${escape(text)}</div><div><br></div>`);
+    setCompose(withSignature(d, 'reply'));
+  }
 
   const composeApi: ComposeApi = {
     upload: (f) => client.upload(f),

@@ -5,7 +5,7 @@ import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
 import { Button } from './Button';
 import { Icon } from './icons';
 import { displayName, fileSize, formatAddresses, type ReplyMode } from './mailutil';
-import { canSummarize, canTranslate, languageName, summarize, translate, visibleText } from './ai';
+import { canSuggestReplies, canSummarize, canTranslate, languageName, suggestReplies, summarize, translate, visibleText } from './ai';
 import { buildSrcdoc } from './safeHtml';
 import { span, type CalEvent } from './calendar';
 import type { PartStat } from './ics';
@@ -18,7 +18,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
   /** Folders the user created (moving/labelling targets). */
   folders: Mailbox[];
-  onAction: (a: Action) => void; onReply: (mode: ReplyMode, e: EmailFull) => void; onBack: () => void;
+  onAction: (a: Action) => void; onReply: (mode: ReplyMode, e: EmailFull, text?: string) => void; onBack: () => void;
   onSnooze: (until: Date) => void;
   /** mailboxId, or null to create a folder first; label=true keeps it where it is too. */
   onMoveTo: (mailboxId: string | null, label: boolean) => void;
@@ -102,6 +102,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
           </button>
         ))}
 
+      <SmartReplies m={last} me={me} onPick={(text) => onReply('reply', last, text)} />
       <div className="reply-bar">
         <Button icon="reply" title="Reply (r)" onClick={() => onReply('reply', last)}>Reply</Button>
         {(last.to?.length ?? 0) + (last.cc?.length ?? 0) > 1 &&
@@ -308,6 +309,32 @@ function Invitation({ client, m, onRsvp }: { client: Jmap; m: EmailFull; onRsvp:
         <span className="q">{answer ? 'Your answer' : 'Going?'}</span>
         {opt('ACCEPTED', 'Yes')}{opt('TENTATIVE', 'Maybe')}{opt('DECLINED', 'No')}
       </span>
+    </div>
+  );
+}
+
+/** Two or three short replies, written on this device. Only when the model is already there (no surprise download). */
+function SmartReplies({ m, me, onPick }: { m: EmailFull; me: string; onPick: (text: string) => void }) {
+  const [ideas, setIdeas] = useState<string[]>([]);
+  useEffect(() => {
+    setIdeas([]);
+    const from = m.from?.[0]?.email ?? '';
+    if (!canSuggestReplies() || !from || from.toLowerCase() === me.toLowerCase() || m.unsubscribe) return; // people, not newsletters
+    let live = true;
+    (async () => {
+      const g = globalThis as { LanguageModel?: { availability(): Promise<string> } };
+      if ((await g.LanguageModel!.availability()) !== 'available') return;
+      const text = (m.text || (m.html ? visibleText(m.html) : '')).trim();
+      if (text.length < 10) return;
+      const out = await suggestReplies(text, displayName(m.from?.[0])).catch(() => []);
+      if (live) setIdeas(out);
+    })();
+    return () => { live = false; };
+  }, [m.id]);
+  if (!ideas.length) return null;
+  return (
+    <div className="smart-replies" role="group" aria-label="Suggested replies (made on this device)">
+      {ideas.map((t) => <button key={t} className="filter-chip" onClick={() => onPick(t)}>{t}</button>)}
     </div>
   );
 }

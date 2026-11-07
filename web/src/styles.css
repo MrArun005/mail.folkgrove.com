@@ -687,3 +687,6 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   .rail { overflow-y: auto; }
   .rail .me { position: sticky; bottom: calc(-1 * var(--s3)); background: var(--rail); padding-bottom: var(--s3); }
 }
+
+.smart-replies { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s2) 0 0 var(--text-col); }
+.smart-replies .filter-chip { height: auto; min-height: var(--h-md); padding: var(--s2) var(--s4); white-space: normal; text-align: left; color: var(--accent); border-color: color-mix(in oklch, var(--accent) 35%, var(--rule)); }
