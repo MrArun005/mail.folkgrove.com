@@ -7,8 +7,8 @@ import type { Jmap } from './jmap';
  * Admin console (/admin): users, blocked addresses and new-account limits, and the outgoing queue. Every call goes
  * to the account service (signup/admin.mjs), which checks that the signed-in account is on its ADMINS list.
  */
-type Tab = 'overview' | 'users' | 'limits' | 'queue';
-const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['limits', 'Blocked & limits'], ['queue', 'Message trace']];
+type Tab = 'overview' | 'users' | 'limits' | 'queue' | 'domains';
+const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['limits', 'Blocked & limits'], ['queue', 'Message trace'], ['domains', 'Domains']];
 
 interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; admin: boolean; newAccount: boolean }
 interface Blocked { id: string; address: string; reason: string; createdAt: string; expiresAt: string | null }
@@ -51,6 +51,7 @@ export function Admin({ client }: { client: Jmap }) {
         {tab === 'users' && <Users client={client} />}
         {tab === 'limits' && <><BlockedIps client={client} /><NewAccounts client={client} /></>}
         {tab === 'queue' && <Queue client={client} />}
+        {tab === 'domains' && <Domains client={client} />}
       </main>
     </div>
   );
@@ -214,6 +215,36 @@ function NewAccounts({ client }: { client: Jmap }) {
             </li>
           ))}
         </ul>
+      ))}
+    </section>
+  );
+}
+
+/** Users' own domains (signup/domains.mjs): who owns each and whether its ownership record is still there. */
+function Domains({ client }: { client: Jmap }) {
+  const { data, error } = useLoad(() => client.admin<{ domains: { name: string; owner: string | null; status: string; added: string; checked: string | null; missingSince: string | null; addresses: number }[] }>('domains'));
+  const STATE: Record<string, string> = { active: 'Working', missing: 'Record missing', paused: 'Paused' };
+  return (
+    <section>
+      <h2>Users’ domains</h2>
+      <p className="fine">Domains people added in Settings → Your domain. Each belongs to one account. Its ownership record is checked every few hours; after 7 days without it, the domain’s addresses pause.</p>
+      {error && <p className="error" role="alert">{error}</p>}
+      {data && (data.domains.length === 0 ? <p className="empty">Nobody has added a domain yet.</p> : (
+        <table className="admin-table">
+          <thead><tr><th>Domain</th><th>Owner</th><th>Status</th><th>Addresses</th><th>Added</th><th>Last checked</th></tr></thead>
+          <tbody>
+            {data.domains.map((d) => (
+              <tr key={d.name}>
+                <td data-label="Domain"><code>{d.name}</code></td>
+                <td data-label="Owner">{d.owner ?? 'Deleted account (kept, never reused)'}</td>
+                <td data-label="Status"><span className={`pill ${d.status === 'active' ? 'on' : 'pill--warn'}`}>{STATE[d.status] ?? d.status}</span>{d.missingSince && <span className="fine"> since {when(d.missingSince)}</span>}</td>
+                <td data-label="Addresses">{d.addresses}</td>
+                <td data-label="Added">{when(d.added)}</td>
+                <td data-label="Last checked">{when(d.checked)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       ))}
     </section>
   );

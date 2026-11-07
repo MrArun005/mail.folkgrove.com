@@ -27,6 +27,10 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `CLIENT_IP_HEADER` | | Header that carries the real client IP when the service runs behind a proxy, for example `cf-connecting-ip` or `x-real-ip`. Set this **only** if the proxy overwrites that header, because otherwise clients can spoof it. If unset, the socket address is used. |
 | `ADMINS` | | Usernames on `DOMAIN` (comma-separated, e.g. `ann,raj`) who may use the admin console at `/admin`. Empty: the console is off and `/api/admin/*` answers 404. See [Admin console](#admin-console-apiadmin). |
 | `RESERVED_NAMES` | | Extra reserved usernames, comma-separated. They are added to the built-in list in `lib.mjs`. |
+| `CUSTOM_DOMAINS` | on | `off` hides Settings → Your domain (`/api/domains` answers 404). |
+| `MAX_DOMAINS`, `MAX_DOMAIN_ADDRESSES` | `3`, `10` | Domains per account; addresses per domain (the owner's own name included). |
+| `RESERVED_DOMAINS` | | Extra domains (and their subdomains) users may not add, comma-separated. `DOMAIN` and the mail host are always refused. |
+| `DNS_SERVERS` | system resolver | Resolvers for the record checks, comma-separated, e.g. `1.1.1.1,8.8.8.8`. |
 | `RETIRED_FILE` | | File (one name per line) where the names of deleted accounts and their aliases are kept, so they are never given out again. Stalwart itself frees them on delete. Set it in production (`docker-compose.yml` does); without it the list lasts until restart. |
 
 Docker:
@@ -99,6 +103,22 @@ This endpoint checks account names only. An alias that collides is caught at sig
 ### `DELETE /api/account`
 
 Deletes the caller's own account and all its mail, contacts and calendars. Needs the caller's sign-in token (`Authorization: Bearer …`; passwords are refused as on `/api/aliases`) and a JSON body `{ "password": "…", "code": "123456", "confirm": "jane.doe@DOMAIN" }`: the current password (`code` only with two-factor sign-in on; checked through Stalwart's sign-in API, so an app password doesn't count) and the full address typed as confirmation. Before the account is destroyed, its username and every alias go into `RETIRED_FILE`, so sign-up and masked-address generation never hand them out again. Errors: `401 unauthorized`, `400 confirm_mismatch` / `password_required` / `code_required`, `403 wrong_password` (5 per account per hour, then `429`), `503 unavailable` (nothing removed).
+### Your own domain (`/api/domains`)
+
+Settings → Your domain calls these with the user's sign-in token (as `/api/aliases`). The code is in `domains.mjs`.
+
+| Request | What it does |
+|---|---|
+| `GET /api/domains` | `{domains, maxDomains}`: each claimed domain with `status` (`active`, `missing`: TXT gone, `paused`: gone over 7 days), `pausesAt`, its records with live DNS status (`ok`: true / false / null = DNS didn't answer) and its addresses. Looking at it re-checks the TXT record (and switches a paused domain back on). |
+| `POST /api/domains {domain}` | Add, or "Check again". Until the TXT record `openmail-verify=<token>` is at the domain: `status: "pending"` and the records to add; nothing is stored. Once it's there: the domain is created in Stalwart (its DKIM keys follow a few seconds later: `dkimPending`) and `<username>@domain` is added to the account. |
+| `POST /api/domains/:domain/addresses {name}` | One more address on it (up to `MAX_DOMAIN_ADDRESSES`). |
+| `DELETE /api/domains/:domain/addresses/:name` | Removes and retires it (never given out again). The owner's own name can't be removed alone. |
+| `DELETE /api/domains/:domain` | Retires every address on it, deletes its DKIM keys and the domain. |
+
+Records shown: the TXT check, `MX 10 <mail host>.` (our main domain's MX), `v=spf1 include:DOMAIN -all`, Stalwart's DKIM keys for the domain, and `v=DMARC1; p=quarantine`. Errors: `400 bad_domain` / `reserved` / `bad_name`, `404 not_found` (not yours), `409 taken` (another account, or a domain Stalwart already has), `too_many`, `exists`, `retired`, `main`, `429 rate_limited` (60 checks an hour, 3 new domains a day, 30 new addresses an hour per account).
+
+What's stored: the domain's description in Stalwart is `openmail-custom-domain {"owner": <account id>, "token", "added", "checked", "missing", "paused"}`. Every 6 hours the service re-checks each TXT record; gone for 7 days, the domain's addresses are switched off (no receiving, no sending: Stalwart drops the sending identity) and the owner gets an email (when system mail is set up). Deleting the account retires its domain addresses and keeps the domain claimed by that (deleted) account, so nobody else can take it over. Verified against Stalwart 1.0.3: `x:Domain/set` create (DKIM keys appear in `dnsZoneFile` and as `x:DkimSignature` a few seconds later; no rotation with manual DNS), alias `{name, domainId}` on the new domain (gets an identity; mail to it delivered over SMTP; signed `d=<domain>`), a disabled alias refuses mail (550) and has no identity, and a domain can only be destroyed after its aliases and DKIM keys are gone.
+
 ### Admin console (`/api/admin/*`)
 
 The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change is logged with the admin's name.
@@ -114,6 +134,7 @@ The web app's `/admin` screen calls these. Each request must carry the admin's o
 | `GET new-accounts`, `POST new-accounts {address}`, `DELETE new-accounts/:id` | The stricter new-account sending tier: `x:MemoryLookupKey` entries in namespace `new-accounts`, key = full address |
 | `GET queue?q=` | Outgoing queue (`x:QueuedMessage`), up to 200, by sender or recipient (substring): per recipient status, attempts, next try, last error |
 | `POST queue/:id/retry`, `DELETE queue/:id` | Retry now (next attempt due immediately) or cancel delivery |
+| `GET domains` | Users' own domains: owner (null once that account was deleted), status, address count, added, last checked |
 
 Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) and the caller's own account can't be changed or deleted here; names in `ADMINS` are also reserved at sign-up. Delivered or bounced mail leaves the queue; Stalwart's delivery history (`x:Trace`) needs its Enterprise edition, so it isn't shown.
 

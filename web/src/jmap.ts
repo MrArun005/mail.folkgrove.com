@@ -86,6 +86,12 @@ const SUMMARY = ['threadId', 'subject', 'from', 'to', 'preview', 'receivedAt', '
 const FULL = [...SUMMARY, 'blobId', 'cc', 'bcc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
   'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses'];
 
+/** Your own domain (signup/domains.mjs). ok: live in DNS; null = DNS didn't answer. */
+export interface DnsRecord { kind: 'verify' | 'mx' | 'spf' | 'dkim' | 'dmarc'; name: string; type: string; value: string; ok?: boolean | null }
+export interface CustomDomain {
+  name: string; status: 'pending' | 'active' | 'missing' | 'paused'; missingSince: string | null; pausesAt: string | null; dkimPending: boolean;
+  records: DnsRecord[]; addresses: { name: string; email: string; enabled: boolean; main: boolean }[]; maxAddresses: number;
+}
 export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
 async function aliasReply(r: Response) {
   const j = await r.json().catch(() => ({}));
@@ -599,6 +605,14 @@ export class Jmap {
   }
   async deleteAlias(id: string): Promise<void> {
     await aliasReply(await this.fetch(`${this.base}/api/aliases/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+  }
+
+  /** Your own domains (the account service, signup/domains.mjs). GET → { domains, maxDomains }, or null when this
+   *  server doesn't offer them; changes → { domain }. Errors carry the service's message. */
+  async customDomains(path = '', method = 'GET', body?: object): Promise<any> {
+    const r = await this.fetch(`${this.base}/api/domains${path}`, { method, ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
+    if (method === 'GET' && (r.status === 404 || r.status === 503)) return null;
+    return aliasReply(r);
   }
 
   /** Delete this account for good (the account service, signup/account.mjs). Errors carry the service's `code`. */
