@@ -50,7 +50,7 @@ export function queueView(m) {
 
 const password = () => randomBytes(12).toString('base64url'); // 16 characters, about 96 bits
 
-export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, abuse }) {
+export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, abuse, hold = null }) {
   const admins = new Set(cfg.admins ?? []);
   // Admin rights go by name, so admin names can never be signed up for, and the console can't touch admin accounts.
   cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins];
@@ -82,7 +82,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         newTier(),
       ]);
       const suspended = Object.values(abuse?.state.suspensions ?? {}).filter((h) => !h.at(-1)?.liftedAt).length;
-      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length, suspended };
+      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length, suspended, held: hold ? hold.list().length : null };
     },
 
     'GET users': async (_req, url) => {
@@ -183,11 +183,12 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     // { add: 'sam' } or { remove: 'sam@domain' }: membership lives on the user (memberGroupIds).
     'PATCH groups/:id': async (req, _url, id) => {
       const body = await readJson(req).catch(() => ({}));
-      const [g] = await get('x:Account', [id], ['@type', 'roles', 'permissions']);
+      const [g] = await get('x:Account', [id], ['@type', 'roles', 'permissions', 'memberGroupIds']);
       if (g?.['@type'] !== 'Group') return [404, 'not_found', 'That team mailbox no longer exists.'];
       // Only plain team mailboxes (default roles, inherited permissions, as this console creates them): a group that
       // grants extra rights is managed in Stalwart's own admin, or adding someone here would hand them those rights.
-      if (g.roles?.['@type'] !== 'Default' || g.permissions?.['@type'] !== 'Inherit') return [403, 'protected', 'This group grants extra rights; manage it in Stalwart’s own admin.'];
+      // A group inside another group inherits that one's rights, so nested groups are left to Stalwart's admin too.
+      if (g.roles?.['@type'] !== 'Default' || g.permissions?.['@type'] !== 'Inherit' || Object.keys(g.memberGroupIds ?? {}).length) return [403, 'protected', 'This group grants extra rights; manage it in Stalwart’s own admin.'];
       const on = typeof body.add === 'string', who = String(on ? body.add : body.remove ?? '').trim().toLowerCase();
       const [local, domain] = who.split('@');
       if (!local || (domain && domain !== cfg.domain)) return [400, 'bad_member', `Enter a username or address on ${cfg.domain}.`];
@@ -265,10 +266,15 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     // Retry now: what Stalwart's own admin does (next attempt due in the past).
     'POST queue/:id/retry': async (_req, _url, id) => { await set('x:QueuedMessage', { update: { [id]: { nextRetry: '2000-01-01T00:00:00Z' } } }); return {}; },
     'DELETE queue/:id': async (_req, _url, id) => { await set('x:QueuedMessage', { destroy: [id] }); return {}; },
+
+    // Outgoing mail held as likely spam (hold.mjs). Off (404) unless HOLD_HOOK_SECRET is set.
+    'GET held': async () => (hold ? { held: hold.list() } : [404, 'not_found', 'Holding outgoing spam is off on this server.']),
+    'POST held/:id/release': async (_req, _url, id) => (await hold?.release(id)) ? {} : [404, 'not_found', 'That message is no longer held.'],
+    'DELETE held/:id': async (_req, _url, id) => hold?.remove(id) ? {} : [404, 'not_found', 'That message is no longer held.'],
   };
 
   return async function handle(req, res, url) {
-    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains|suspended|inactive|groups)(?:/(${ID}))?(/retry)?$`));
+    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains|suspended|inactive|groups|held)(?:/(${ID}))?(/retry|/release)?$`));
     if (!m) return false;
     if (!admins.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS is set
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);

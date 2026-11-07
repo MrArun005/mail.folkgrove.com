@@ -7,10 +7,11 @@ import type { Jmap } from './jmap';
  * Admin console (/admin): users, blocked addresses and new-account limits, and the outgoing queue. Every call goes
  * to the account service (signup/admin.mjs), which checks that the signed-in account is on its ADMINS list.
  */
-type Tab = 'overview' | 'users' | 'teams' | 'limits' | 'queue' | 'domains' | 'abuse';
-const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['teams', 'Team mailboxes'], ['limits', 'Blocked & limits'], ['queue', 'Message trace'], ['domains', 'Domains'], ['abuse', 'Suspended & inactive']];
+type Tab = 'overview' | 'users' | 'teams' | 'limits' | 'queue' | 'held' | 'domains' | 'abuse';
+const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['teams', 'Team mailboxes'], ['limits', 'Blocked & limits'], ['queue', 'Message trace'], ['held', 'Held mail'], ['domains', 'Domains'], ['abuse', 'Suspended & inactive']];
 
-interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; admin: boolean; newAccount: boolean; sending: boolean }
+interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; sending: boolean; admin: boolean; newAccount: boolean }
+interface Held { id: string; at: string; login: string; from: string; to: string[]; subject: string; size: number; score: number; reasons: string[] }
 interface Blocked { id: string; address: string; reason: string; createdAt: string; expiresAt: string | null }
 interface Queued { id: string; from: string; createdAt: string; nextRetry: string | null; size: number; recipients: { to: string; status: string; attempts: number; nextAttempt: string | null; error: string | null; code: string | null }[] }
 
@@ -54,16 +55,18 @@ export function Admin({ client }: { client: Jmap }) {
         {tab === 'queue' && <Queue client={client} />}
         {tab === 'domains' && <Domains client={client} />}
         {tab === 'abuse' && <><Suspended client={client} /><Inactive client={client} /></>}
+        {tab === 'held' && <HeldMail client={client} />}
       </main>
     </div>
   );
 }
 
 function Overview({ client, go }: { client: Jmap; go: (t: Tab) => void }) {
-  const { data, error } = useLoad(() => client.admin<{ accounts: number; queued: number; blockedIps: number; newAccounts: number; suspended: number }>('overview'));
+  const { data, error } = useLoad(() => client.admin<{ accounts: number; queued: number; blockedIps: number; newAccounts: number; suspended: number; held: number | null }>('overview'));
   if (error) return <p className="error" role="alert">{error}</p>;
   const stats: [string, number | undefined, Tab][] = [['Accounts', data?.accounts, 'users'], ['Waiting to send', data?.queued, 'queue'],
-    ['Blocked IP addresses', data?.blockedIps, 'limits'], ['On new-account limits', data?.newAccounts, 'limits'], ['Sending suspended', data?.suspended, 'abuse']];
+    ['Blocked IP addresses', data?.blockedIps, 'limits'], ['On new-account limits', data?.newAccounts, 'limits'], ['Sending suspended', data?.suspended, 'abuse'],
+    ...(data?.held != null ? [['Held for review', data.held, 'held'] as [string, number, Tab]] : [])];
   return (
     <section>
       <div className="stats">
@@ -129,6 +132,7 @@ function Users({ client }: { client: Jmap }) {
                 <td data-label="Addresses" className="n">{u.aliases}</td>
                 <td data-label="Status">
                   <span className={u.enabled ? 'pill on' : 'pill'}>{u.enabled ? 'Active' : 'Disabled'}</span>
+                  {!u.sending && <span className="pill pill--warn">Sending paused</span>}
                   {u.newAccount && <span className="pill pill--warn">New-account limits</span>}
                   {!u.sending && <span className="pill pill--warn">Sending suspended</span>}
                   {u.admin && <span className="pill">Server admin</span>}
@@ -146,6 +150,12 @@ function Users({ client }: { client: Jmap }) {
                       if (!(n >= 0)) return notify('That isn’t a number', 'Enter the limit in GB, like 5 or 0.5. Enter 0 for no limit.');
                       await act(() => patch(u, { quotaBytes: n === 0 ? null : Math.round(n * GB) }), reload);
                     }}>Set storage</Button>
+                    {u.sending
+                      ? <Button size="sm" variant="quiet" onClick={async () => {
+                          if (await confirmIt({ title: `Pause sending for ${u.email}?`, body: 'They can still sign in and read their mail, but can’t send until you let them again.', confirm: 'Pause sending', danger: true }))
+                            await act(() => patch(u, { sending: false }), reload);
+                        }}>Pause sending</Button>
+                      : <Button size="sm" variant="quiet" onClick={() => act(() => patch(u, { sending: true }), reload)}>Let them send</Button>}
                     {u.enabled
                       ? <Button size="sm" variant="quiet" onClick={async () => {
                           if (await confirmIt({ title: `Disable ${u.email}?`, body: 'They’re signed out everywhere and can’t sign in or send until you enable the account again. Mail sent to them still arrives.', confirm: 'Disable', danger: true }))
@@ -341,6 +351,43 @@ function Teams({ client }: { client: Jmap }) {
                   <Button size="sm" variant="quiet" icon="trash" label={`Delete ${g.email}`} onClick={async () => {
                     if (await confirmIt({ title: `Delete ${g.email}?`, body: 'All of its mail and team comments are deleted, and the address is retired: no one can take it later. This can’t be undone.', confirm: 'Delete team mailbox', danger: true }))
                       await act(() => client.admin(`groups/${g.id}`, 'DELETE'), reload);
+                  }} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ))}
+    </section>
+  );
+}
+
+function HeldMail({ client }: { client: Jmap }) {
+  const { data, error, reload } = useLoad(() => client.admin<{ held: Held[] }>('held'));
+  return (
+    <section>
+      <p className="fine">Mail your users sent that looks like spam. It hasn’t gone out. Send it if it’s fine, or delete it. When someone has several messages waiting here, their sending is paused: let them send again on the Users tab.</p>
+      <div className="admin-bar"><Button variant="quiet" onClick={reload}>Refresh</Button></div>
+      {error && <p className="error" role="alert">{error}</p>}
+      {data && (data.held.length === 0 ? <p className="empty">Nothing is held. Likely spam your users send shows up here.</p> : (
+        <table className="admin-table">
+          <thead><tr><th>Held</th><th>From</th><th>To</th><th>Subject</th><th>Why</th><th><span className="sr">Actions</span></th></tr></thead>
+          <tbody>
+            {data.held.map((m) => (
+              <tr key={m.id}>
+                <td data-label="Held">{when(m.at)}</td>
+                <td data-label="From">{m.from}{m.login.toLowerCase() !== m.from.toLowerCase() && <span className="fine"> signed in as {m.login}</span>}</td>
+                <td data-label="To">{m.to.map((t) => <div key={t}>{t}</div>)}</td>
+                <td data-label="Subject">{m.subject || <span className="fine">(no subject)</span>}<span className="fine"> · {size(m.size)}</span></td>
+                <td data-label="Why">{m.reasons.includes('GTUBE') ? 'Spam test message' : `Spam score ${m.score}`}{m.reasons.length > 0 && !m.reasons.includes('GTUBE') && <span className="fine"> · {m.reasons.slice(0, 4).join(', ')}</span>}</td>
+                <td className="acts">
+                  <Button size="sm" variant="quiet" onClick={async () => {
+                    if (await confirmIt({ title: 'Send this message?', body: `It goes out as written to ${m.to.join(', ')}.`, confirm: 'Send it' }))
+                      await act(() => client.admin(`held/${m.id}/release`, 'POST'), reload);
+                  }}>Send</Button>
+                  <Button size="sm" variant="quiet" icon="trash" label="Delete" onClick={async () => {
+                    if (await confirmIt({ title: 'Delete this message?', body: 'It won’t be sent, and it can’t be brought back. The sender isn’t told.', confirm: 'Delete', danger: true }))
+                      await act(() => client.admin(`held/${m.id}`, 'DELETE'), reload);
                   }} />
                 </td>
               </tr>

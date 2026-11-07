@@ -12,6 +12,8 @@ services:
       - "1465:465"    # SMTP submission (TLS)
       - "2525:25"     # SMTP inbound
       - "1993:993"    # IMAPS, for testing with Thunderbird
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Linux: the outgoing-spam hook reaches the account service on this machine
     volumes:
       - stalwart-etc:/etc/stalwart
       - stalwart-data:/var/lib/stalwart
