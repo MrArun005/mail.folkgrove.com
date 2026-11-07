@@ -167,11 +167,14 @@ it('large-file links: written into the message, found again by the reader', () =
   const f = { url: 'https://mail.example.com/f/AbCdEfGhIjKlMnOpQrStUv_-', name: 'Q3 report & “final”.pdf', size: 120e6, expires: null };
   const html = fileLinkHtml(f);
   expect(html).toContain('(114.4 MB, download link)');
-  const want = [{ url: f.url, host: 'mail.example.com', name: f.name, size: 120e6 }];
-  expect(fileLinks(html)).toEqual(want);
+  const want = [{ url: f.url, name: f.name, size: 120e6 }], origin = 'https://mail.example.com';
+  expect(fileLinks(html, origin)).toEqual(want);
   // After the editor re-serialises it (& → &amp;), in the text part, and twice in one message: still one file.
   const div = document.createElement('div'); div.innerHTML = html;
-  expect(fileLinks(div.innerHTML + htmlToText(div.innerHTML))).toEqual(want);
+  expect(fileLinks(div.innerHTML + htmlToText(div.innerHTML), 'https://MAIL.example.com:443')).toEqual(want);
   // Not ours: wrong id length, no name, a broken escape.
-  expect(fileLinks('https://x.org/f/short#n=a&s=1 https://x.org/f/AbCdEfGhIjKlMnOpQrStUv_-#s=1 https://x.org/f/AbCdEfGhIjKlMnOpQrStUv_-#n=%E0%A4&s=1')).toEqual([]);
+  expect(fileLinks('https://x.org/f/short#n=a&s=1 https://x.org/f/AbCdEfGhIjKlMnOpQrStUv_-#s=1 https://x.org/f/AbCdEfGhIjKlMnOpQrStUv_-#n=%E0%A4&s=1', origin)).toEqual([]);
+  // Another site's lookalike (or this host on another scheme/port) is a plain link, never a file chip.
+  for (const spoof of ['https://mail.example.com.evil.test', 'https://evil.test', 'http://mail.example.com', 'https://mail.example.com:8443'])
+    expect(fileLinks(`<a href="${spoof}/f/AbCdEfGhIjKlMnOpQrStUv_-#n=invoice.pdf&s=1">x</a>`, origin)).toEqual([]);
 });

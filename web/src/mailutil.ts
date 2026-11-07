@@ -31,11 +31,17 @@ export const fileLinkHtml = (f: { url: string; name: string; size: number; expir
   `<div><a href="${escapeHtml(`${f.url}#n=${encodeURIComponent(f.name)}&s=${f.size}`)}">${escapeHtml(f.name)}</a> (${fileSize(f.size)}, ${
     f.expires ? `download link until ${new Date(f.expires).toLocaleDateString([], { dateStyle: 'medium' })}` : 'download link'})</div>`;
 
-/** Large-file links in a message body (HTML or text), once each. */
-export function fileLinks(body: string): { url: string; host: string; name: string; size: number }[] {
-  const out = new Map<string, { url: string; host: string; name: string; size: number }>();
-  for (const [, url, host, name, size] of body.replace(/&amp;|&#38;/g, '&').matchAll(/(https?:\/\/([a-z0-9.-]+(?::\d+)?)\/f\/[A-Za-z0-9_-]{24})#n=([^&\s"'<>]+)&s=(\d+)/gi)) {
-    try { if (!out.has(url)) out.set(url, { url, host: host.toLowerCase(), name: decodeURIComponent(name), size: Number(size) }); } catch { /* bad %-escape: not ours */ }
+/**
+ * Large-file links in a message body (HTML or text), once each. Only links to this server (`origin`) count: anyone
+ * can write a link that looks like one, and a chip would vouch for it. Other servers' links stay plain links, with
+ * the reader's usual lookalike-link warning. ponytail: so files shared from another OpenMail server show no chip.
+ */
+export function fileLinks(body: string, origin: string): { url: string; name: string; size: number }[] {
+  const out = new Map<string, { url: string; name: string; size: number }>();
+  for (const [, url, name, size] of body.replace(/&amp;|&#38;/g, '&').matchAll(/(https?:\/\/[a-z0-9.-]+(?::\d+)?\/f\/[A-Za-z0-9_-]{24})#n=([^&\s"'<>]+)&s=(\d+)/gi)) {
+    try {
+      if (new URL(url).origin === new URL(origin).origin && !out.has(url)) out.set(url, { url, name: decodeURIComponent(name), size: Number(size) });
+    } catch { /* bad %-escape or address: not ours */ }
   }
   return [...out.values()];
 }

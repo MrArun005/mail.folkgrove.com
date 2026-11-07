@@ -144,7 +144,7 @@ export function createApp(cfg) {
       const chunks = [];
       req.on('data', (c) => {
         size += c.length;
-        if (size > limit) reject(413); // keep draining (bounded by requestTimeout) so the 413 can still be sent
+        if (size > limit) reject(413); // keep draining (bounded by the request timer in createApp) so the 413 can still be sent
         else chunks.push(c);
       });
       req.on('end', () => {
@@ -277,7 +277,13 @@ export function createApp(cfg) {
   const files = fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
-  return createServer(async (req, res) => {
+  const server = createServer(async (req, res) => {
+    // Our own request timeout instead of server.requestTimeout, so that one route can lengthen it: a client gets
+    // 15 s to send the whole request. Only a signed-in file upload (files.mjs) may ask for more, by size.
+    const limit = (ms) => setTimeout(() => { if (!req.complete) req.destroy(); }, ms).unref();
+    let timer = limit(cfg.requestTimeoutMs ?? 15_000);
+    req.allowSlowBody = (ms) => { clearTimeout(timer); timer = limit(ms); };
+    res.once('close', () => clearTimeout(timer));
     try {
       const url = new URL(req.url, 'http://x');
       if (url.pathname.startsWith('/api/aliases') && await aliases(req, res, url)) return;
@@ -296,15 +302,13 @@ export function createApp(cfg) {
       if (!res.headersSent) fail(res, 500, 'internal', 'Something went wrong on our side. Please try again.');
     }
   });
+  server.requestTimeout = 0; // the timer above replaces it (headersTimeout still applies)
+  return server;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const cfg = configFromEnv();
   const server = createApp(cfg);
-  // ponytail: one request may take up to an hour so large files can upload (files.mjs); idle connections still close
-  // after a minute. Upgrade path if slow clients become a problem: a short limit everywhere except POST /api/files.
-  server.requestTimeout = 3600e3;
-  server.timeout = 60_000;
   server.headersTimeout = 10_000;
   server.listen(cfg.port, cfg.host, () =>
     console.log(`signup service on ${cfg.host}:${cfg.port} → ${cfg.stalwartUrl}, domain ${cfg.domain}, invites ${cfg.inviteRequired ? 'required' : 'off'}, captcha ${cfg.turnstileSecret ? 'on' : 'off'}`));

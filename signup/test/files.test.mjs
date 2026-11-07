@@ -18,6 +18,23 @@ const reachable = await fetch(`${STALWART}/.well-known/jmap`, { redirect: 'manua
 const skip = !reachable ? `Stalwart not reachable at ${STALWART}` : !existsSync(ADMIN_FILE) ? 'no deploy/.dev-admin.json' : false;
 const basic = (u, p) => 'Basic ' + Buffer.from(`${u}:${p}`).toString('base64');
 
+test('a client gets 15 s to send its whole request (configurable); slow senders are cut off', async (t) => {
+  const app = createApp({ stalwartUrl: 'http://127.0.0.1:9', admin: { user: 'a', pass: 'b' }, domain: 'x.test', inviteRequired: false,
+    invites: new Invites({ text: '' }), signupsPerHour: 10, checksPerMinute: 10, extraReserved: [], requestTimeoutMs: 300 });
+  await new Promise((r) => app.listen(0, '127.0.0.1', r));
+  t.after(() => app.close());
+  const { connect } = await import('node:net');
+  const started = Date.now();
+  const closed = await new Promise((resolve) => {
+    const c = connect(app.address().port, '127.0.0.1');
+    c.write('POST /api/signup HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"user');
+    c.on('close', () => resolve(Date.now() - started));
+    setTimeout(() => { c.destroy(); resolve(null); }, 3000);
+  });
+  assert.ok(closed !== null && closed < 2000, `cut off after ${closed} ms`);
+  assert.equal(app.requestTimeout, 0, 'node’s own limit is off: the timer replaces it, so uploads can be allowed longer');
+});
+
 test('large-file links: upload, download, revoke, expiry, limits', { skip }, async (t) => {
   const admin = JSON.parse(readFileSync(ADMIN_FILE, 'utf8'));
   const call = async (using, methodCalls, auth = basic(admin.user, admin.pass)) => (await (await fetch(`${STALWART}/jmap/`, { method: 'POST',
@@ -32,7 +49,7 @@ test('large-file links: upload, download, revoke, expiry, limits', { skip }, asy
 
   const cfg = { stalwartUrl: STALWART, admin, domain: DOMAIN, inviteRequired: false, invites: new Invites({ text: '' }), turnstileSecret: null,
     quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 30, clientIpHeader: null, extraReserved: [], allowBasicAuth: true, signupEnabled: false,
-    filesDb: join(mkdtempSync(join(tmpdir(), 'om-files-')), 'files.json'), maxFileBytes: 200e6, filesQuotaBytes: 250e6 };
+    filesDb: join(mkdtempSync(join(tmpdir(), 'om-files-')), 'files.json'), maxFileBytes: 200e6, filesQuotaBytes: 250e6, filesPerHour: 100 };
   const app = createApp(cfg);
   await new Promise((r) => app.listen(0, '127.0.0.1', r));
   t.after(() => app.close());
@@ -84,6 +101,22 @@ test('large-file links: upload, download, revoke, expiry, limits', { skip }, asy
   assert.equal((await up(Buffer.alloc(201e6), 'name=a')).error.code, 'too_large');
   assert.equal((await up(Buffer.alloc(195e6), 'name=a')).error.code, 'quota');
 
+  // Two uploads at once can't both fit under the per-user total: the one still streaming counts.
+  const both = await Promise.all([up(Buffer.alloc(100e6), 'name=a.bin'), up(Buffer.alloc(100e6), 'name=b.bin')]);
+  assert.deepEqual(both.map((x) => x.status).sort(), [201, 413], JSON.stringify(both.map((x) => x.error)));
+  const won = both.find((x) => x.status === 201).file;
+  assert.equal((await fetch(`${base}/api/files/${won.id}`, { method: 'DELETE', headers: me })).status, 200);
+  assert.equal((await up('fits again', 'name=c.txt')).status, 201, 'the reservation was released');
+
+  // Something fails after the file is stored (here: the link list can't be written): no file is left behind.
+  const files = async () => (await call(['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:filenode'], [['FileNode/get', { accountId: acct, ids: null, properties: ['id'] }, 'g']])).list.length;
+  const count = await files(), db = cfg.filesDb;
+  cfg.filesDb = mkdtempSync(join(tmpdir(), 'om-files-')); // a folder: saving over it fails
+  assert.equal((await up('doomed', 'name=doomed.txt')).status, 500);
+  cfg.filesDb = db;
+  assert.equal(await files(), count, 'the stored file was deleted again');
+  assert.ok((await list()).files.every((x) => x.name !== 'doomed.txt'));
+
   // Somebody else can't revoke it (alice: a read-only attempt on an id that isn't hers).
   const alice = { Authorization: basic('alice@openmail.test', 'alice-dev-pass') };
   assert.equal((await fetch(`${base}/api/files/${f.id}`, { method: 'DELETE', headers: alice })).status, 404);
@@ -99,7 +132,7 @@ test('large-file links: upload, download, revoke, expiry, limits', { skip }, asy
   cfg.links.get(short.id).expires = Date.now() - 1000;
   assert.equal((await fetch(`${base}${short.url}`)).status, 404);
   mine = await list();
-  assert.deepEqual(mine.files.map((x) => x.id), [again.file.id]);
+  assert.deepEqual(mine.files.map((x) => x.id).sort(), [again.file.id, ...mine.files.filter((x) => x.name === 'c.txt').map((x) => x.id)].sort());
 
   // Kept across restarts (FILES_DB).
   const app2 = createApp({ ...cfg, links: undefined });

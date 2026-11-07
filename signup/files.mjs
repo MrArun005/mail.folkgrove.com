@@ -58,6 +58,7 @@ export function fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ip
   };
   const destroy = (l) => fn(['FileNode/set', { accountId: l.acct, destroy: [l.node] }, 'd']).catch((e) => console.error('files: delete failed:', e.message));
   const expired = (l) => l.expires && l.expires < Date.now();
+  const inflight = new Map(); // account → bytes of uploads still streaming
 
   // Expired links go, and so do their files (that frees the sender's storage). Hourly; unref: never keeps us alive.
   const sweep = async () => {
@@ -79,21 +80,37 @@ export function fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ip
     if (!Number.isSafeInteger(size) || size <= 0) return fail(res, 411, 'length_required', 'Send the file with its size (Content-Length).');
     const max = cfg.maxFileBytes ?? 2 * 1024 ** 3;
     if (size > max) return fail(res, 413, 'too_large', `Files can be at most ${Math.round(max / 1e6)} MB.`);
-    const mine = [...links(cfg).values()].filter((l) => l.acct === who.id && !expired(l));
-    const quota = cfg.filesQuotaBytes ?? 5 * 1024 ** 3;
-    if (mine.reduce((s, l) => s + l.size, 0) + size > quota)
-      return fail(res, 413, 'quota', 'You’ve shared a lot of large files. Remove some in Settings → Shared files, then try again.');
-    const wait = uploads.take(who.id);
-    if (wait) return fail(res, 429, 'rate_limited', 'You’ve uploaded a lot of files recently. Try again in a little while.', { retryAfter: wait });
     const days = { 7: 7, 30: 30, 0: 0 }[url.searchParams.get('expires') ?? '30'];
     if (days === undefined) return fail(res, 400, 'bad_expiry', 'Choose 7 days, 30 days or never.');
     const name = cleanName(url.searchParams.get('name'));
+    const wait = uploads.take(who.id);
+    if (wait) return fail(res, 429, 'rate_limited', 'You’ve uploaded a lot of files recently. Try again in a little while.', { retryAfter: wait });
+    // Uploads still streaming count too, and the check and the reservation happen with no await in between, so
+    // parallel uploads can't each see the old total. ponytail: per process; with replicas, keep this in Valkey.
+    const mine = [...links(cfg).values()].filter((l) => l.acct === who.id && !expired(l));
+    const quota = cfg.filesQuotaBytes ?? 5 * 1024 ** 3, busy = inflight.get(who.id) ?? 0;
+    if (mine.reduce((s, l) => s + l.size, 0) + busy + size > quota)
+      return fail(res, 413, 'quota', 'You’ve shared a lot of large files. Remove some in Settings → Shared files, then try again.');
+    inflight.set(who.id, busy + size);
+    // The request may take longer than the service's usual 15 s (server.mjs), but only as long as a minimum rate
+    // allows: a minute plus the file at 256 KB/s (2 GiB ≈ 2.3 hours). Stalls still end after a minute without data.
+    req.allowSlowBody?.(60e3 + (size / (256 * 1024)) * 1000);
+    req.setTimeout?.(60e3);
+    let nodeId = null;
+    try { return await store(req, res, who, size, name, days, (n) => { nodeId = n; }); }
+    catch (e) { if (nodeId) await destroy({ acct: who.id, node: nodeId }); throw e; } // no file without its link
+    finally { const left = (inflight.get(who.id) ?? size) - size; if (left > 0) inflight.set(who.id, left); else inflight.delete(who.id); }
+  }
+
+  async function store(req, res, who, size, name, days, created) {
 
     // Straight through to the sender's own account, never buffered here. The type is only a label for their own
     // storage: downloads are always served as application/octet-stream.
     const type = /^[\w.+-]+\/[\w.+-]+$/.test(req.headers['content-type'] ?? '') ? req.headers['content-type'] : 'application/octet-stream';
     const up = await fetch(`${cfg.stalwartUrl}/jmap/upload/${who.id}/`, { method: 'POST', duplex: 'half', body: Readable.toWeb(req),
       headers: { Authorization: auth, 'Content-Type': type, 'Content-Length': String(size) } });
+    // ponytail: when anything below fails, the raw upload is left to Stalwart, which drops unreferenced uploads after
+    // x:Jmap uploadTtl (1 hour) and doesn't count them toward the user's quota (checked on the dev server).
     if (!up.ok) { console.error('files: upload refused:', up.status, await up.text()); return fail(res, 503, 'unavailable', 'The file couldn’t be stored right now. Try again later.'); }
     const blob = await up.json();
     const parentId = await folder(who.id);
@@ -106,9 +123,11 @@ export function fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ip
     }
     if (r.notCreated?.n?.type === 'overQuota') return fail(res, 413, 'over_quota', 'Your storage is full. Delete some mail or shared files, then try again.');
     if (!r.created?.n) { console.error('files: Stalwart refused the file:', JSON.stringify(r.notCreated?.n)); return fail(res, 503, 'unavailable', 'The file couldn’t be stored right now. Try again later.'); }
+    created(r.created.n.id);
     const node = (await fn(['FileNode/get', { accountId: who.id, ids: [r.created.n.id], properties: ['blobId'] }, 'g'])).list[0];
     const l = { acct: who.id, node: r.created.n.id, blobId: node.blobId, name, size: blob.size, created: Date.now(), expires: days ? Date.now() + days * DAY : null, downloads: 0 };
-    links(cfg).set(id, l); save(cfg);
+    links(cfg).set(id, l);
+    try { save(cfg); } catch (e) { links(cfg).delete(id); throw e; }
     return send(res, 201, { ok: true, file: view(id, l) });
   }
 

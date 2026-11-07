@@ -147,7 +147,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
   const html = useMemo(() => (m.html ? buildSrcdoc(m.html, showImages, inline) : null), [m, showImages, inline]);
   const files = m.attachments.filter((a) => !embedded.includes(a));
   // Large files sent as download links (signup/files.mjs) look like attachments too.
-  const links = useMemo(() => fileLinks(`${m.html ?? ''} ${m.text ?? ''}`), [m]);
+  const links = useMemo(() => fileLinks(`${m.html ?? ''} ${m.text ?? ''}`, location.origin), [m]);
   const sender = m.from?.[0];
   return (
     <section className="message">
@@ -218,7 +218,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
           ))}
           {links.map((l) => (
             <li key={l.url}>
-              <a className="chip" href={l.url} target="_blank" rel="noopener noreferrer" title={`Download ${l.name} (a link to ${l.host})`}>
+              <a className="chip" href={l.url} target="_blank" rel="noopener noreferrer" title={`Download ${l.name}`}>
                 <Icon name="file" size={16} /><span className="fname">{l.name}</span>
                 <span className="fsize">{fileSize(l.size)}</span><span className="flink">Download</span>
               </a>
