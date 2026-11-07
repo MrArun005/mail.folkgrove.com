@@ -247,8 +247,8 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
 
     // Backfill tags the seeded digest (it has List-Unsubscribe) and leaves people's mail alone.
     await c.tagUpdates(inbox);
-    const updates = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { hasKeyword: '$updates' }] })).map((e) => e.subject);
-    const primary = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { notKeyword: '$updates' }] })).map((e) => e.subject);
+    const updates = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { hasKeyword: '$updates' }] }, 500)).map((e) => e.subject);
+    const primary = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { notKeyword: '$updates' }] }, 500)).map((e) => e.subject);
     expect(updates).toContain('Weekly digest: 5 tools we loved');
     expect(primary).toContain('Lunch on Friday?');
     expect(primary).not.toContain('Weekly digest: 5 tools we loved');
