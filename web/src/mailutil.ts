@@ -56,7 +56,9 @@ export function cleanHtml(html: string): string {
       }
       if (!KEEP.has(el.tagName)) { el.replaceWith(...el.childNodes); continue; }
       const href = el.tagName === 'A' ? el.getAttribute('href') ?? '' : '';
+      const sig = el.tagName === 'DIV' && el.hasAttribute('data-sig'); // inert marker so Compose can swap signatures
       for (const attr of [...el.attributes]) el.removeAttribute(attr.name);
+      if (sig) el.setAttribute('data-sig', '');
       if (/^(https?:|mailto:)/i.test(href.trim())) { el.setAttribute('href', href.trim()); el.setAttribute('rel', 'noopener noreferrer'); }
     }
   };
@@ -197,4 +199,22 @@ export function buildMdn(o: { from: string; to: string; subject: string; origina
     'Disposition: manual-action/MDN-sent-manually; displayed', '',
     `--${boundary}--`, '',
   ].join('\r\n');
+}
+
+// ── Signatures ────────────────────────────────────────────
+
+export interface Signature { name: string; text: string }
+
+/** "-- " is the delimiter other mail apps recognise; data-sig lets Compose find the block to swap it. */
+export const signatureHtml = (text: string) => `<div data-sig=""><div>-- </div>${textToHtml(text)}</div>`;
+
+/** Which signature to use: undefined = the first one, '' = none, otherwise by name (none if it was deleted). */
+export const chooseSignature = (list: Signature[], name: string | undefined): Signature | null =>
+  name === undefined ? list[0] ?? null : list.find((s) => s.name === name) ?? null;
+
+/** New messages and replies get the signature on its own line at the top, above any quoted text. */
+export function addSignature(html: string, sig: Signature | null): string {
+  if (!sig?.text.trim()) return html;
+  const block = signatureHtml(sig.text);
+  return html.startsWith('<div><br></div>') ? html.replace('<div><br></div>', `<div><br></div>${block}`) : `<div><br></div>${block}${html}`;
 }

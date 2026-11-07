@@ -37,7 +37,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Undo send | ✅ | ✅ | Server-side hold: works even if the tab closes |
 | Schedule send | ✅ | ✅ | Scheduled view to edit or cancel |
 | Recipient autocomplete | ✅ | ✅ | Ranks people you write to above people who write to you |
-| Signatures | ✅ (many) | 🟡 (one) | Multiple signatures: Phase 2.5 |
+| Signatures | ✅ (many) | ✅ | Named signatures synced on the server; separate defaults for new messages and replies; switch or remove per message |
 | Send-as / aliases | ✅ | ⬜ | Needs admin API: with masked aliases (below) |
 | Templates | ✅ | ✅ | Synced to every device; insert, save, delete from compose |
 | Large file links (WorkDrive) | ✅ | ⬜ | Phase 5: integrate, don't rebuild |
@@ -100,15 +100,15 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 ## Score today
 
 Counting rows a typical Zoho Mail user touches (sections 1–4 plus calendar, contacts and the web app):
-**41 of 50 at parity or better (82%), 3 partial.** The "next batch" items below take that toward 85%;
+**42 of 50 at parity or better (84%), 2 partial.** The "next batch" items below take that toward 85%;
 Phase 2.5 (calendar, contacts UI, categories, multiple signatures, multi-account, E2E, OAuth/2FA) takes it past 90%;
 shared mailboxes and import close the rest of the 95%.
 
 ## Order of work
 
-1. **Next batch (small, high value):** several signatures.
-2. **Phase 2 security:** passkeys; branded sign-in page (today it is the mail server's own page).
-3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager, multiple signatures,
+1. **Next batch (small, high value):** branded sign-in page (today it is the mail server's own page); send-as / aliases.
+2. **Phase 2 security:** passkeys.
+3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager,
    multi-account, E2E (OpenPGP), saved searches, encryption-at-rest toggle.
 4. **Phase 3–4:** installer, import, masked aliases, shared mailboxes, admin console.
 5. **Toward Gmail:** smart categorisation, offline-first sync, AI features (opt-in), native apps.

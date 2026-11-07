@@ -23,6 +23,10 @@ export interface ScriptData {
   /** Sort newsletters and notifications into Updates (keyword $updates), Gmail-style. On unless turned off. */
   categories?: boolean;
   savedSearches?: { name: string; query: string }[];
+  /** Named signatures; sigNew/sigReply pick one by name ('' = none, missing = the first). */
+  signatures?: { name: string; text: string }[];
+  sigNew?: string;
+  sigReply?: string;
 }
 export const UPDATES = '$updates';
 

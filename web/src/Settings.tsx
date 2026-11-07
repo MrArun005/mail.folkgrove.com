@@ -4,7 +4,7 @@ import { FiltersSection, FoldersSection, loadScript, saveScript } from './Filter
 import type { Rule, Vacation } from './rules';
 import { Button } from './Button';
 import { SecuritySection } from './Security';
-import { textToHtml } from './mailutil';
+import { chooseSignature, textToHtml, type Signature } from './mailutil';
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -22,7 +22,9 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
   onClose: () => void; onSaved: (msg: string) => void; onFoldersChanged: () => void;
 }) {
   const [name, setName] = useState('');
-  const [signature, setSignature] = useState('');
+  const [sigs, setSigs] = useState<Signature[]>([]);
+  const [sigNew, setSigNew] = useState<string | undefined>();
+  const [sigReply, setSigReply] = useState<string | undefined>();
   const [vac, setVac] = useState<Vacation | null>(null);
   const [theme, setTheme] = useState<Theme>(savedTheme());
   const [error, setError] = useState('');
@@ -31,7 +33,9 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
   useEffect(() => {
     Promise.all([client.getIdentityFresh(), loadScript(client)]).then(([id, script]) => {
       setName(id.name === id.email ? '' : id.name);
-      setSignature(id.textSignature ?? '');
+      const d = script.data;
+      setSigs(d.signatures ?? (id.textSignature?.trim() ? [{ name: 'Signature', text: id.textSignature }] : []));
+      setSigNew(d.sigNew); setSigReply(d.sigReply);
       setVac(script.data.vacation);
     }, (e) => setError(e.message));
   }, [client]);
@@ -39,13 +43,16 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (vac?.enabled && vac.from && vac.to && vac.to < vac.from) return setError('The out-of-office end date is before the start date.');
+    const list = sigs.map((x) => ({ name: x.name.trim(), text: x.text })).filter((x) => x.name || x.text.trim());
+    if (list.some((x) => !x.name)) return setError('Give each signature a name.');
+    if (new Set(list.map((x) => x.name)).size < list.length) return setError('Two signatures have the same name.');
     setBusy(true); setError('');
     try {
-      await client.setIdentity({ name: name.trim(), textSignature: signature, htmlSignature: signature.trim() ? textToHtml(signature) : '' });
-      if (vac) {
-        const { data } = await loadScript(client); // keep the filters exactly as they are
-        await saveScript(client, boxes, { ...data, vacation: vac });
-      }
+      // The identity carries the new-message signature too, so other JMAP apps see it.
+      const main = chooseSignature(list, sigNew)?.text ?? '';
+      await client.setIdentity({ name: name.trim(), textSignature: main, htmlSignature: main.trim() ? textToHtml(main) : '' });
+      const { data } = await loadScript(client); // keep the filters exactly as they are
+      await saveScript(client, boxes, { ...data, ...(vac && { vacation: vac }), signatures: list, sigNew, sigReply });
       applyTheme(theme);
       onSaved('Settings saved');
     } catch (err) { setError(`Couldn’t save: ${(err as Error).message}`); }
@@ -62,8 +69,30 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         <section>
           <h3>You</h3>
           <label>Name people see<input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alice Martin" autoFocus /></label>
-          <label>Signature<textarea className="input" rows={3} value={signature} onChange={(e) => setSignature(e.target.value)} placeholder={'Alice Martin\nProduct lead'} /></label>
-          <p className="fine">Added to new messages and replies. You can edit it in each message.</p>
+        </section>
+
+        <section>
+          <h3>Signatures</h3>
+          {sigs.map((sg, i) => {
+            const set = (p: Partial<Signature>) => setSigs(sigs.map((x, j) => (j === i ? { ...x, ...p } : x)));
+            return (
+              <div key={i} className="sig-card">
+                <div className="sig-head">
+                  <input className="input" aria-label="Signature name" placeholder="Name, e.g. Work" value={sg.name} onChange={(e) => set({ name: e.target.value })} />
+                  <Button variant="quiet" size="sm" icon="trash" label={`Delete signature ${sg.name}`} onClick={() => setSigs(sigs.filter((_, j) => j !== i))} />
+                </div>
+                <textarea className="input" rows={3} aria-label={`Signature ${sg.name}`} value={sg.text} onChange={(e) => set({ text: e.target.value })} placeholder={'Alice Martin\nProduct lead'} />
+              </div>
+            );
+          })}
+          <Button size="sm" icon="compose" className="start" onClick={() => setSigs([...sigs, { name: sigs.length ? '' : 'Signature', text: '' }])}>Add signature</Button>
+          {sigs.length > 0 && (
+            <div className="row2">
+              <label>For new messages<SigSelect sigs={sigs} value={sigNew} onChange={setSigNew} /></label>
+              <label>For replies and forwards<SigSelect sigs={sigs} value={sigReply} onChange={setSigReply} /></label>
+            </div>
+          )}
+          <p className="fine">You can switch or remove the signature in each message.</p>
         </section>
 
         <section>
@@ -131,5 +160,16 @@ function CategoriesSection({ client, boxes }: { client: Jmap; boxes: Mailbox[] }
         onChange={(e) => toggle(e.target.checked)} />Sort newsletters and notifications into an Updates tab</label>
       <p className="fine">{note || 'People’s messages stay in Primary. Sorting happens on the server as mail arrives.'}</p>
     </section>
+  );
+}
+
+/** '' means no signature; undefined (never chosen) shows as the first one. */
+function SigSelect({ sigs, value, onChange }: { sigs: Signature[]; value: string | undefined; onChange: (v: string) => void }) {
+  const named = sigs.filter((x) => x.name.trim());
+  return (
+    <select className="input" value={chooseSignature(named, value)?.name ?? ''} onChange={(e) => onChange(e.target.value)}>
+      {named.map((x) => <option key={x.name} value={x.name.trim()}>{x.name}</option>)}
+      <option value="">No signature</option>
+    </select>
   );
 }

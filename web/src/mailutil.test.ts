@@ -122,3 +122,17 @@ it('a hostile subject or Message-ID cannot inject headers or MIME parts into a r
   expect(m.split('\r\n').filter((l) => /^--mdn-/.test(l))).toHaveLength(3); // only our own boundaries
   expect(() => buildMdn({ from: 'alice@o.test', to: 'x@y.z\r\nBcc: a@b.c', subject: 's', readAt: new Date(), domain: 'o.test', id: 'r3' })).toThrow();
 });
+
+it('picks, adds and marks signatures', async () => {
+  const { addSignature, chooseSignature, cleanHtml } = await import('./mailutil');
+  const list = [{ name: 'Work', text: 'Alice\nLead' }, { name: 'Short', text: 'A' }];
+  expect(chooseSignature(list, undefined)?.name).toBe('Work');
+  expect(chooseSignature(list, 'Short')?.name).toBe('Short');
+  expect(chooseSignature(list, '')).toBeNull();
+  expect(chooseSignature(list, 'Deleted')).toBeNull();
+  const html = addSignature('<div><br></div><blockquote>q</blockquote>', list[0]);
+  expect(html).toBe('<div><br></div><div data-sig=""><div>-- </div><div>Alice<br>Lead</div></div><blockquote>q</blockquote>');
+  expect(addSignature('<p>x</p>', null)).toBe('<p>x</p>');
+  // The marker survives sanitizing (Compose re-cleans drafts); other attributes don't.
+  expect(cleanHtml('<div data-sig="" onclick="x" class="y">s</div>')).toBe('<div data-sig="">s</div>');
+});

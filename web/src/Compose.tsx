@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Address, Attachment, Draft, Template } from './jmap';
 import { Button } from './Button';
 import { Icon, type IconName } from './icons';
-import { cleanHtml, fileSize, formatAddresses, htmlToText, parseAddresses } from './mailutil';
+import { cleanHtml, fileSize, formatAddresses, htmlToText, parseAddresses, signatureHtml, type Signature } from './mailutil';
 import { RecipientInput } from './RecipientInput';
 import { Menu, TimeChoices } from './Menu';
 
@@ -24,8 +24,8 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 // and it's a few lines instead of an editor framework. Swap for a real editor model if we need tables or images.
 const exec = (cmd: string, arg?: string) => document.execCommand(cmd, false, arg);
 
-export function Compose({ initial, contacts, api, onSend, onClose }: {
-  initial: Draft; contacts: Address[]; api: ComposeApi;
+export function Compose({ initial, contacts, api, signatures, onSend, onClose }: {
+  initial: Draft; contacts: Address[]; api: ComposeApi; signatures: Signature[];
   onSend: (d: Draft, sendAt?: Date) => void; onClose: (outcome: 'saved' | 'discarded' | 'closed') => void;
 }) {
   const [to, setTo] = useState(formatAddresses(initial.to));
@@ -71,6 +71,19 @@ export function Compose({ initial, contacts, api, onSend, onClose }: {
     } else toRef.current?.focus();
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, []);
+
+  /** Swap the signature block in place (or add / remove it), leaving everything else as written. */
+  function applySignature(sg: Signature | null) {
+    const ed = editor.current!, old = ed.querySelector('[data-sig]');
+    if (!sg) old?.remove();
+    else {
+      const t = document.createElement('template'); t.innerHTML = signatureHtml(sg.text);
+      const block = t.content.firstElementChild!;
+      // No signature yet: right after the first line, above any quoted text (same place new drafts get it).
+      if (old) old.replaceWith(block); else if (ed.firstElementChild) ed.firstElementChild.after(block); else ed.append(block);
+    }
+    changed();
+  }
 
   const snapshot = (): Draft => {
     // Back from blob: previews to cid: references; drop embedded images the user deleted from the text.
@@ -217,7 +230,7 @@ export function Compose({ initial, contacts, api, onSend, onClose }: {
           <Button variant="quiet" icon="clip" label="Attach files" onClick={() => fileInput.current?.click()} />
           <Button variant="quiet" icon="receipt" label={receipt ? 'Read receipt requested (click to cancel)' : 'Request a read receipt'} pressed={receipt}
             onClick={() => { setReceipt(!receipt); changed(); }} />
-          <Menu label="Templates" up button={<Button variant="quiet" icon="templates" label="Templates" />}>
+          <Menu label="Templates" up align="right" button={<Button variant="quiet" icon="templates" label="Templates" />}>
             {(close) => <TemplatesMenu api={api} close={close}
               onInsert={(t) => {
                 editor.current?.focus();
@@ -233,6 +246,18 @@ export function Compose({ initial, contacts, api, onSend, onClose }: {
                 setStatus(`Saved “${d.subject || 'Untitled template'}” as a template`);
               }} />}
           </Menu>
+          {signatures.length > 0 && (
+            <Menu label="Signature" up align="right" button={<Button variant="quiet" icon="signature" label="Signature" />}>
+              {(close) => <>
+                <p className="menu-title">Signature</p>
+                {[...signatures, null].map((sg) => (
+                  <button key={sg?.name ?? ''} className="menu-item" role="menuitem" onClick={() => { close(); applySignature(sg); }}>
+                    <Icon name="signature" size={16} /><span className="grow">{sg?.name ?? 'No signature'}</span>
+                  </button>
+                ))}
+              </>}
+            </Menu>
+          )}
           <input ref={fileInput} type="file" multiple hidden onChange={(e) => { if (e.target.files) attach(e.target.files); e.target.value = ''; }} />
         </div>
         <span className="status" role="status">{error ? <span className="error">{error}</span> : status}</span>

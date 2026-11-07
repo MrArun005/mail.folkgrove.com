@@ -565,3 +565,8 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .inline-form .input { flex: 1; min-width: 0; }
 .settings .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s3); }
 @media (max-width: 860px) { .totp-setup { grid-template-columns: 1fr; } .settings .row3 { grid-template-columns: 1fr; } }
+
+/* Settings → Signatures */
+.sig-card { display: grid; gap: var(--s2); padding: var(--s3); border: 1px solid var(--rule); border-radius: var(--r-md); }
+.sig-head { display: flex; gap: var(--s2); align-items: center; }
+.sig-head .input { flex: 1; }

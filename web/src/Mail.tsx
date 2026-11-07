@@ -3,7 +3,7 @@ import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
 import { Icon, roleIcon } from './icons';
 import { Jmap, UNDO_SECONDS, type Attachment, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
-import { displayName, draftFor, draftFromEmail, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode } from './mailutil';
+import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode, type Signature } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { SubscriptionsList } from './Subscriptions';
@@ -13,7 +13,7 @@ import { localZone } from './calendar';
 import type { PartStat } from './ics';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
 import { addRule, loadScript, saveScript } from './Filters';
-import { UPDATES, type Rule } from './rules';
+import { UPDATES, type Rule, type ScriptData } from './rules';
 import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
 import { applyTheme, Settings } from './Settings';
@@ -133,7 +133,10 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const loadIdentity = useCallback(() => client.getIdentityFresh().then(setIdentity, () => {}), [client]);
   useEffect(() => { loadContacts(); loadIdentity(); }, [loadContacts, loadIdentity]);
 
-  const reloadCategories = () => loadScript(client).then(({ data }) => setCategories(data.categories !== false), () => {});
+  const [sigData, setSigData] = useState<Pick<ScriptData, 'signatures' | 'sigNew' | 'sigReply'>>({});
+  // Accounts from before named signatures: the identity's one signature is the only one.
+  const signatures: Signature[] = sigData.signatures ?? (identity?.textSignature?.trim() ? [{ name: 'Signature', text: identity.textSignature }] : []);
+  const reloadCategories = () => loadScript(client).then(({ data }) => { setCategories(data.categories !== false); setSigData(data); }, () => {});
 
   // Inbox categories: install the server rule (and tag existing mail) the first time this account opens the app.
   useEffect(() => {
@@ -142,6 +145,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         const { data } = await loadScript(client);
         setCategories(data.categories !== false);
         setSaved(data.savedSearches ?? []);
+        setSigData(data);
         if (data.categories !== undefined) return;
         const b = await client.mailboxes();
         await saveScript(client, b, { ...data, categories: true });
@@ -354,15 +358,10 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
   // ── Writing ────────────────────────────────────────────
 
-  /** New messages and replies get the signature above any quoted text. */
-  const withSignature = (d: Draft): Draft => {
-    const sig = identity?.htmlSignature?.trim();
-    if (!sig) return d;
-    const block = `<div><br></div><div>-- </div>${sig}`;
-    return { ...d, html: d.html.startsWith('<div><br></div>') ? d.html.replace('<div><br></div>', `<div><br></div>${block}`) : `<div><br></div>${block}${d.html}` };
-  };
+  const withSignature = (d: Draft, kind: 'new' | 'reply' = 'new'): Draft =>
+    ({ ...d, html: addSignature(d.html, chooseSignature(signatures, kind === 'new' ? sigData.sigNew : sigData.sigReply)) });
   const newMessage = () => setCompose(withSignature(EMPTY_DRAFT));
-  function reply(mode: ReplyMode, e: EmailFull) { setCompose(withSignature(draftFor(mode, e, client.username))); }
+  function reply(mode: ReplyMode, e: EmailFull) { setCompose(withSignature(draftFor(mode, e, client.username), 'reply')); }
 
   const composeApi: ComposeApi = {
     upload: (f) => client.upload(f),
@@ -672,7 +671,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
       </>}
 
-      {compose && <Compose key={compose.id ?? JSON.stringify(compose).length} initial={compose} contacts={contacts} api={composeApi} onSend={send} onClose={closeCompose} />}
+      {compose && <Compose key={compose.id ?? JSON.stringify(compose).length} initial={compose} contacts={contacts} api={composeApi} signatures={signatures} onSend={send} onClose={closeCompose} />}
 
       {toast && (
         <div className="toast" role="status">
