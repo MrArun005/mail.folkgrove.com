@@ -12,14 +12,14 @@ import { callerOf } from './aliases.mjs';
 export const readRetired = (file) =>
   file && existsSync(file) ? readFileSync(file, 'utf8').split('\n').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
 
-export function accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf }) {
+export function accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, clientIp = () => '' }) {
   const caller = callerOf({ cfg, jmap, getDomainId });
   // ponytail: retired names join extraReserved, a list scanned on every username check. Fine to ~100k names;
   // past that, a Set of squashed names in lib.mjs.
   if (!cfg.retiredFile) console.warn('account: RETIRED_FILE is not set; names of deleted accounts are only kept until restart');
   cfg.extraReserved = [...(cfg.extraReserved ?? []), ...readRetired(cfg.retiredFile)];
   const badAuth = new RateLimiter(20, 15 * 60e3); // bad tokens per network (as in aliases.mjs)
-  // Wrong passwords per account. Each one is a failed sign-in Stalwart counts against this service's address.
+  // Wrong passwords per account (Stalwart also counts them per client address).
   const badPass = new RateLimiter(5, 3600e3);
   // The sign-in API only answers for a registered redirect address: use the web app's own (install.sh registers it).
   let redirect = null;
@@ -49,7 +49,10 @@ export function accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Ra
     // and on Stalwart 1.0 can't carry a two-factor code. Nothing is issued: we stop at the consent step.
     const query = new URLSearchParams({ response_type: 'code', client_id: 'openmail-web', redirect_uri: await redirectUri(), scope: 'openid',
       code_challenge: randomBytes(32).toString('base64url'), code_challenge_method: 'S256', state: 'delete' }).toString();
-    const r = await fetch(`${cfg.stalwartUrl}/api/auth`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(10_000),
+    // The real client address, so Stalwart's ban on repeated wrong passwords hits the guesser, not this service
+    // (production Stalwart reads X-Forwarded-For: install.sh sets clientIpSource).
+    const r = await fetch(`${cfg.stalwartUrl}/api/auth`, { method: 'POST', signal: AbortSignal.timeout(10_000),
+      headers: { 'Content-Type': 'application/json', ...(clientIp(req) && { 'X-Forwarded-For': clientIp(req) }) },
       body: JSON.stringify({ type: 'authCode', accountName: email, accountSecret: body.password, query,
         ...(typeof body.code === 'string' && body.code.trim() && { mfaToken: body.code.replace(/\s/g, '') }) }) });
     if (!r.ok) return fail(res, 503, 'unavailable', 'The mail server isn’t answering. Try again in a few minutes.'), true;
