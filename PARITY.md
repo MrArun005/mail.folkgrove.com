@@ -18,7 +18,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Multi-select + bulk actions | ✅ | ✅ | Shift-click ranges, keyboard `x` |
 | Keyboard shortcuts | ✅ | ✅ | Gmail-compatible keys plus a ⌘K command palette |
 | Search | ✅ | ✅ | `from:` `to:` `subject:` `has:attachment` `is:unread` `in:` `before:` `after:` `-negation` |
-| Saved searches / search folders | ✅ | ⬜ | Phase 2.5 |
+| Saved searches / search folders | ✅ | ✅ | Pinned in the rail, synced through the account |
 | Live updates | ✅ | ✅ | Server push, no polling |
 | Show original / headers | ✅ | ✅ | |
 | Print | ✅ | ✅ | Prints with trackers removed |
@@ -51,7 +51,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Filters / rules | ✅ | ✅ | Sieve (open standard): run on the server, visible to any client; "filter messages like this" |
 | Block sender | ✅ | ✅ | Exact-address match; goes to Junk, never silently lost |
 | One-click unsubscribe | 🟡 | ✅ | RFC 8058 one-click, mailto fallback |
-| Subscriptions manager | ⬜ | ⬜ | Phase 2.5: list every newsletter, unsubscribe in one place |
+| Subscriptions manager | ⬜ | ✅ | Every newsletter in one list: unsubscribe or delete everything from a sender |
 | Vacation / out-of-office | ✅ | ✅ | Date range, once per sender |
 | Forwarding | ✅ | ✅ | Per-filter forwarding (keeps a copy) |
 | Folder management (rename, nest, delete) | ✅ | 🟡 | Create, rename, delete; nesting later |
@@ -100,14 +100,14 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 ## Score today
 
 Counting rows a typical Zoho Mail user touches (sections 1–4 plus calendar, contacts and the web app):
-**35 of 50 at parity or better (70%), 5 partial.** The "next batch" items below take that to roughly 70%;
+**37 of 50 at parity or better (74%), 5 partial.** The "next batch" items below take that to roughly 70%;
 Phase 2.5 (calendar, contacts UI, categories, multiple signatures, multi-account, E2E, OAuth/2FA) takes it past 90%;
 shared mailboxes and import close the rest of the 95%.
 
 ## Order of work
 
-1. **Next batch (small, high value):** several signatures, 2FA enrolment (step-up sign-in), app passwords, saved searches,
-   subscriptions manager.
+1. **Next batch (small, high value):** several signatures, 2FA enrolment (step-up sign-in), app passwords,
+   read receipts (opt-in), address book screen.
 2. **Phase 2 security:** passkeys; branded sign-in page (today it is the mail server's own page).
 3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager, multiple signatures,
    multi-account, E2E (OpenPGP), saved searches, encryption-at-rest toggle.

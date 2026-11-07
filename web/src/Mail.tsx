@@ -2,10 +2,11 @@ import { Component, useCallback, useEffect, useMemo, useRef, useState, type Reac
 import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
 import { Icon, roleIcon } from './icons';
-import { Jmap, UNDO_SECONDS, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
+import { Jmap, UNDO_SECONDS, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
 import { displayName, draftFor, draftFromEmail, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
+import { SubscriptionsList } from './Subscriptions';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
 import { addRule, loadScript, saveScript } from './Filters';
 import { UPDATES, type Rule } from './rules';
@@ -18,7 +19,7 @@ import { describe } from './when';
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
 const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
 // Virtual folders: views that aren't mailboxes on the server.
-const STARRED = 'starred', SCHEDULED = 'scheduled';
+const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions';
 
 type Toast = { text: string; undo?: () => void } | null;
 type BulkAction = Action | 'read' | { snooze: Date } | { moveTo: string | null; label: boolean };
@@ -36,6 +37,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const [view, setView] = useState<string | null>(null); // mailbox id or virtual folder; null = Inbox
   const [tab, setTab] = useState<'primary' | 'updates'>('primary'); // Inbox categories
   const [categories, setCategories] = useState(true);
+  const [subs, setSubs] = useState<Subscription[] | null>(null);
+  const [saved, setSaved] = useState<{ name: string; query: string }[]>([]);
   const [query, setQuery] = useState('');
   const [list, setList] = useState<EmailSummary[] | null>(null);
   const [scheduled, setScheduled] = useState<Scheduled[] | null>(null);
@@ -59,7 +62,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const listKey = (box: string | null) => `list:${box}${box && box === inbox && categories ? `:${tab}` : ''}`;
   const current = query ? null : view ?? inbox;
   const currentBox = boxes.find((b) => b.id === current);
-  const role = current === STARRED ? STARRED : current === SCHEDULED ? SCHEDULED : currentBox?.role ?? null;
+  const role = current === STARRED || current === SCHEDULED || current === SUBSCRIPTIONS ? current : currentBox?.role ?? null;
   // Moves need a real source folder; from Starred or search results, act on the Inbox copy.
   const source = currentBox ? currentBox.id : inbox;
   const folders = useMemo(() => boxes.filter((b) => (!b.role || b.role === 'archive' || b.role === 'inbox') && b.id !== source), [boxes, source]);
@@ -81,6 +84,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       setBoxes(b); cache.set(key('boxes'), b);
       const box = query ? null : view ?? b.find((x) => x.role === 'inbox')?.id ?? null;
       if (box === SCHEDULED) { setScheduled(await client.scheduled()); return; }
+      if (box === SUBSCRIPTIONS) { setSubs(await client.subscriptions()); return; }
       const isInbox = b.find((x) => x.id === box)?.role === 'inbox';
       const filter: Filter = query ? parseSearch(query, b) : box === STARRED ? { hasKeyword: '$flagged' }
         : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box }, tab === 'updates' ? { hasKeyword: UPDATES } : { notKeyword: UPDATES }] }
@@ -122,6 +126,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       try {
         const { data } = await loadScript(client);
         setCategories(data.categories !== false);
+        setSaved(data.savedSearches ?? []);
         if (data.categories !== undefined) return;
         const b = await client.mailboxes();
         await saveScript(client, b, { ...data, categories: true });
@@ -225,12 +230,13 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     refresh();
   }
 
-  async function unsubscribe(m: EmailFull) {
+  /** Shared by the reader's Unsubscribe link and the Subscriptions page. Returns true when it went through. */
+  async function unsubscribe(m: Pick<EmailFull, 'unsubscribe'> & { from: Address[] | null }): Promise<boolean> {
     const who = displayName(m.from?.[0]);
     const plan = unsubscribePlan(m.unsubscribe);
-    if (!plan) return say({ text: `This message doesn’t include a safe way to unsubscribe from ${who}.` }, 6000);
+    if (!plan) { say({ text: `This message doesn’t include a safe way to unsubscribe from ${who}.` }, 6000); return false; }
     const where = plan.kind === 'mail' ? `by sending an email to ${plan.to}` : plan.kind === 'post' ? `via ${plan.host}` : `on ${plan.host} (opens in a new tab)`;
-    if (!confirm(`Unsubscribe from ${who} ${where}?`)) return;
+    if (!confirm(`Unsubscribe from ${who} ${where}?`)) return false;
     try {
       if (plan.kind === 'post') {
         // RFC 8058 one-click: a plain form POST. no-cors because we never need to read the reply.
@@ -244,6 +250,34 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         window.open(plan.url, '_blank', 'noopener,noreferrer');
         say({ text: `Opened ${plan.host} to finish unsubscribing` });
       }
+      return true;
+    } catch (e) { fail(e); return false; }
+  }
+
+  async function deleteAllFrom(s: Subscription) {
+    const who = displayName(s.from);
+    if (!confirm(`Move every message from ${who} (${s.from.email}) to Deleted Items?`)) return;
+    try { const n = await client.trashFrom(s.from.email, boxes); say({ text: `Moved ${n} messages from ${who} to Deleted Items` }); refresh(); }
+    catch (e) { fail(e); }
+  }
+
+  async function saveSearch() {
+    const name = prompt('Name this search', query)?.trim();
+    if (!name) return;
+    try {
+      const { data } = await loadScript(client);
+      const next = [...(data.savedSearches ?? []).filter((x) => x.name !== name), { name, query }];
+      await saveScript(client, boxes, { ...data, savedSearches: next });
+      setSaved(next); say({ text: `Saved “${name}”` });
+    } catch (e) { fail(e); }
+  }
+
+  async function removeSearch(name: string) {
+    try {
+      const { data } = await loadScript(client);
+      const next = (data.savedSearches ?? []).filter((x) => x.name !== name);
+      await saveScript(client, boxes, { ...data, savedSearches: next });
+      setSaved(next);
     } catch (e) { fail(e); }
   }
 
@@ -361,6 +395,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     ...boxes.slice(0, 1),
     { id: STARRED, name: 'Starred', role: STARRED, unreadEmails: 0, sortOrder: 0 },
     ...boxes.slice(1).flatMap((b) => (b.role === 'drafts' ? [b, { id: SCHEDULED, name: 'Scheduled', role: SCHEDULED, unreadEmails: 0, sortOrder: 0 }] : [b])),
+    { id: SUBSCRIPTIONS, name: 'Subscriptions', role: SUBSCRIPTIONS, unreadEmails: 0, sortOrder: 0 },
   ];
 
   const commands: Command[] = [
@@ -439,6 +474,21 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
             </li>
           ))}
         </ul>
+        {saved.length > 0 && (
+          <div className="saved">
+            <p className="rail-label">Saved searches</p>
+            <ul>
+              {saved.map((x) => (
+                <li key={x.name} className="saved-item">
+                  <button className={`nav-item${query === x.query ? ' active' : ''}`} onClick={() => { setQuery(x.query); setThreadId(null); }} title={x.query}>
+                    <Icon name="search" /><span className="name">{x.name}</span>
+                  </button>
+                  <Button variant="quiet" size="sm" icon="close" label={`Remove saved search ${x.name}`} onClick={() => removeSearch(x.name)} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div className="me">
           <span className="addr">{identity?.name && identity.name !== identity.email ? identity.name : client.username}</span>
           <span className="links">
@@ -474,7 +524,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
             {selectionMenu('move')}{selectionMenu('label')}
             <Button variant="link" className="push" onClick={() => setSelected(new Set())}>Clear</Button>
           </div>
-        ) : <h2 className="list-title">{heading}</h2>}
+        ) : <div className="list-title-row"><h2 className="list-title">{heading}</h2>
+              {query && !saved.some((x) => x.query === query) && <Button variant="link" onClick={saveSearch}>Save this search</Button>}</div>}
         {role === 'inbox' && categories && !selected.size && (
           <div className="tabs" role="tablist" aria-label="Inbox categories">
             {(['primary', 'updates'] as const).map((t) => (
@@ -487,7 +538,10 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         )}
         </div>
 
-        {role === SCHEDULED ? (
+        {role === SUBSCRIPTIONS ? (
+          <SubscriptionsList subs={subs} onDeleteAll={deleteAllFrom}
+            onUnsubscribe={(x) => unsubscribe({ from: [x.from], unsubscribe: x.unsubscribe })} />
+        ) : role === SCHEDULED ? (
           <>
             {scheduled === null && <div className="rows-loading" aria-busy="true">{[0, 1, 2].map((i) => <span key={i} />)}</div>}
             {scheduled?.length === 0 && <p className="empty">Nothing scheduled. Use the clock next to Send to send later.</p>}

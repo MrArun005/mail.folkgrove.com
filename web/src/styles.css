@@ -424,3 +424,24 @@ select.input { appearance: auto; }
 .tab:first-child { padding-left: 0; }
 .tab:hover { color: var(--ink); }
 .tab.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* Subscriptions page: same row rhythm as the conversation list */
+.list-note { padding: 0 var(--gutter-list) var(--s2); color: var(--muted); font-size: var(--t-sm); }
+.sub { display: grid; grid-template-columns: var(--avatar) 1fr auto; gap: var(--s3); align-items: center;
+  padding: var(--s3) var(--gutter-list); border-bottom: 1px solid var(--rule); }
+.sub .who { display: grid; gap: 2px; min-width: 0; }
+.sub .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub .meta { color: var(--muted); font-size: var(--t-sm); }
+.sub .actions { display: flex; align-items: center; gap: var(--s1); color: var(--ink-2); }
+.sub .done { color: var(--safe); font-size: var(--t-sm); font-weight: 600; padding: 0 var(--s3); }
+
+/* Rail: saved searches, aligned with the folder list */
+.rail-label { padding: 0 var(--s3); margin-bottom: var(--s1); color: var(--muted); font-size: var(--t-xs); font-weight: 600; }
+.saved-item { position: relative; }
+.saved-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The remove button floats over the pill, so saved searches are exactly as wide as folders. */
+.saved-item > .btn { position: absolute; right: var(--s1); top: 50%; translate: 0 -50%; color: var(--muted); visibility: hidden; }
+.saved-item:hover > .btn, .saved-item > .btn:focus-visible { visibility: visible; }
+.list-title-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-width: 0; }
+.list-title-row .list-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-title-row .btn--link { font-size: var(--t-sm); flex: none; }

@@ -269,6 +269,14 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     await c.saveRules(before.script || toSieve({ rules: [], vacation: { enabled: false } }, { trash: 'Deleted Items', junk: 'Junk Mail' }), (await c.getRules()).id);
   }, 20_000);
 
+  it('lists subscriptions grouped by sender with their unsubscribe links', async () => {
+    const c = await login();
+    const subs = await c.subscriptions();
+    const digest = subs.find((x) => x.from.email === 'digest@example.org')!;
+    expect(digest.unsubscribe).toEqual({ urls: ['https://example.org/unsub?u=alice', 'mailto:unsub@example.org'], oneClick: true });
+    expect(subs.some((x) => x.from.email === 'carol@example.org')).toBe(false); // people aren't subscriptions
+  });
+
   it('suggests contacts, people I write to first, never me', async () => {
     const c = await login();
     const people = (await c.contacts()).map((a) => a.email);

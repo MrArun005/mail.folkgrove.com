@@ -34,6 +34,7 @@ export type Filter = Record<string, unknown>;
 export class JmapError extends Error {}
 
 export const TEMPLATES = 'Templates';
+export interface Subscription { from: Address; count: number; lastAt: string; unsubscribe: { urls: string[]; oneClick: boolean } }
 export interface Template { id: string; subject: string; html: string; attachments: Attachment[] }
 
 const clean = (a: Address) => (a.name ? { name: a.name, email: a.email } : { email: a.email });
@@ -362,6 +363,37 @@ export class Jmap {
   }
 
   async deleteTemplate(id: string) { await this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
+
+  /** Newsletters you receive (anything with List-Unsubscribe in recent mail), grouped by sender, busiest first. */
+  async subscriptions(limit = 500): Promise<Subscription[]> {
+    const [, r] = await this.call([
+      ['Email/query', { accountId: this.accountId, sort: [{ property: 'receivedAt', isAscending: false }], limit }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' },
+        properties: ['from', 'receivedAt', 'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText'] }, 'g'],
+    ]);
+    const by = new Map<string, Subscription>();
+    for (const e of r.list as any[]) {
+      const urls: string[] | null = e['header:List-Unsubscribe:asURLs'];
+      const from: Address | undefined = e.from?.[0];
+      if (!urls?.length || !from) continue;
+      const k = from.email.toLowerCase(), cur = by.get(k);
+      if (cur) { cur.count++; continue; } // newest first: the first one seen carries the latest unsubscribe link
+      by.set(k, { from, count: 1, lastAt: e.receivedAt,
+        unsubscribe: { urls, oneClick: /One-Click/i.test(e['header:List-Unsubscribe-Post:asText'] ?? '') } });
+    }
+    return [...by.values()].sort((a, b) => b.count - a.count || b.lastAt.localeCompare(a.lastAt));
+  }
+
+  /** Move every message from a sender to Deleted Items. Returns how many. */
+  async trashFrom(email: string, boxes: Mailbox[]): Promise<number> {
+    const trash = boxes.find((b) => b.role === 'trash')?.id;
+    if (!trash) throw new JmapError('The trash folder is missing');
+    const [q] = await this.call([['Email/query', { accountId: this.accountId, filter: { from: email }, limit: 1000 }, 'q']]);
+    const ids: string[] = q.ids;
+    if (ids.length) await this.call([['Email/set', { accountId: this.accountId,
+      update: Object.fromEntries(ids.map((id) => [id, { mailboxIds: { [trash]: true } }])) }, 's']]);
+    return ids.length;
+  }
 
   /**
    * One-time backfill for Inbox categories: tag recent newsletters/notifications already in the Inbox with $updates
