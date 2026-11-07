@@ -153,6 +153,7 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 .login .btn { width: 100%; margin-top: var(--s1); }
 .login .fine { text-align: center; }
 .login .btn.alt { justify-self: center; font-size: var(--t-sm); }
+.login .legal-links { text-align: center; font-size: var(--t-xs); }
 .login .fine.ok { color: var(--safe); }
 .login .fine, .login .error { margin-top: calc(-1 * var(--s2)); }
 .login .fine:last-child { margin-top: 0; }

@@ -101,6 +101,7 @@ export function Signup({ onDone, onCancel }: { onDone: (email: string) => void; 
         {err && !err.field && <p className="error" role="alert">{err.message}</p>}
         <Button type="submit" variant="primary" size="lg" disabled={busy || check?.ok === false}>{busy ? 'Sending code…' : 'Continue'}</Button>
         <Button variant="link" className="alt" onClick={onCancel}>I already have a mailbox</Button>
+        <p className="fine legal-links">By continuing you agree to the <a href="/legal/terms-of-service.html" target="_blank" rel="noopener">terms</a>, <a href="/legal/acceptable-use.html" target="_blank" rel="noopener">acceptable use</a> and <a href="/legal/privacy-policy.html" target="_blank" rel="noopener">privacy policy</a>.</p>
         </>}
       </form>
     </main>
