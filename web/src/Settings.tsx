@@ -117,6 +117,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         <AddressesSection client={client} onChanged={onIdentitiesChanged} />
         <SecuritySection username={client.username} />
         <CategoriesSection client={client} boxes={boxes} />
+        <ScreenerSection client={client} boxes={boxes} />
         <FiltersSection client={client} boxes={boxes} prefill={prefillRule} />
         <FoldersSection client={client} boxes={boxes} onChanged={onFoldersChanged} />
 
@@ -175,6 +176,36 @@ function CategoriesSection({ client, boxes }: { client: Jmap; boxes: Mailbox[] }
       <p className="fine">{note || 'People’s messages stay in Primary. Sorting happens on the server as mail arrives.'}</p>
     </section>
   );
+}
+
+function ScreenerSection({ client, boxes }: { client: Jmap; boxes: Mailbox[] }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [note, setNote] = useState('');
+  useEffect(() => { loadScript(client).then(({ data }) => setOn(!!data.screener?.on), () => setOn(false)); }, [client]);
+  async function toggle(next: boolean) {
+    setOn(next); setNote('Saving…');
+    try {
+      const { data } = await loadScript(client);
+      // First time on: everyone you already correspond with (and your contacts) is approved.
+      const allow = data.screener?.allow?.length ? data.screener.allow : await knownSenders(client);
+      await saveScript(client, boxes, { ...data, screener: { on: next, allow } });
+      setNote(next ? `On. ${allow.length} people you already know go straight to your Inbox.` : 'Off. New senders go to your Inbox again.');
+    } catch (e) { setOn(!next); setNote(`Couldn’t change this: ${(e as Error).message}`); }
+  }
+  return (
+    <section>
+      <h3>Screener</h3>
+      <label className="inline"><input type="checkbox" className="check" checked={!!on} disabled={on === null}
+        onChange={(e) => toggle(e.target.checked)} />Hold mail from first-time senders until I approve them</label>
+      <p className="fine">{note || 'New senders wait in the Screener folder. Say yes once and they reach your Inbox from then on; say no and they never do. Works on the server, even when this app is closed.'}</p>
+    </section>
+  );
+}
+
+export async function knownSenders(client: Jmap): Promise<string[]> {
+  const [book, recent, mine] = await Promise.all([client.addressBook().catch(() => []), client.contacts(), client.identities()]);
+  // Your own addresses too: a note to yourself is never "first-time".
+  return [...new Set([...mine.map((i) => i.email), ...book.flatMap((p) => p.emails), ...recent.map((a) => a.email)].map((e) => e.toLowerCase()))];
 }
 
 /** '' means no signature; undefined (never chosen) shows as the first one. */

@@ -11,7 +11,7 @@ const rules: Rule[] = [
 
 it('compiles rules to Sieve with escaping and stops after moves', () => {
   const s = toSieve({ rules, vacation: { enabled: false }, categories: false }, { trash: 'Deleted Items', junk: 'Junk Mail' });
-  expect(s).toContain('require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational"];');
+  expect(s).toContain('require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational", "spamtest"];');
   expect(s).toContain('if allof(address :contains "from" "news@shop.example") { fileinto :create "Shopping"; stop; }');
   expect(s).toContain('if allof(address :contains "from" "spammer.example") { fileinto "Junk Mail"; addflag "\\\\Seen"; stop; }');
   expect(s).toContain('if allof(address :contains ["to", "cc"] "billing@", header :contains "subject" "invoice \\"Q4\\"") { addflag "\\\\Flagged"; }');
@@ -56,4 +56,12 @@ it('sorts newsletters and automated senders into Updates unless turned off', () 
   const on = toSieve({ rules: [], vacation: { enabled: false } }, { trash: 'T', junk: 'J' });
   expect(on).toContain('if anyof(exists "list-unsubscribe", exists "list-id", address :localpart :contains "from" ["noreply", "no-reply", "donotreply", "notifications", "mailer-daemon"]) { addflag "$updates"; }');
   expect(toSieve({ rules: [], vacation: { enabled: false }, categories: false }, { trash: 'T', junk: 'J' })).not.toContain('$updates');
+});
+
+it('Screener holds unknown senders after your own filters', () => {
+  const s = toSieve({ rules: [{ id: '1', from: 'bank.example', action: 'move', folder: 'Bank' }], vacation: { enabled: false },
+    screener: { on: true, allow: ['Ann@X.org', 'ann@x.org', 'bad"quote@x.org', 'not-an-address'] } }, { trash: 'T', junk: 'J' });
+  expect(s).toContain('if allof(not spamtest :value "ge" :comparator "i;ascii-numeric" "6", not address :is "from" ["ann@x.org"]) { fileinto :create "Screener"; stop; }');
+  expect(s.indexOf('Screener: first-time')).toBeGreaterThan(s.indexOf('fileinto :create "Bank"'));
+  expect(toSieve({ rules: [], vacation: { enabled: false }, screener: { on: false, allow: [] } }, { trash: 'T', junk: 'J' })).not.toContain('Screener"');
 });

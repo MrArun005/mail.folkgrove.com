@@ -27,7 +27,11 @@ export interface ScriptData {
   signatures?: { name: string; text: string }[];
   sigNew?: string;
   sigReply?: string;
+  /** HEY-style Screener: mail from anyone not on `allow` waits in the Screener folder until approved. */
+  screener?: { on: boolean; allow: string[] };
 }
+export const SCREENER = 'Screener';
+const isAddress = (a: string) => /^[^\s@"\\]+@[^\s@"\\]+\.[^\s@"\\]+$/.test(a);
 export const UPDATES = '$updates';
 
 export const SCRIPT_NAME = 'openmail';
@@ -52,7 +56,7 @@ export function validateRule(r: Rule): string | null {
 /** Folder names on this server for the delete and block actions. Blocked mail goes to Junk, never silently lost. */
 export function toSieve(data: ScriptData, folders: { trash: string; junk: string }): string {
   const { rules, vacation } = data;
-  const lines = [MARK + JSON.stringify(data), 'require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational"];', ''];
+  const lines = [MARK + JSON.stringify(data), 'require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational", "spamtest"];', ''];
   if (data.categories !== false) {
     // Mailing lists, newsletters and automated senders go to the Updates tab; people stay in Primary.
     lines.push('# Inbox categories: newsletters and notifications → Updates',
@@ -87,6 +91,16 @@ export function toSieve(data: ScriptData, folders: { trash: string; junk: string
     lines.push(`# ${describeRule(r).replace(/\n/g, ' ')}`, `if allof(${tests.join(', ')}) { ${body} }`, '');
   }
   emitVacation();
+  if (data.screener?.on) {
+    // After your own filters (they win), so a filter for a new sender still applies.
+    // ponytail: the allow list lives in the script (twice: JSON marker + test). Ceiling ~1,500 senders before
+    // Stalwart's default script size limit; upgrade to a server-side address-book lookup if people need more.
+    const allow = [...new Set(data.screener.allow.map((a) => a.trim().toLowerCase()).filter(isAddress))];
+    lines.push('# Screener: first-time senders wait until you approve them',
+      // Spam stays Stalwart's job (Junk), not the Screener's. spamtest (RFC 5235) asks the server for its own
+      // verdict, so a sender can't skip the Screener by adding a fake X-Spam-Status header. Unscanned mail is 0.
+      `if allof(not spamtest :value "ge" :comparator "i;ascii-numeric" "6"${allow.length ? `, not address :is "from" [${allow.map(q).join(', ')}]` : ''}) { fileinto :create ${q(SCREENER)}; stop; }`, '');
+  }
   return lines.join('\n');
 }
 

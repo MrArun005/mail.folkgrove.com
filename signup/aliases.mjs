@@ -59,12 +59,12 @@ export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     if (!m) return false;
     // Every attempt counts before Stalwart is asked (so parallel guesses can't slip past), and is given back
     // once the sign-in proves good: only failures use up the budget.
-    const ip = ipOf(req), blocked = badAuth.take(ip);
+    const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);
     if (blocked) return fail(res, 429, 'rate_limited', 'Too many failed sign-ins from your network. Try again later.', { retryAfter: blocked }), true;
     let id;
-    try { id = await caller(req); } catch (e) { badAuth.refund(ip); throw e; } // server trouble isn't a guess
+    try { id = await caller(req); } catch (e) { badAuth.refund(ip, win); throw e; } // server trouble isn't a guess
     if (!id) return fail(res, 401, 'unauthorized', 'Please sign in again.'), true;
-    badAuth.refund(ip);
+    badAuth.refund(ip, win);
     const key = m[1];
 
     if (!key && req.method === 'GET') return send(res, 200, { ok: true, aliases: await list(id) }), true;

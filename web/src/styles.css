@@ -587,3 +587,5 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .list-more { display: flex; justify-content: center; padding: var(--s3) 0 var(--s6); }
 .pill--warn { background: color-mix(in srgb, var(--star) 20%, transparent); color: color-mix(in srgb, var(--star) 70%, var(--ink)); }
 .subject .pill { margin-right: var(--s2); vertical-align: 1px; }
+/* Screener: decisions are the point of the folder, so the buttons are always shown */
+.row .screen-actions { display: flex; top: auto; bottom: var(--s2); gap: var(--s2); padding: 0; background: none; box-shadow: none; }

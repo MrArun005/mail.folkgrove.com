@@ -140,3 +140,12 @@ test('HTTP: Turnstile token required when a secret is configured', async (t) => 
   const { post } = await start(t, { turnstileSecret: 'x', inviteRequired: false });
   assert.deepEqual(await codeOf(await post({ username: 'bob', password: 'long-enough-pass' })), [400, 'captcha_failed']);
 });
+
+test('RateLimiter.refund only gives back to the window the hit came from', () => {
+  let t = 0;
+  const r = new RateLimiter(2, 1000, () => t);
+  r.take('k'); const w = r.window('k');
+  t = 1500; r.take('k'); r.take('k'); // new window, now full
+  r.refund('k', w);                   // stale refund: must not free a slot
+  assert.ok(r.take('k') > 0);
+});

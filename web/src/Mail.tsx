@@ -13,7 +13,7 @@ import { localZone } from './calendar';
 import type { PartStat } from './ics';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
 import { addRule, loadScript, saveScript } from './Filters';
-import { UPDATES, type Rule, type ScriptData } from './rules';
+import { SCREENER, UPDATES, type Rule, type ScriptData } from './rules';
 import { notifyOn, showMail } from './notify';
 import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
@@ -415,6 +415,34 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     refresh();
   }
 
+  /** Screener: people you write to are people you want to hear from. */
+  async function approveRecipients(d: Draft) {
+    try {
+      const { data } = await loadScript(client);
+      if (!data.screener?.on) return;
+      const allow = new Set(data.screener.allow.map((a) => a.toLowerCase()));
+      const fresh = [...d.to, ...d.cc, ...(d.bcc ?? [])].map((a) => a.email.toLowerCase()).filter((a) => !allow.has(a));
+      if (fresh.length) await saveScript(client, boxes, { ...data, screener: { on: true, allow: [...allow, ...fresh] } });
+    } catch { /* the message went out; approving can happen from the Screener */ }
+  }
+
+  /** Screener decision for one sender: yes → Inbox from now on (and what's waiting moves there); no → blocked. */
+  async function screen(sender: string, yes: boolean) {
+    const s = sender.toLowerCase();
+    try {
+      const screenerBox = boxes.find((b) => !b.role && b.name === SCREENER)?.id;
+      if (yes) {
+        const { data } = await loadScript(client);
+        await saveScript(client, boxes, { ...data, screener: { on: data.screener?.on ?? true, allow: [...new Set([...(data.screener?.allow ?? []), s])] } });
+      } else await addRule(client, boxes, { id: crypto.randomUUID(), from: s, fromExact: true, action: 'block' });
+      const waiting = (list ?? []).filter((e) => e.from?.some((a) => a.email.toLowerCase() === s));
+      setList((l) => l?.filter((e) => !waiting.includes(e)) ?? l);
+      if (screenerBox) await Promise.all(waiting.map((e) => client.move(e.threadId, screenerBox, yes ? inbox! : boxes.find((b) => b.role === 'junk')!.id, yes ? {} : { $junk: true })));
+      say({ text: yes ? `${sender} can reach your Inbox` : `${sender} is blocked. Undo in Settings → Filters.` });
+    } catch (e) { fail(e); }
+    refresh();
+  }
+
   async function send(d: Draft, sendAt?: Date) {
     setCompose(null);
     const pending = client.send(d, boxes, sendAt);
@@ -431,7 +459,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       refresh();
     };
     say({ text: sendAt ? `Scheduled for ${describe(sendAt)}` : 'Sending…', undo }, sendAt ? 8000 : UNDO_SECONDS * 1000);
-    try { await pending; loadContacts(); } catch (e) {
+    try { await pending; loadContacts(); approveRecipients(d); } catch (e) {
       say({ text: `Not sent: ${(e as Error).message}` }, 8000);
       setCompose(d); // never lose what someone wrote
       return;
@@ -533,6 +561,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   // ── View ───────────────────────────────────────────────
 
   const heading = query ? `Results for “${query}”` : navItems.find((b) => b.id === current)?.name ?? 'Inbox';
+  const inScreener = !role && currentBox?.name === SCREENER;
   const emptyText = query ? `No messages match “${query}”. Try from:, subject: or has:attachment.`
     : role === 'inbox' ? 'You’re all caught up.'
     : role === STARRED ? 'Star a conversation to keep it here. Press s while reading.'
@@ -657,7 +686,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         ) : (
           <>
             {list === null && <div className="rows-loading" aria-busy="true">{[0, 1, 2, 3, 4].map((i) => <span key={i} />)}</div>}
-            {list?.length === 0 && <p className="empty">{emptyText}</p>}
+            {inScreener && !!list?.length && <p className="list-note">First-time senders. Allow them into your Inbox, or block them for good.</p>}
+            {list?.length === 0 && <p className="empty">{inScreener ? 'Nobody new is waiting. New senders show up here first.' : emptyText}</p>}
             <ul className={`rows${selected.size ? ' selecting' : ''}`}>
               {list?.map((e) => (
                 <li key={e.threadId} className={`row${e.keywords.$seen ? '' : ' unread'}${e.threadId === threadId ? ' active' : ''}${selected.has(e.threadId) ? ' selected' : ''}`}>
@@ -670,7 +700,13 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
                     <span className="subject">{e.keywords.$nudge && role === 'inbox' && <span className="pill pill--warn">No reply yet</span>}{e.subject || '(no subject)'}{e.hasAttachment && <Icon name="clip" size={14} />}</span>
                     <span className="preview">{e.preview}</span>
                   </button>
-                  {role !== 'trash' && !selected.size && (
+                  {inScreener && !selected.size && e.from?.[0] && (
+                    <span className="row-actions screen-actions">
+                      <Button size="sm" variant="primary" onClick={() => screen(e.from![0].email, true)}>Allow</Button>
+                      <Button size="sm" onClick={() => screen(e.from![0].email, false)}>Block</Button>
+                    </span>
+                  )}
+                  {role !== 'trash' && !inScreener && !selected.size && (
                     <span className="row-actions">
                       <Button variant="quiet" size="sm" icon="star" iconFilled={!!e.keywords.$flagged} label={e.keywords.$flagged ? 'Unstar' : 'Star'} shortcut="s" onClick={() => act('star', [e.threadId])} />
                       <Button variant="quiet" size="sm" icon="archive" label="Archive" shortcut="e" onClick={() => act('archive', [e.threadId])} />
