@@ -4,6 +4,7 @@ import { Jmap, JmapError } from './jmap';
 import { Mail } from './Mail';
 import { finishSignIn, Session, startSignIn } from './oauth';
 import { applyTheme, savedTheme } from './Settings';
+import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
 
 applyTheme(savedTheme());
@@ -44,6 +45,14 @@ function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: J
   const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
   const [withPassword, setWithPassword] = useState(false);
+  const [canSignUp, setCanSignUp] = useState(false);
+  const [signingUp, setSigningUp] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [email, setEmail] = useState('');
+  useEffect(() => { signupAvailable().then(setCanSignUp); }, []);
+
+  if (signingUp) return <Signup onCancel={() => setSigningUp(false)}
+    onDone={(addr) => { setSigningUp(false); setEmail(addr); setNotice(`Your mailbox ${addr} is ready. Sign in to start using it.`); }} />;
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -60,7 +69,9 @@ function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: J
       <form onSubmit={submit}>
         <p className="wordmark">OpenMail</p>
         <h1>Sign in to your mailbox</h1>
-        <label>Email address<input className="input" name="email" type="email" autoComplete="username" required autoFocus /></label>
+        {notice && <p className="banner banner--safe" role="status">{notice}</p>}
+        <label>Email address<input className="input" name="email" type="email" autoComplete="username" required autoFocus
+          value={email} onChange={(e) => setEmail(e.target.value)} /></label>
         {withPassword && <label>Password<input className="input" name="password" type="password" autoComplete="current-password" required /></label>}
         {error && <p className="error" role="alert">{error}</p>}
         <Button type="submit" variant="primary" size="lg" disabled={busy}>{busy ? 'Signing in…' : withPassword ? 'Sign in' : 'Continue'}</Button>
@@ -70,6 +81,7 @@ function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: J
         <Button variant="link" className="alt" onClick={() => { setWithPassword(!withPassword); setError(''); }}>
           {withPassword ? 'Use secure sign-in instead' : 'Sign in with a password instead'}
         </Button>
+        {canSignUp && <Button variant="link" className="alt" onClick={() => setSigningUp(true)}>Create an account</Button>}
         <p className="fine">No ads. No reading your mail. Open source.</p>
       </form>
     </main>

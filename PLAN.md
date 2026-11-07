@@ -78,7 +78,8 @@ Signup service ──► Stalwart management API   (hosted instance only)
 
 ## Phase 4: Public hosted instance
 - [x] Signup service: invite codes, per-IP limits, reserved names, quotas, optional Turnstile ([signup/README.md](signup/README.md))
-- [ ] Email verification step; signup form in the web client
+- [x] Signup form in the web client (live username check)
+- [ ] Email verification step
 - [ ] Abuse controls: new-account sending limits, outbound spam scanning, abuse@ mailbox, blocklist monitoring, fast suspension
 - [ ] Quotas; paid tier to fund storage
 - [ ] Terms of service, privacy policy, GDPR export/delete, law-enforcement request process

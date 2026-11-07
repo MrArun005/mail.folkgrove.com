@@ -29,6 +29,13 @@
 		file_server
 	}
 
+	# Public sign-up (signup/ service) for a hosted instance. Without that container this returns 502,
+	# and the web client simply hides its "Create an account" link.
+	@signup path /api/signup /api/username-available
+	handle @signup {
+		reverse_proxy signup:3000
+	}
+
 	# Everything else is Stalwart: /jmap, /.well-known/*, /admin, /api, /auth, /dav, autoconfig, ...
 	handle {
 		reverse_proxy stalwart:8080
