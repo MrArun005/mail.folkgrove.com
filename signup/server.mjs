@@ -8,15 +8,20 @@ import { checkUsername, checkPassword, RateLimiter, ipKey, Invites } from './lib
 import { aliasRoutes } from './aliases.mjs';
 
 export function configFromEnv(env = process.env) {
-  const admin = env.ADMIN_FILE
-    ? JSON.parse(readFileSync(env.ADMIN_FILE, 'utf8'))
-    : { user: env.ADMIN_USER, pass: env.ADMIN_PASS };
+  // ADMIN_FILE: JSON {"user","pass"}, or install.sh's .admin-credentials ("user:pass").
+  const adminText = env.ADMIN_FILE ? readFileSync(env.ADMIN_FILE, 'utf8').trim() : '';
+  const admin = !env.ADMIN_FILE ? { user: env.ADMIN_USER, pass: env.ADMIN_PASS }
+    : adminText.startsWith('{') ? JSON.parse(adminText)
+    : { user: adminText.slice(0, adminText.indexOf(':')), pass: adminText.slice(adminText.indexOf(':') + 1) };
   if (!admin.user || !admin.pass) throw new Error('Set ADMIN_USER and ADMIN_PASS, or ADMIN_FILE (JSON {"user","pass"})');
   if (!env.DOMAIN) throw new Error('Set DOMAIN (the mail domain new accounts are created in)');
+  // SIGNUP=off: an account service for an existing server (masked aliases) with public sign-up switched off.
+  const signupEnabled = env.SIGNUP !== 'off';
   const inviteRequired = env.INVITE_REQUIRED !== 'false';
-  if (inviteRequired && !env.INVITE_CODES && !env.INVITE_FILE)
+  if (signupEnabled && inviteRequired && !env.INVITE_CODES && !env.INVITE_FILE)
     throw new Error('INVITE_REQUIRED is on (the default) but neither INVITE_CODES nor INVITE_FILE is set');
   return {
+    signupEnabled,
     stalwartUrl: (env.STALWART_URL || 'http://localhost:8080').replace(/\/$/, ''),
     admin,
     domain: env.DOMAIN.toLowerCase(),
@@ -193,8 +198,10 @@ export function createApp(cfg) {
     try {
       const url = new URL(req.url, 'http://x');
       if (url.pathname.startsWith('/api/aliases') && await aliases(req, res, url)) return;
-      if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
-      if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);
+      if (cfg.signupEnabled !== false) {
+        if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
+        if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);
+      }
       if (url.pathname === '/healthz') return send(res, 200, { ok: true });
       fail(res, 404, 'not_found', 'Not found.');
     } catch (e) {

@@ -21,6 +21,16 @@ test('alias helpers', () => {
   assert.equal(cleanLabel(' Shop\u0000ping '), 'Shopping');
 });
 
+test('passwords are refused unless explicitly allowed (tokens only)', async () => {
+  const { aliasRoutes } = await import('../aliases.mjs');
+  const { RateLimiter } = await import('../lib.mjs');
+  const sent = [];
+  const handle = aliasRoutes({ cfg: { stalwartUrl: 'http://127.0.0.1:9', domain: 'x.test' }, jmap: null, getDomainId: null,
+    send: () => {}, fail: (_res, status) => sent.push(status), readJson: null, RateLimiter, ipOf: () => 'k' });
+  await handle({ headers: { authorization: 'Basic eDp5' }, method: 'GET' }, {}, new URL('http://x/api/aliases'));
+  assert.deepEqual(sent, [401]);
+});
+
 test('failed sign-ins are rate limited per network', async () => {
   const { aliasRoutes } = await import('../aliases.mjs');
   const { RateLimiter } = await import('../lib.mjs');
@@ -28,7 +38,7 @@ test('failed sign-ins are rate limited per network', async () => {
   const stub = createServer((_q, r) => { r.statusCode = 401; r.end(); }); // Stalwart saying "wrong password"
   await new Promise((r) => stub.listen(0, '127.0.0.1', r));
   const sent = [];
-  const handle = aliasRoutes({ cfg: { stalwartUrl: `http://127.0.0.1:${stub.address().port}`, domain: 'x.test' }, jmap: null, getDomainId: null,
+  const handle = aliasRoutes({ cfg: { stalwartUrl: `http://127.0.0.1:${stub.address().port}`, domain: 'x.test', allowBasicAuth: true }, jmap: null, getDomainId: null,
     send: () => {}, fail: (_res, status) => sent.push(status), readJson: null, RateLimiter, ipOf: () => '203.0.113.0/24' });
   const req = { headers: { authorization: 'Basic eDp5' }, method: 'GET' };
   const url = new URL('http://x/api/aliases');
@@ -56,7 +66,7 @@ function rcptCode(addr) {
 test('masked aliases: create, receive, switch off, delete', { skip }, async (t) => {
   const admin = JSON.parse(readFileSync(ADMIN_FILE, 'utf8'));
   const app = createApp({ stalwartUrl: STALWART, admin, domain: 'openmail.test', inviteRequired: false, invites: new Invites({ text: '' }),
-    turnstileSecret: null, quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], maxAliases: 200, aliasesPerHour: 30 });
+    turnstileSecret: null, quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], maxAliases: 200, aliasesPerHour: 30, allowBasicAuth: true });
   await new Promise((r) => app.listen(0, '127.0.0.1', r));
   const cleanup = []; // aliases to delete before the server closes (after-hooks run in registration order)
   t.after(async () => { for (const f of cleanup) await f().catch(() => {}); app.close(); });
@@ -83,6 +93,13 @@ test('masked aliases: create, receive, switch off, delete', { skip }, async (t) 
 
   assert.equal((await call(`/${id}`, 'DELETE')).status, 200);
   assert.ok(!(await call('')).aliases.some((a) => a.id === id));
+  assert.equal(await rcptCode(email), 550); // retired: mail bounces…
+  const admin2 = (m) => fetch(`${STALWART}/jmap/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from(`${admin.user}:${admin.pass}`).toString('base64') },
+    body: JSON.stringify({ using: ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap'], methodCalls: m }) }).then((r) => r.json());
+  const [[, dom]] = (await admin2([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).methodResponses;
+  const domainId = dom.list.find((d) => d.name === 'openmail.test').id;
+  const [[, taken]] = (await admin2([['x:Account/set', { create: { n: { '@type': 'User', name: id, domainId, credentials: { 0: { '@type': 'Password', secret: 'recycle-attempt-123' } } } } }, 'c']])).methodResponses;
+  assert.ok(taken.notCreated?.n, '…and nobody can sign up for the old address');
   assert.equal((await call(`/${id}`, 'DELETE')).status, 404);
 
   // Positions shift when one is deleted: the others must still be found by address.

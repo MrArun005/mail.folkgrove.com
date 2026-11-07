@@ -149,3 +149,12 @@ test('RateLimiter.refund only gives back to the window the hit came from', () =>
   r.refund('k', w);                   // stale refund: must not free a slot
   assert.ok(r.take('k') > 0);
 });
+
+test('config: SIGNUP=off needs no invite codes; .admin-credentials format is read', async () => {
+  const { configFromEnv } = await import('../server.mjs');
+  const dir = mkdtempSync('/tmp/om-');
+  writeFileSync(`${dir}/creds`, 'admin:s3cret:with:colons\n');
+  const c = configFromEnv({ DOMAIN: 'x.test', ADMIN_FILE: `${dir}/creds`, SIGNUP: 'off' });
+  assert.deepEqual([c.signupEnabled, c.admin], [false, { user: 'admin', pass: 's3cret:with:colons' }]);
+  assert.throws(() => configFromEnv({ DOMAIN: 'x.test', ADMIN_FILE: `${dir}/creds` }), /INVITE_REQUIRED/);
+});

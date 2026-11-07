@@ -281,18 +281,19 @@ export class Jmap {
 
   // ── Filters: one Sieve script owned by this app (rules.ts compiles it) ──
 
-  async getRules(): Promise<{ id: string | null; script: string }> {
+  async getRules(): Promise<{ id: string | null; script: string; state?: string }> {
     const [r] = await this.call([['SieveScript/get', { accountId: this.accountId }, 'g']]);
     const mine = (r.list as { id: string; name: string; blobId: string }[]).find((x) => x.name === SCRIPT_NAME);
-    if (!mine) return { id: null, script: '' };
+    if (!mine) return { id: null, script: '', state: r.state };
     const blob = await this.download({ blobId: mine.blobId, name: 'rules.sieve', type: 'application/sieve', size: 0 });
-    return { id: mine.id, script: await blob.text() };
+    return { id: mine.id, script: await blob.text(), state: r.state };
   }
 
-  async saveRules(script: string, existingId: string | null) {
+  /** ifInState: refuse (JmapError "stateMismatch…") if the script changed on the server since `state` was read. */
+  async saveRules(script: string, existingId: string | null, ifInState?: string) {
     const { blobId } = await this.upload(Object.assign(new Blob([script], { type: 'application/sieve' }), { name: 'rules.sieve' }));
     await this.call([['SieveScript/set', {
-      accountId: this.accountId,
+      accountId: this.accountId, ...(ifInState && { ifInState }),
       ...(existingId ? { update: { [existingId]: { blobId } } } : { create: { s: { name: SCRIPT_NAME, blobId } } }),
       onSuccessActivateScript: existingId ?? '#s',
     }, 's']]);

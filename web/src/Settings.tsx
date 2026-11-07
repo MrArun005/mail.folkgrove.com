@@ -62,8 +62,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
       // The identity carries the new-message signature too, so other JMAP apps see it.
       const main = chooseSignature(list, sigNew)?.text ?? '';
       await client.setIdentity({ name: name.trim(), textSignature: main, htmlSignature: main.trim() ? textToHtml(main) : '' });
-      const { data } = await loadScript(client); // keep the filters exactly as they are
-      await saveScript(client, boxes, { ...data, ...(vac && { vacation: vac }), signatures: list, sigNew, sigReply });
+      await saveScript(client, boxes, (d) => ({ ...d, ...(vac && { vacation: vac }), signatures: list, sigNew, sigReply })); // filters etc. kept
       applyTheme(theme);
       onSaved('Settings saved');
     } catch (err) { setError(`Couldn’t save: ${(err as Error).message}`); }
@@ -170,8 +169,7 @@ function CategoriesSection({ client, boxes }: { client: Jmap; boxes: Mailbox[] }
   async function toggle(next: boolean) {
     setOn(next); setNote('Saving…');
     try {
-      const { data } = await loadScript(client);
-      await saveScript(client, boxes, { ...data, categories: next });
+      await saveScript(client, boxes, (d) => ({ ...d, categories: next }));
       const inbox = boxes.find((b) => b.role === 'inbox')?.id;
       const n = next && inbox ? await client.tagUpdates(inbox) : 0;
       setNote(next ? `On. ${n ? `${n} newsletters moved to Updates.` : 'New newsletters will go to Updates.'}` : 'Off. Everything stays in one Inbox.');
@@ -194,10 +192,11 @@ function ScreenerSection({ client, boxes }: { client: Jmap; boxes: Mailbox[] }) 
   async function toggle(next: boolean) {
     setOn(next); setNote('Saving…');
     try {
-      const { data } = await loadScript(client);
       // First time on: everyone you already correspond with (and your contacts) is approved.
-      const allow = data.screener?.allow?.length ? data.screener.allow : await knownSenders(client);
-      await saveScript(client, boxes, { ...data, screener: { on: next, allow } });
+      const { data } = await loadScript(client);
+      const seed = data.screener?.allow?.length ? [] : await knownSenders(client);
+      let allow: string[] = [];
+      await saveScript(client, boxes, (d) => ({ ...d, screener: { on: next, allow: (allow = d.screener?.allow?.length ? d.screener.allow : seed) } }));
       setNote(next ? `On. ${allow.length} people you already know go straight to your Inbox.` : 'Off. New senders go to your Inbox again.');
     } catch (e) { setOn(!next); setNote(`Couldn’t change this: ${(e as Error).message}`); }
   }

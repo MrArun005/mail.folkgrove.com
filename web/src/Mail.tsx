@@ -182,7 +182,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         setSigData(data);
         if (data.categories !== undefined) return;
         const b = await client.mailboxes();
-        await saveScript(client, b, { ...data, categories: true });
+        await saveScript(client, b, (d) => ({ ...d, categories: d.categories ?? true }));
         const inboxId = b.find((x) => x.role === 'inbox')?.id;
         if (inboxId && await client.tagUpdates(inboxId)) refreshRef.current();
       } catch { /* categories are a nicety: the inbox still works without them */ }
@@ -320,18 +320,16 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     const name = await promptIt({ title: 'Save this search', body: 'It appears in the sidebar, one click away.', label: 'Name', value: query, confirm: 'Save search' });
     if (!name) return;
     try {
-      const { data } = await loadScript(client);
-      const next = [...(data.savedSearches ?? []).filter((x) => x.name !== name), { name, query }];
-      await saveScript(client, boxes, { ...data, savedSearches: next });
+      let next: { name: string; query: string }[] = [];
+      await saveScript(client, boxes, (d) => ({ ...d, savedSearches: (next = [...(d.savedSearches ?? []).filter((x) => x.name !== name), { name, query }]) }));
       setSaved(next); say({ text: `Saved “${name}”` });
     } catch (e) { fail(e); }
   }
 
   async function removeSearch(name: string) {
     try {
-      const { data } = await loadScript(client);
-      const next = (data.savedSearches ?? []).filter((x) => x.name !== name);
-      await saveScript(client, boxes, { ...data, savedSearches: next });
+      let next: { name: string; query: string }[] = [];
+      await saveScript(client, boxes, (d) => ({ ...d, savedSearches: (next = (d.savedSearches ?? []).filter((x) => x.name !== name)) }));
       setSaved(next);
     } catch (e) { fail(e); }
   }
@@ -421,10 +419,9 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   async function approveRecipients(d: Draft) {
     try {
       const { data } = await loadScript(client);
-      if (!data.screener?.on) return;
-      const allow = new Set(data.screener.allow.map((a) => a.toLowerCase()));
-      const fresh = [...d.to, ...d.cc, ...(d.bcc ?? [])].map((a) => a.email.toLowerCase()).filter((a) => !allow.has(a));
-      if (fresh.length) await saveScript(client, boxes, { ...data, screener: { on: true, allow: [...allow, ...fresh] } });
+      const to = [...d.to, ...d.cc, ...(d.bcc ?? [])].map((a) => a.email.toLowerCase());
+      if (!data.screener?.on || to.every((a) => data.screener!.allow.includes(a))) return; // nothing new: skip the write
+      await saveScript(client, boxes, (s) => (s.screener?.on ? { ...s, screener: { on: true, allow: [...new Set([...s.screener.allow, ...to])] } } : s));
     } catch { /* the message went out; approving can happen from the Screener */ }
   }
 
@@ -434,8 +431,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     try {
       const screenerBox = boxes.find((b) => !b.role && b.name === SCREENER)?.id;
       if (yes) {
-        const { data } = await loadScript(client);
-        await saveScript(client, boxes, { ...data, screener: { on: data.screener?.on ?? true, allow: [...new Set([...(data.screener?.allow ?? []), s])] } });
+        await saveScript(client, boxes, (d) => ({ ...d, screener: { on: d.screener?.on ?? true, allow: [...new Set([...(d.screener?.allow ?? []), s])] } }));
       } else await addRule(client, boxes, { id: crypto.randomUUID(), from: s, fromExact: true, action: 'block' });
       const waiting = (list ?? []).filter((e) => e.from?.some((a) => a.email.toLowerCase() === s));
       setList((l) => l?.filter((e) => !waiting.includes(e)) ?? l);

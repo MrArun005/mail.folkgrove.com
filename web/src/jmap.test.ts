@@ -311,6 +311,24 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     }
   }, 30_000);
 
+  it('settings saved from two devices at once both survive (ifInState + re-apply)', async () => {
+    const c = await login(), c2 = await login();
+    const { saveScript, loadScript } = await import('./Filters');
+    const boxes = await c.mailboxes();
+    const before = await c.getRules();
+    const tag = `t${Date.now()}`;
+    try {
+      await Promise.all([
+        saveScript(c, boxes, (d) => ({ ...d, savedSearches: [...(d.savedSearches ?? []), { name: `${tag}-a`, query: 'a' }] })),
+        saveScript(c2, boxes, (d) => ({ ...d, savedSearches: [...(d.savedSearches ?? []), { name: `${tag}-b`, query: 'b' }] })),
+      ]);
+      const names = ((await loadScript(c)).data.savedSearches ?? []).map((x) => x.name);
+      expect(names).toEqual(expect.arrayContaining([`${tag}-a`, `${tag}-b`]));
+    } finally {
+      if (before.script) await c.saveRules(before.script, (await c.getRules()).id);
+    }
+  }, 30_000);
+
   it('Bcc reaches the recipient without a Bcc header; the Sent copy keeps it', async () => {
     const c = await login();
     const boxes = await c.mailboxes();

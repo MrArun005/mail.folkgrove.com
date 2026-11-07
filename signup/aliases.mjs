@@ -6,6 +6,9 @@ import { randomInt } from 'node:crypto';
 const WORDS_A = 'amber brave calm clever cosy crisp dusty eager early fancy gentle glad golden happy honest humble jolly keen kind lively lucky merry mild misty noble plain proud quick quiet rapid rosy shy silent silver smart snowy sunny swift tidy vivid warm wise witty young bold bright cool fair fresh green jade lunar mellow neat olive polar royal sandy solar sturdy tame velvet wild'.split(' ');
 const WORDS_B = 'otter river maple falcon harbor meadow comet pebble willow badger cedar lantern heron canyon spruce marble orchid walrus thistle beacon breeze cobalt dune ember fjord glacier grove hazel island juniper kestrel lagoon lynx moss nectar oasis panda quartz raven sparrow tiger tulip valley wren yak zephyr acorn bison cliff dolphin fern koala lotus'.split(' ');
 const MASKED = 'masked: ';
+// A deleted alias is retired, never removed: it stays on the account switched off, so the address can never be
+// signed up for or generated again (Stalwart refuses any account or alias that clashes). No address recycling, ever.
+const RETIRED = 'retired: ';
 
 export const maskedName = () => `${WORDS_A[randomInt(WORDS_A.length)]}.${WORDS_B[randomInt(WORDS_B.length)]}.${randomInt(1000, 10000)}`;
 
@@ -35,7 +38,9 @@ export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   /** Who is calling: their own session, verified by Stalwart. Returns their account id, or null. */
   async function caller(req) {
     const authz = req.headers.authorization;
-    if (!authz || !/^(Bearer|Basic) /.test(authz)) return null;
+    // Tokens only: accepting passwords here would let attackers spend Stalwart's per-IP failed-login budget from
+    // this service's address and get it banned for everyone. (Tests may allow Basic.)
+    if (!authz || !(cfg.allowBasicAuth ? /^(Bearer|Basic) / : /^Bearer /).test(authz)) return null;
     const r = await fetch(`${cfg.stalwartUrl}/jmap/session`, { headers: { Authorization: authz }, signal: AbortSignal.timeout(10_000) });
     if (!r.ok) return null;
     const session = await r.json();
@@ -47,7 +52,8 @@ export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     return acct && acct.name?.toLowerCase() === local && acct.domainId === await getDomainId() ? id : null;
   }
   const aliasesOf = async (id) => (await jmap([['x:Account/get', { ids: [id], properties: ['aliases'] }, 'g']])).list[0]?.aliases ?? {};
-  const list = async (id) => Object.values(await aliasesOf(id)).map((a) => toView(a, cfg.domain));
+  const live = (a) => !(typeof a.description === 'string' && a.description.startsWith(RETIRED));
+  const list = async (id) => Object.values(await aliasesOf(id)).filter(live).map((a) => toView(a, cfg.domain));
   const find = async (id, name) => Object.entries(await aliasesOf(id)).find(([, a]) => a.name === name) ?? [];
   const update = async (id, patch) => {
     const r = await jmap([['x:Account/set', { update: { [id]: patch } }, 'u']]);
@@ -74,7 +80,7 @@ export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       if (wait) return fail(res, 429, 'rate_limited', 'You’ve made a lot of addresses recently. Try again in a little while.', { retryAfter: wait }), true;
       const body = await readJson(req).catch(() => ({})); // label is optional
       const current = await aliasesOf(id);
-      if (Object.keys(current).length >= (cfg.maxAliases ?? 200)) return fail(res, 409, 'too_many', 'You’ve reached the limit for addresses. Delete ones you no longer use.'), true;
+      if (Object.values(current).filter(live).length >= (cfg.maxAliases ?? 200)) return fail(res, 409, 'too_many', 'You’ve reached the limit for addresses. Delete ones you no longer use.'), true;
       // Writing any new key appends to Stalwart's list. A name clash is very rare and Stalwart refuses duplicates: retry.
       return serial(id, async () => {
         for (let attempt = 0; ; attempt++) {
@@ -89,11 +95,11 @@ export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
 
     if (key && (req.method === 'PATCH' || req.method === 'DELETE')) return serial(id, async () => {
       const [pos, a] = await find(id, key);
-      if (!a) return fail(res, 404, 'not_found', 'That address no longer exists.'), true;
+      if (!a || !live(a)) return fail(res, 404, 'not_found', 'That address no longer exists.'), true;
       const view = toView(a, cfg.domain);
       if (req.method === 'DELETE') {
         if (!view.masked) return fail(res, 403, 'not_masked', 'This address was set up by your administrator.'), true;
-        await update(id, { [`aliases/${pos}`]: null });
+        await update(id, { [`aliases/${pos}/enable`]: false, [`aliases/${pos}/description`]: RETIRED + view.label });
         return send(res, 200, { ok: true }), true;
       }
       const body = await readJson(req).catch(() => ({})); // label is optional

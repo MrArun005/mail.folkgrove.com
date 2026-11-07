@@ -14,17 +14,24 @@ export async function loadScript(client: Jmap): Promise<{ id: string | null; dat
   const { id, script } = await client.getRules();
   return { id, data: parseScript(script) };
 }
-export async function saveScript(client: Jmap, boxes: Mailbox[], data: ScriptData) {
-  const { id } = await client.getRules();
+/**
+ * Save the settings script. Pass a change function, not a copy: it is applied to the newest version on the server
+ * and saved only if nobody saved in between (ifInState); if another tab or device did, it re-reads and re-applies,
+ * so two devices changing different settings never overwrite each other.
+ */
+export async function saveScript(client: Jmap, boxes: Mailbox[], change: (d: ScriptData) => ScriptData) {
   // Keep the server's separate vacation script off: only one Sieve script can be active, and it must be ours.
   if ((await client.vacation().catch(() => null))?.isEnabled) await client.setVacation({ isEnabled: false });
-  await client.saveRules(toSieve(data, folderNames(boxes)), id);
+  for (let attempt = 0; ; attempt++) {
+    const { id, script, state } = await client.getRules();
+    try { return await client.saveRules(toSieve(change(parseScript(script)), folderNames(boxes)), id, state); }
+    catch (e) { if (attempt >= 4 || !/stateMismatch/i.test((e as Error).message)) throw e; }
+  }
 }
 
 /** Shared by Settings → Filters and the reader's "Block sender" / "Filter messages like this". */
 export async function addRule(client: Jmap, boxes: Mailbox[], rule: Rule) {
-  const { data } = await loadScript(client);
-  await saveScript(client, boxes, { ...data, rules: [...data.rules, rule] });
+  await saveScript(client, boxes, (d) => ({ ...d, rules: [...d.rules, rule] }));
 }
 const folderNames = (boxes: Mailbox[]) => ({
   trash: boxes.find((b) => b.role === 'trash')?.name ?? 'Trash', junk: boxes.find((b) => b.role === 'junk')?.name ?? 'Junk',
@@ -43,8 +50,7 @@ export function FiltersSection({ client, boxes, prefill }: { client: Jmap; boxes
   async function save(next: Rule[]) {
     setError('');
     try {
-      const { data } = await loadScript(client); // re-read so the out-of-office part is never lost
-      await saveScript(client, boxes, { ...data, rules: next });
+      await saveScript(client, boxes, (d) => ({ ...d, rules: next })); // everything else in the script is kept
       setRules(next);
       return true;
     } catch (e) { setError(`Couldn’t save filters: ${(e as Error).message}`); return false; }

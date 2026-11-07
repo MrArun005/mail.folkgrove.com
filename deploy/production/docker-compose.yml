@@ -1,4 +1,4 @@
-# Production stack: Stalwart (mail) + Caddy (HTTPS, web client). Set up with ./install.sh,
+# Production stack: Stalwart (mail) + Caddy (HTTPS, web client) + the account service (masked addresses). Set up with ./install.sh,
 # which writes .env next to this file. Don't run this by hand before install.sh has run once.
 #
 # TLS, in one place:
@@ -57,6 +57,23 @@ services:
       - ${WEB_DIST:-../../web/dist}:/srv:ro
       - caddy-data:/data                    # certificates + ACME account
       - caddy-config:/config
+
+  # Account service (../../signup): the few things that need admin rights, e.g. masked addresses. It holds the admin
+  # credentials, so it only talks to Stalwart on the internal network and accepts users' sign-in tokens, never
+  # passwords. Public sign-up stays off unless SIGNUP=on (hosted instance; then also set INVITE_CODES).
+  signup:
+    build: ../../signup
+    restart: unless-stopped
+    depends_on: [stalwart]
+    environment:
+      DOMAIN: ${MAIL_DOMAIN}
+      STALWART_URL: http://stalwart:8080
+      ADMIN_FILE: /run/secrets/admin
+      SIGNUP: ${SIGNUP:-off}
+      INVITE_CODES: ${INVITE_CODES:-}
+      CLIENT_IP_HEADER: x-real-ip
+    volumes:
+      - ./.admin-credentials:/run/secrets/admin:ro
 
 volumes:
   stalwart-etc:
