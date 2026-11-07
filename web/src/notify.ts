@@ -61,6 +61,15 @@ export async function enablePush(client: { vapidKey: string | null; createPushSu
   return true;
 }
 
+/** On sign-out: stop this account's pushes here; if nobody else is signed in, drop the browser's subscription too. */
+export async function signOutPush(client: { deletePushSubscriptions: (d: string) => Promise<void> }, othersRemain: boolean) {
+  await client.deletePushSubscriptions(deviceId()).catch(() => {});
+  if (othersRemain) return;
+  try { localStorage.removeItem('om:push-at'); } catch { /* fine */ }
+  const reg = await navigator.serviceWorker?.getRegistration().catch(() => undefined);
+  await (await reg?.pushManager.getSubscription())?.unsubscribe().catch(() => {});
+}
+
 export async function disablePush(client: { deletePushSubscriptions: (d: string) => Promise<void> }) {
   await client.deletePushSubscriptions(deviceId()).catch(() => {});
   const reg = await navigator.serviceWorker?.getRegistration().catch(() => undefined);

@@ -3,6 +3,7 @@ import { Button } from './Button';
 import { Jmap, JmapError, SESSION_EXPIRED } from './jmap';
 import { Mail } from './Mail';
 import { DialogHost } from './Dialog';
+import { signOutPush } from './notify';
 import { canRememberDevice, forgetSession, Session, signedInAccounts, signIn } from './oauth';
 import { applyDisplayPrefs, applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
@@ -45,6 +46,8 @@ export default function App() {
   /** Sign out of the current account; stay signed in to any others (switch to the next one). */
   async function signOut() {
     if (session.current) cache.clear(`${session.current.username}:`); // their mail leaves this tab now, not later
+    // While still signed in: stop this account's background notifications on this browser.
+    if (client) await signOutPush(client, signedInAccounts().length > 1);
     await session.current?.signOut();
     session.current = null;
     const next = Session.resume();
