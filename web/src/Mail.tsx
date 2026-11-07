@@ -2,13 +2,15 @@ import { Component, useCallback, useEffect, useMemo, useRef, useState, type Reac
 import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
 import { Icon, roleIcon } from './icons';
-import { Jmap, UNDO_SECONDS, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
+import { Jmap, UNDO_SECONDS, type Attachment, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
 import { displayName, draftFor, draftFromEmail, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { SubscriptionsList } from './Subscriptions';
 import { ContactList, ContactPanel, fullName } from './Contacts';
 import { CalendarView } from './CalendarView';
+import { localZone } from './calendar';
+import type { PartStat } from './ics';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
 import { addRule, loadScript, saveScript } from './Filters';
 import { UPDATES, type Rule } from './rules';
@@ -325,6 +327,21 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       }
     } catch (e) { fail(e); }
   }
+  async function rsvp(m: EmailFull, ics: Attachment, status: PartStat) {
+    const was = (['accepted', 'tentative'] as const).some((p) => m.keywords[`$rsvp-${p}`]);
+    try {
+      const inv = await client.rsvp(m.id, ics, status, boxes);
+      // Yes / Maybe also put it in the calendar, once (changing Maybe → Yes doesn't duplicate it).
+      let added = false;
+      if (status !== 'DECLINED' && !was && !(await client.hasEvent(inv.uid))) {
+        const [ev] = await client.parseInvite(ics.blobId);
+        if (ev) { await client.saveEvent({ ...ev, id: undefined, uid: inv.uid, timeZone: ev.timeZone || localZone() }); added = true; }
+      }
+      say({ text: `Replied “${{ ACCEPTED: 'Yes', TENTATIVE: 'Maybe', DECLINED: 'No' }[status]}” to ${inv.organizerEmail}${added ? ' and added it to your calendar' : ''}` });
+      setThreadVersion((v) => v + 1);
+    } catch (e) { fail(e); }
+  }
+
   const escape = (t: string) => t.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
   // ── Writing ────────────────────────────────────────────
@@ -637,7 +654,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
                 inTrash={role === 'trash'} inJunk={role === 'junk'}
                 onAction={(a) => act(a, [threadId])} onReply={reply} onBack={() => setThreadId(null)}
                 onSnooze={(d) => act({ snooze: d }, [threadId])} onMoveTo={(id, label) => act({ moveTo: id, label }, [threadId])}
-                onUnsubscribe={unsubscribe} onMore={more} />
+                onUnsubscribe={unsubscribe} onMore={more} onRsvp={rsvp} />
             </ErrorBoundary>
           : <div className="reader-empty">
               <p>{selected.size ? `${selected.size} selected` : 'Select a conversation to read it.'}</p>

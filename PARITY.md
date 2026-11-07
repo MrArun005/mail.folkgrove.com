@@ -77,7 +77,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 
 | Feature | Zoho | Us | Plan |
 |---|---|---|---|
-| Calendar + invites in mail | ✅ | ✅ | Week view, create/edit/delete, all-day, "Add to calendar" from invitations (time zones converted) |
+| Calendar + invites in mail | ✅ | ✅ | Week and month views, create/edit/delete, all-day; invitations: Yes/Maybe/No sent to the organizer (iTIP), added once by UID |
 | Contacts / address book | ✅ | ✅ | JMAP Contacts: list, search, add/edit/delete, "Add sender to contacts", feeds autocomplete |
 | Tasks, notes, bookmarks | ✅ | ⬜ | Phase 5 (lightweight) |
 | Streams (team comments on mail) | ✅ | ⬜ | Phase 5: shared mailboxes first |
@@ -107,7 +107,7 @@ shared mailboxes and import close the rest of the 95%.
 ## Order of work
 
 1. **Next batch (small, high value):** several signatures, 2FA enrolment (step-up sign-in), app passwords,
-   read receipts (opt-in), RSVP replies to invitations, month view.
+   read receipts (opt-in).
 2. **Phase 2 security:** passkeys; branded sign-in page (today it is the mail server's own page).
 3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager, multiple signatures,
    multi-account, E2E (OpenPGP), saved searches, encryption-at-rest toggle.

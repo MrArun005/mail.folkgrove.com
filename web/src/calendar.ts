@@ -2,6 +2,8 @@
 
 export interface CalEvent {
   id?: string;
+  /** iCalendar UID: the same meeting keeps it across invitations and updates. */
+  uid?: string;
   title: string;
   /** Local wall-clock start, "YYYY-MM-DDTHH:MM:SS", in `timeZone`. */
   start: string;

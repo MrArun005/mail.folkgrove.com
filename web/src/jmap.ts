@@ -1,6 +1,7 @@
 // Minimal JMAP client (RFC 8620 core, 8621 mail + submission). Talks to Stalwart directly; we have no backend.
 import { SCRIPT_NAME, UPDATES } from './rules';
 import type { CalEvent } from './calendar';
+import { buildReply, parseInvite, replyWord, type Invite, type PartStat } from './ics';
 
 
 const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve'];
@@ -540,7 +541,7 @@ export class Jmap {
 
   async saveEvent(e: CalEvent): Promise<string> {
     const body = {
-      '@type': 'Event', title: e.title.trim() || 'Untitled event', start: e.start, timeZone: e.allDay ? null : e.timeZone,
+      '@type': 'Event', ...(e.uid && !e.id ? { uid: e.uid } : {}), title: e.title.trim() || 'Untitled event', start: e.start, timeZone: e.allDay ? null : e.timeZone,
       duration: e.duration, showWithoutTime: e.allDay, description: e.description,
       locations: e.location.trim() ? { l1: { '@type': 'Location', name: e.location.trim() } } : null,
     };
@@ -553,6 +554,34 @@ export class Jmap {
     if (!cal) throw new JmapError('This account has no calendar');
     const [r] = await this.call([['CalendarEvent/set', { accountId: this.accountId, create: { e: { ...body, calendarIds: { [cal.id]: true } } } }, 's']], CALENDARS);
     return r.created.e.id;
+  }
+
+  /**
+   * Answer an invitation: email the organizer an iTIP REPLY (what Gmail/Outlook/Zoho process automatically) and
+   * remember the answer on the message itself ($rsvp-accepted / -tentative / -declined), so every device shows it.
+   */
+  async rsvp(emailId: string, invite: Attachment, status: PartStat, boxes: Mailbox[]): Promise<Invite> {
+    const inv = parseInvite(await (await this.download(invite)).text());
+    if (!inv) throw new JmapError('This invitation can’t be read');
+    const me = await this.getIdentity();
+    const reply = buildReply(inv, { email: me.email, name: me.name !== me.email ? me.name : null }, status);
+    const file = await this.upload(Object.assign(new Blob([reply], { type: 'text/calendar; method=REPLY; charset=utf-8' }), { name: 'reply.ics' }));
+    const who = me.name && me.name !== me.email ? me.name : me.email;
+    const verb = { ACCEPTED: 'accepted', TENTATIVE: 'tentatively accepted', DECLINED: 'declined' }[status];
+    await this.send({ to: [{ name: null, email: inv.organizerEmail }], cc: [], subject: `${replyWord[status]}: ${inv.summary}`,
+      html: `<p>${who} has ${verb} this invitation.</p>`, text: `${who} has ${verb} this invitation.`,
+      attachments: [{ ...file, type: 'text/calendar; method=REPLY; charset=utf-8' }] }, boxes);
+    const kw = (s: PartStat) => `keywords/$rsvp-${s.toLowerCase()}`;
+    await this.call([['Email/set', { accountId: this.accountId, update: { [emailId]: {
+      [kw('ACCEPTED')]: status === 'ACCEPTED' || null, [kw('TENTATIVE')]: status === 'TENTATIVE' || null, [kw('DECLINED')]: status === 'DECLINED' || null,
+    } } }, 'k']]);
+    return inv;
+  }
+
+  /** Is this meeting (by iCalendar UID) already in the calendar? */
+  async hasEvent(uid: string): Promise<boolean> {
+    const [q] = await this.call([['CalendarEvent/query', { accountId: this.accountId, filter: { uid } }, 'q']], CALENDARS);
+    return q.ids.length > 0;
   }
 
   async deleteEvent(id: string) { await this.call([['CalendarEvent/set', { accountId: this.accountId, destroy: [id] }, 'd']], CALENDARS); }
@@ -633,7 +662,7 @@ export class Jmap {
 
 function toCalEvent(e: any): CalEvent {
   return {
-    id: e.id, title: e.title ?? '', start: e.start, timeZone: e.timeZone ?? '', duration: e.duration ?? 'PT1H',
+    id: e.id, uid: e.uid, title: e.title ?? '', start: e.start, timeZone: e.timeZone ?? '', duration: e.duration ?? 'PT1H',
     allDay: !!e.showWithoutTime, location: (Object.values(e.locations ?? {})[0] as any)?.name ?? '', description: e.description ?? '',
     utcStart: e.utcStart, utcEnd: e.utcEnd,
   };

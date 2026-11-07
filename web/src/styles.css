@@ -518,7 +518,10 @@ select.input { appearance: auto; }
 .event-form .row3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--s3); }
 .event-form .push-left { margin-right: auto; }
 
-.banner.invite .done { margin-left: auto; color: var(--safe); font-weight: 600; }
+.banner.invite { align-items: center; }
+.banner.invite .what { flex: 1; min-width: 200px; }
+.banner.invite .rsvp { display: flex; align-items: center; gap: var(--s1); }
+.banner.invite .rsvp .q { margin-right: var(--s1); color: var(--ink-2); font-weight: 600; }
 
 @media (max-width: 860px) {
   .app.calendar-mode { grid-template-columns: 1fr; }
@@ -527,3 +530,19 @@ select.input { appearance: auto; }
   .cal-day-head { flex-direction: column; gap: 0; padding: var(--s1); align-items: center; }
   .event-form .row2, .event-form .row3 { grid-template-columns: 1fr; }
 }
+
+/* Month view: 7 equal columns, 6 equal rows filling the pane */
+.calendar .cal-nav .segmented { margin-right: var(--s3); }
+.cal-month { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: auto repeat(6, 1fr); border-top: 0; }
+.cal-month .mdow { padding: var(--s2) var(--s3); color: var(--muted); font-size: var(--t-sm); border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.mday { display: flex; flex-direction: column; gap: 2px; min-width: 0; min-height: 0; overflow: hidden; padding: var(--s1); border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.mday.other { background: var(--list); }
+.mday.other .mnum { color: var(--muted); }
+.mnum { align-self: flex-start; min-width: 26px; height: 26px; padding: 0 6px; border-radius: var(--r-full); font-weight: 600; font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
+.mnum:hover { background: var(--hover); }
+.mday.today .mnum { background: var(--accent); color: var(--accent-ink); }
+.mchip { display: flex; gap: var(--s1); min-width: 0; padding: 1px var(--s1); border-radius: var(--r-sm); font-size: var(--t-xs); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.mchip:hover { background: var(--hover); }
+.mchip .mt { color: var(--muted); flex: none; }
+.mchip.all { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.mmore { align-self: flex-start; padding: 0 var(--s1); color: var(--accent); font-size: var(--t-xs); font-weight: 600; }

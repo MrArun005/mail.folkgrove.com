@@ -4,13 +4,14 @@ import { Button } from './Button';
 import { Icon } from './icons';
 import { displayName, fileSize, formatAddresses, type ReplyMode } from './mailutil';
 import { buildSrcdoc } from './safeHtml';
-import { localZone, span, type CalEvent } from './calendar';
+import { span, type CalEvent } from './calendar';
+import type { PartStat } from './ics';
 import { Menu, TimeChoices } from './Menu';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star';
 export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact';
 
-export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore }: {
+export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
   /** Folders the user created (moving/labelling targets). */
   folders: Mailbox[];
@@ -20,6 +21,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   onMoveTo: (mailboxId: string | null, label: boolean) => void;
   onUnsubscribe: (m: EmailFull) => void;
   onMore: (what: MoreAction, m: EmailFull) => void;
+  onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void>;
 }) {
   // Newest message open, older ones folded, like a paper trail. A message that arrives while reading opens too.
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -82,7 +84,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
       <h1 className="subject">{last.subject?.replace(/^((re|fwd?|aw|sv)\s*:\s*)+/i, '') || '(no subject)'}</h1>
 
       {messages.map((m) => open.has(m.id)
-        ? <Message key={m.id} client={client} m={m} me={me} onUnsubscribe={onUnsubscribe} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
+        ? <Message key={m.id} client={client} m={m} me={me} onUnsubscribe={onUnsubscribe} onRsvp={onRsvp} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
         : (
           <button key={m.id} className="folded" onClick={() => setOpen((s) => new Set(s).add(m.id))}>
             <span className="who">{displayName(m.from?.[0], me)}</span>
@@ -101,7 +103,10 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   );
 }
 
-function Message({ client, m, me, onFold, onUnsubscribe }: { client: Jmap; m: EmailFull; me: string; onFold?: () => void; onUnsubscribe: (m: EmailFull) => void }) {
+function Message({ client, m, me, onFold, onUnsubscribe, onRsvp }: {
+  client: Jmap; m: EmailFull; me: string; onFold?: () => void; onUnsubscribe: (m: EmailFull) => void;
+  onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void>;
+}) {
   const [showImages, setShowImages] = useState(false);
   const [inline, setInline] = useState<Record<string, string>>({});
   // Images embedded in the message (cid:) are fetched with our credentials and handed to the frame as data: URLs.
@@ -130,7 +135,7 @@ function Message({ client, m, me, onFold, onUnsubscribe }: { client: Jmap; m: Em
           <time dateTime={m.receivedAt} title={new Date(m.receivedAt).toLocaleString()}>{longDate(m.receivedAt)}</time>
         </span>
       </header>
-      <Invitation client={client} m={m} />
+      <Invitation client={client} m={m} onRsvp={onRsvp} />
       {html && html.trackers.length > 0 && (
         <p className="banner banner--safe"><Icon name="shield" size={16} />
           Blocked {html.trackers.length === 1 ? 'a tracking pixel' : `${html.trackers.length} tracking pixels`} from {html.trackers.join(', ')}. The sender can’t see that you opened this.
@@ -182,25 +187,31 @@ export function shortDate(iso: string) {
 }
 const longDate = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-/** Invitations (text/calendar attachments): show what and when, and add to the calendar in one click. */
-function Invitation({ client, m }: { client: Jmap; m: EmailFull }) {
+/** Invitations (text/calendar attachments): what, when, where, and Yes / Maybe / No (sent to the organizer). */
+function Invitation({ client, m, onRsvp }: { client: Jmap; m: EmailFull; onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void> }) {
   const ics = m.attachments.find((a) => /text\/calendar/i.test(a.type) || /\.ics$/i.test(a.name ?? ''));
   const [ev, setEv] = useState<CalEvent | null>(null);
-  const [state, setState] = useState<'idle' | 'adding' | 'added' | 'failed'>('idle');
+  const [busy, setBusy] = useState<PartStat | null>(null);
   useEffect(() => { if (ics) client.parseInvite(ics.blobId).then((l) => setEv(l[0] ?? null), () => {}); }, [ics?.blobId]);
-  if (!ev) return null;
+  if (!ev || !ics) return null;
+  const answer = (['ACCEPTED', 'TENTATIVE', 'DECLINED'] as const).find((p) => m.keywords[`$rsvp-${p.toLowerCase()}`]);
   const { start, end } = span(ev);
   const when = ev.allDay ? start.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
     : `${start.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  const opt = (status: PartStat, label: string) => (
+    <Button size="sm" variant={answer === status ? 'primary' : 'secondary'} pressed={answer === status} disabled={!!busy}
+      onClick={async () => { setBusy(status); try { await onRsvp(m, ics, status); } finally { setBusy(null); } }}>
+      {busy === status ? 'Sending…' : label}
+    </Button>
+  );
   return (
     <div className="banner banner--info invite">
       <Icon name="calendar" size={16} />
-      <span><b>{ev.title || 'Invitation'}</b>, {when}{ev.location ? `, ${ev.location}` : ''}</span>
-      {state === 'added' ? <span className="done">Added to your calendar</span>
-        : <Button variant="link" disabled={state === 'adding'} onClick={async () => {
-            setState('adding');
-            try { await client.saveEvent({ ...ev, id: undefined, timeZone: ev.timeZone || localZone() }); setState('added'); } catch { setState('failed'); }
-          }}>{state === 'failed' ? 'Couldn’t add. Try again' : 'Add to calendar'}</Button>}
+      <span className="what"><b>{ev.title || 'Invitation'}</b>, {when}{ev.location ? `, ${ev.location}` : ''}</span>
+      <span className="rsvp" role="group" aria-label="Your answer">
+        <span className="q">{answer ? 'Your answer' : 'Going?'}</span>
+        {opt('ACCEPTED', 'Yes')}{opt('TENTATIVE', 'Maybe')}{opt('DECLINED', 'No')}
+      </span>
     </div>
   );
 }

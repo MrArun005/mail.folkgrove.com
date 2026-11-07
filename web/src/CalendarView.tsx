@@ -10,19 +10,24 @@ const DAYS = 7;
 
 /** Week view. Click an empty slot to add an event there; click an event to edit it. */
 export function CalendarView({ client, say }: { client: Jmap; say: (text: string) => void }) {
+  const [mode, setMode] = useState<'week' | 'month'>('week');
   const [anchor, setAnchor] = useState(() => weekStart(new Date()));
+  // Month view shows 6 whole weeks starting the Monday on or before the 1st.
+  const month = new Date(addDays(anchor, 6).getFullYear(), addDays(anchor, 6).getMonth(), 1);
+  const range = mode === 'week' ? { from: anchor, days: DAYS } : { from: weekStart(month), days: 42 };
   const [events, setEvents] = useState<CalEvent[] | null>(null);
   const [editing, setEditing] = useState<CalEvent | null>(null);
   const [now, setNow] = useState(new Date());
   const scroller = useRef<HTMLDivElement>(null);
   const days = useMemo(() => Array.from({ length: DAYS }, (_, i) => addDays(anchor, i)), [anchor]);
 
-  const load = () => client.events(anchor, addDays(anchor, DAYS)).then(setEvents, (e) => { setEvents([]); say(`Couldn’t load the calendar: ${e.message}`); });
-  useEffect(() => { setEvents(null); load(); }, [anchor]);
+  const load = () => client.events(range.from, addDays(range.from, range.days)).then(setEvents, (e) => { setEvents([]); say(`Couldn’t load the calendar: ${e.message}`); });
+  useEffect(() => { setEvents(null); load(); }, [anchor, mode]);
   useEffect(() => { scroller.current?.scrollTo({ top: 7.5 * HOUR }); }, []); // open on the working day
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(t); }, []);
 
-  const title = weekTitle(anchor, addDays(anchor, DAYS - 1));
+  const title = mode === 'week' ? weekTitle(anchor, addDays(anchor, DAYS - 1)) : month.toLocaleDateString([], { month: 'long', year: 'numeric' });
+  const step = (dir: 1 | -1) => setAnchor(mode === 'week' ? addDays(anchor, 7 * dir) : weekStart(new Date(month.getFullYear(), month.getMonth() + dir, 1)));
 
   const blank = (start: Date, allDay = false): CalEvent => ({
     title: '', start: toLocal(start), timeZone: localZone(), duration: allDay ? 'P1D' : 'PT1H', allDay, location: '', description: '',
@@ -43,14 +48,24 @@ export function CalendarView({ client, say }: { client: Jmap; say: (text: string
       <header className="cal-head">
         <h2 className="cal-title">{title}</h2>
         <div className="cal-nav">
+          <div className="segmented" role="radiogroup" aria-label="View">
+            {(['week', 'month'] as const).map((m) => (
+              <label key={m} className={mode === m ? 'on' : ''}>
+                <input type="radio" name="cal-view" checked={mode === m} onChange={() => setMode(m)} />{m === 'week' ? 'Week' : 'Month'}
+              </label>
+            ))}
+          </div>
           <Button size="md" onClick={() => setAnchor(weekStart(new Date()))}>Today</Button>
-          <Button variant="quiet" icon="back" label="Previous week" onClick={() => setAnchor(addDays(anchor, -7))} />
-          <Button variant="quiet" icon="next" label="Next week" onClick={() => setAnchor(addDays(anchor, 7))} />
+          <Button variant="quiet" icon="back" label={`Previous ${mode}`} onClick={() => step(-1)} />
+          <Button variant="quiet" icon="next" label={`Next ${mode}`} onClick={() => step(1)} />
           <Button variant="primary" icon="compose" onClick={() => setEditing(blank(roundUp(new Date())))}>New event</Button>
         </div>
       </header>
 
-      <div className="cal-scroll" ref={scroller} aria-busy={events === null}>
+      {mode === 'month' ? (
+        <MonthGrid start={range.from} month={month.getMonth()} events={events ?? []} now={now}
+          onDay={(d) => { setAnchor(weekStart(d)); setMode('week'); }} onEvent={setEditing} />
+      ) : <div className="cal-scroll" ref={scroller} aria-busy={events === null}>
         {/* Inside the scroller (sticky), so day headers and columns always share the same width. */}
         <div className="cal-grid-head">
         <span />
@@ -94,7 +109,7 @@ export function CalendarView({ client, say }: { client: Jmap; say: (text: string
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {editing && <EventEditor event={editing} onSave={save} onDelete={remove} onClose={() => setEditing(null)} />}
     </section>
@@ -107,6 +122,35 @@ export function weekTitle(a: Date, b: Date): string {
   if (a.getFullYear() !== b.getFullYear()) return `${m(a)} ${a.getDate()}, ${a.getFullYear()} – ${m(b)} ${b.getDate()}, ${b.getFullYear()}`;
   if (a.getMonth() !== b.getMonth()) return `${m(a)} ${a.getDate()} – ${m(b)} ${b.getDate()}, ${b.getFullYear()}`;
   return `${m(a)} ${a.getDate()} – ${b.getDate()}, ${b.getFullYear()}`;
+}
+
+/** Six weeks of days; each shows up to three events, then "+N more" (which opens that week). */
+function MonthGrid({ start, month, events, now, onDay, onEvent }: {
+  start: Date; month: number; events: CalEvent[]; now: Date; onDay: (d: Date) => void; onEvent: (e: CalEvent) => void;
+}) {
+  const days = Array.from({ length: 42 }, (_, i) => addDays(start, i));
+  const on = (d: Date) => [...allDayOn(events, d), ...layoutDay(events, d).map((p) => p.event)]
+    .filter((e, i, a) => a.indexOf(e) === i)
+    .sort((a, b) => +span(a).start - +span(b).start);
+  return (
+    <div className="cal-month">
+      {days.slice(0, 7).map((d) => <span key={+d} className="mdow">{d.toLocaleDateString([], { weekday: 'short' })}</span>)}
+      {days.map((d) => {
+        const list = on(d);
+        return (
+          <div key={+d} className={`mday${d.getMonth() !== month ? ' other' : ''}${sameDay(d, now) ? ' today' : ''}`}>
+            <button className="mnum" onClick={() => onDay(d)} aria-label={`Open the week of ${d.toLocaleDateString()}`}>{d.getDate()}</button>
+            {list.slice(0, 3).map((e) => (
+              <button key={(e.id ?? e.title) + String(+d)} className={`mchip${e.allDay ? ' all' : ''}`} onClick={() => onEvent(e)}>
+                {!e.allDay && <span className="mt">{timeLabel(span(e).start)}</span>}{e.title || 'Untitled'}
+              </button>
+            ))}
+            {list.length > 3 && <button className="mmore" onClick={() => onDay(d)}>+{list.length - 3} more</button>}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 const roundUp = (d: Date) => { const x = new Date(d); x.setMinutes(x.getMinutes() < 30 ? 30 : 60, 0, 0); return x; };

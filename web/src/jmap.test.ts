@@ -337,6 +337,13 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     await c.deleteEvent(id);
     expect((await c.events(new Date('2026-11-09T00:00:00Z'), new Date('2026-11-16T00:00:00Z'))).some((e) => e.id === id)).toBe(false);
 
+    // Meetings are recognised by their iCalendar UID, so an invitation is never added twice.
+    const uid = `uid-test-${Date.now()}@example.org`;
+    expect(await c.hasEvent(uid)).toBe(false);
+    const withUid = await c.saveEvent({ uid, title: 'Has UID', start: '2026-11-14T09:00:00', timeZone: 'Etc/UTC', duration: 'PT30M', allDay: false, location: '', description: '' });
+    expect(await c.hasEvent(uid)).toBe(true);
+    await c.deleteEvent(withUid);
+
     const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//test//EN', 'METHOD:REQUEST', 'BEGIN:VEVENT', 'UID:invite-test@example.org',
       'DTSTAMP:20261107T120000Z', 'DTSTART:20261120T150000Z', 'DTEND:20261120T160000Z', 'SUMMARY:Design review', 'LOCATION:Room 4', 'END:VEVENT', 'END:VCALENDAR', ''].join('\r\n');
     const blob = await c.upload(Object.assign(new Blob([ics], { type: 'text/calendar' }), { name: 'invite.ics' }));
@@ -354,6 +361,31 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     expect(problems[0]?.email).toBe('nobody-here@openmail.test');
     expect(problems[0]?.reason.length).toBeGreaterThan(3);
     await c.deleteDraft(emailId).catch(() => {});
+  }, 20_000);
+
+  it('answers an invitation: sends an iTIP REPLY to the organizer and remembers the answer', async () => {
+    const c = await login();
+    const boxes = await c.mailboxes();
+    const t = (await c.threads({ text: 'Quarterly design review' })).find((e) => e.subject === 'Invitation: Quarterly design review')!;
+    const [m] = await c.thread(t.threadId);
+    const ics = m.attachments.find((a) => a.type.startsWith('text/calendar'))!;
+    const inv = await c.rsvp(m.id, ics, 'ACCEPTED', boxes);
+    expect(inv.organizerEmail).toBe('priya@example.org');
+    expect((await c.thread(t.threadId))[0].keywords).toMatchObject({ '$rsvp-accepted': true });
+    // The reply is in Sent with the calendar part attached.
+    const sent = boxes.find((b) => b.role === 'sent')!.id;
+    const reply = (await c.threads({ inMailbox: sent })).find((e) => e.subject === 'Accepted: Quarterly design review')!;
+    const [r] = await c.thread(reply.threadId);
+    const part = r.attachments.find((a) => a.type.startsWith('text/calendar'))!;
+    const body = await (await c.download(part)).text();
+    expect(body).toContain('METHOD:REPLY');
+    expect(body).toContain('ATTENDEE;PARTSTAT=ACCEPTED');
+    expect(body).toContain('UID:seed-review@openmail.test');
+    // Changing the answer replaces the old one.
+    await c.rsvp(m.id, ics, 'DECLINED', boxes);
+    const kw = (await c.thread(t.threadId))[0].keywords;
+    expect(kw['$rsvp-declined']).toBe(true);
+    expect(kw['$rsvp-accepted']).toBeUndefined();
   }, 20_000);
 
   it('suggests contacts, people I write to first, never me', async () => {
