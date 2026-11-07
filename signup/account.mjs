@@ -8,6 +8,7 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { callerOf } from './aliases.mjs';
+import { isHeld } from './retention.mjs';
 import { forgetFiles } from './files.mjs';
 import { readMeta, writeMeta } from './domains.mjs';
 
@@ -93,6 +94,8 @@ export function accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Ra
     if (!(a.type === 'consentRequired' || a.location))
       return fail(res, 403, 'wrong_password', 'That password (or code) isn’t right.', { field: 'password' }), true;
     badPass.refund(who.id, pwin);
+    const held = isHeld((await jmap([['x:Account/get', { ids: [who.id], properties: ['permissions'] }, 'h']])).list?.[0]?.permissions);
+    if (held) return fail(res, 409, 'on_hold', 'Your administrator has put this account on hold, so it can’t be deleted right now.'), true;
 
     // Retire first: if the destroy then fails, the names are merely reserved, never free.
     const names = await retireNames({ cfg, jmap }, who.id, who.name);

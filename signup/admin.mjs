@@ -7,6 +7,7 @@ import { callerOf } from './aliases.mjs';
 import { retireNames } from './account.mjs';
 import { forgetFiles } from './files.mjs';
 import { checkUsername } from './lib.mjs';
+import { isHeld, policyStore, retentionAdmin } from './retention.mjs';
 import { adminDomainList } from './domains.mjs';
 
 const NEW = 'new-accounts'; // x:MemoryLookupKey namespace for the stricter sending tier (key = full address)
@@ -50,7 +51,7 @@ export function queueView(m) {
 
 const password = () => randomBytes(12).toString('base64url'); // 16 characters, about 96 bits
 
-export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, abuse, hold = null }) {
+export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, abuse, hold = null, retention = policyStore(null) }) {
   const admins = new Set(cfg.admins ?? []);
   // Admin rights go by name, so admin names can never be signed up for, and the console can't touch admin accounts.
   cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins];
@@ -101,16 +102,17 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       if (bad && bad.code !== 'username_reserved') return [400, bad.code, bad.message]; // admins may use reserved names
       const quota = body.quotaBytes == null || body.quotaBytes === '' ? (cfg.quotaBytes || null) : Number(body.quotaBytes);
       if (quota !== null && !(Number.isSafeInteger(quota) && quota >= 0)) return [400, 'bad_quota', 'Enter the storage limit as a whole number.'];
-      const secret = password();
+      // Single sign-on: the account signs in through the provider, so it gets no password (Stalwart refuses one).
+      const secret = cfg.oidc ? null : password();
       const r = await jmap([['x:Account/set', { create: { n: {
         '@type': 'User', name, domainId: await getDomainId(),
         description: typeof body.description === 'string' && body.description.trim() ? body.description.trim().slice(0, 200) : null,
-        credentials: { 0: { '@type': 'Password', secret } },
+        ...(secret && { credentials: { 0: { '@type': 'Password', secret } } }),
         ...(quota ? { quotas: { maxDiskQuota: quota } } : {}),
       } } }, 'c']]);
       if (r.notCreated?.n?.type === 'primaryKeyViolation') return [409, 'username_taken', 'That username is already taken.'];
       if (!r.created?.n) throw Object.assign(new Error('create refused'), { detail: r.notCreated?.n });
-      return { user: userView(await account(r.created.n.id)), password: secret };
+      return { user: userView(await account(r.created.n.id)), ...(secret && { password: secret }) };
     },
 
     'PATCH users/:id': async (req, _url, id, who) => {
@@ -133,6 +135,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         patch['quotas/maxDiskQuota'] = q; // null = no limit
       }
       let secret;
+      if (body.resetPassword === true && cfg.oidc) return [400, 'sso', 'Passwords are managed by your identity provider.'];
       if (body.resetPassword === true) {
         // Replaces the main password only (app passwords stay). Stalwart signs the account out everywhere.
         const creds = (await get('x:Account', [id], ['credentials']))[0]?.credentials ?? {};
@@ -150,6 +153,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       if (!a) return [404, 'not_found', 'That account no longer exists.'];
       if (isAdmin(a)) return [403, 'protected', 'Administrator accounts are managed in Stalwart’s own admin.'];
       if (id === who.id) return [400, 'self', 'You can’t delete your own account.'];
+      if (isHeld(a.permissions)) return [409, 'on_hold', 'This account is on legal hold. Release the hold first (Retention).'];
       await retireNames({ cfg, jmap }, id, a.name); // no recycling: the name and its aliases stay taken
       await set('x:Account', { destroy: [id] });
       forgetFiles(cfg, id); // its shared files went with it; so do their links
@@ -271,10 +275,13 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     'GET held': async () => (hold ? { held: hold.list() } : [404, 'not_found', 'Holding outgoing spam is off on this server.']),
     'POST held/:id/release': async (_req, _url, id) => (await hold?.release(id)) ? {} : [404, 'not_found', 'That message is no longer held.'],
     'DELETE held/:id': async (_req, _url, id) => hold?.remove(id) ? {} : [404, 'not_found', 'That message is no longer held.'],
+    // Retention and legal hold (retention.mjs).
+    ...Object.fromEntries(Object.entries(retentionAdmin({ jmap: (c) => jmap(c, ['urn:ietf:params:jmap:mail']), store: retention, isAdmin })).map(([k, fn]) => [k, async (req, _url, id, who) =>
+      fn(req.method === 'GET' ? {} : await readJson(req).catch(() => ({})), (msg) => console.log(`${msg} (run by ${who.name})`), id)])),
   };
 
   return async function handle(req, res, url) {
-    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains|suspended|inactive|groups|held)(?:/(${ID}))?(/retry|/release)?$`));
+    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains|suspended|inactive|groups|held|retention)(?:/(${ID}))?(/retry|/release)?$`));
     if (!m) return false;
     if (!admins.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS is set
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);
@@ -285,7 +292,8 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     badAuth.refund(ip, win);
     if (!admins.has(who.name)) return fail(res, 403, 'not_admin', 'This account isn’t an administrator.'), true;
 
-    const key = `${req.method} ${m[1]}${m[2] ? '/:id' : ''}${m[3] ?? ''}`;
+    let key = `${req.method} ${m[1]}${m[2] ? '/:id' : ''}${m[3] ?? ''}`;
+    if (key === 'POST retention/:id') key = `POST retention/${m[2]}`; // preview, run
     const fn = handlers[key];
     if (!fn) return fail(res, 405, 'method_not_allowed', 'Not allowed.'), true;
     let out;

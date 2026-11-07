@@ -159,6 +159,51 @@ docker compose logs -f stalwart     # mail
 docker compose logs -f caddy        # HTTPS / certificates
 ```
 
+### Single sign-on (Google Workspace, Microsoft Entra ID, Okta, Keycloak)
+
+```sh
+sudo ./install.sh --oidc-issuer https://accounts.google.com --oidc-client-id <id> --oidc-secret <secret>
+```
+
+Register a **web application** client at your provider with the redirect URI `https://mx.example.com/api/sso/callback`.
+For Google, set the consent screen to **Internal** (only your Workspace users) and pass `--oidc-tenant yourcompany.com`
+(checked against the token's `hd`). For Microsoft, use your tenant's issuer
+(`https://login.microsoftonline.com/<tenant-id>/v2.0`), pass `--oidc-tenant <tenant-id>` (checked against `tid`), and
+add the optional ID-token claims `email` and `xms_edov`: an address counts only when the provider vouches for it
+(`email_verified`, or `xms_edov` for Entra). `preferred_username` is never used for Microsoft (users can change it in
+some tenants). At every provider, leave implicit / ID-token grants **off** for this client: then only the account service
+(which holds the secret) can obtain tokens Stalwart accepts. The account service also refuses names in `ADMINS`,
+reserved names and retired names, so with SSO on the OpenMail console (`/admin`) can't be used; manage the server
+in Stalwart's admin with the recovery admin login.
+
+What happens: Stalwart's OIDC directory (open-source edition) checks the provider's signed ID tokens and creates a
+mailbox the first time someone signs in; existing mailboxes with the same address keep their mail. Only addresses in
+your own mail domains get in. The account service (`signup/sso.mjs`) runs the sign-in and keeps the session in an
+HttpOnly cookie. Know before you switch it on:
+
+- **It's server-wide.** Nobody signs in with a Stalwart password any more, and mail apps (IMAP/SMTP) can't be used:
+  external-directory accounts can't have app passwords. A directory per domain is Stalwart Enterprise.
+- Your old admin password stops working too. The installer switches `.admin-credentials` to Stalwart's recovery admin
+  (a random secret in `.env`, `RECOVERY_ADMIN`) and keeps the old file as `.admin-credentials.before-sso`.
+- Public sign-up and the noreply system sender are off (they need passwords). In the console, "Create account"
+  pre-creates a mailbox without a password; "Reset password" is off (the provider owns passwords).
+- To switch it off: in Stalwart's admin, set Authentication → Directory back to Internal and reload settings.
+
+### Retention and legal hold
+
+The OpenMail console (`/admin` → Retention) has:
+
+- **Trash and Junk**: emptied by Stalwart after 30 days by default (`x:DataRetention.expungeTrashAfter`). Change it
+  here; 0 = never. People can pick a shorter time in their own Settings.
+- **Delete old mail**: "delete mail older than N years", for every account or per account (0 = keep forever).
+  Before a rule is saved you see how many messages it would delete. The account service runs it every night and logs
+  what it removed. Rules are kept in `signup-data/retention.json`.
+- **Legal hold** per account: Stalwart's permissions to destroy mail, folders, IMAP EXPUNGE and POP3 DELE are taken
+  away, the nightly job skips the account, and neither its owner nor an admin can delete it. Limit: Stalwart's own
+  Trash/Junk auto-empty is server-wide and still runs; set Trash and Junk to 0 while a hold lasts.
+  "Keep mail at least N years" for everyone can't be enforced short of a hold (Stalwart can't time-gate a delete), and
+  undelete/archiving is Stalwart Enterprise.
+
 ## 6. Upgrades
 
 Back up first (see below). Then:

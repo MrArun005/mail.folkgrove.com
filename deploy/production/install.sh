@@ -49,6 +49,14 @@ Usage: ./install.sh [options]
   --hosted              store mail in PostgreSQL + S3 (+ Valkey) instead of RocksDB, for a public hosted
                         instance that will grow past one server. Choose at the first install: there is no
                         RocksDB -> PostgreSQL migration. Remembered in .env.
+  --oidc-issuer URL     single sign-on: your identity provider's issuer (e.g. https://accounts.google.com,
+                        https://login.microsoftonline.com/<tenant>/v2.0). Everyone then signs in there; Stalwart
+                        passwords stop working (see docs/self-hosting.md, Single sign-on). Remembered in .env.
+  --oidc-client-id ID   the client (application) id you registered at the provider
+  --oidc-secret S       its client secret
+  --oidc-name NAME      button label: "Sign in with NAME" (default: Google / Microsoft / your organisation)
+  --oidc-claim C        token claim holding the address (default email, which must be verified by the provider)
+  --oidc-tenant T       only this Google Workspace domain (hd) or Microsoft Entra tenant id (tid) may sign in
 EOF
 }
 
@@ -78,6 +86,12 @@ while [ $# -gt 0 ]; do
     --monitoring) MONITORING=1 ;;
     --alert-email) ALERT_EMAIL=$2; shift ;;
     --hosted) HOSTED_FLAG=1 ;;
+    --oidc-issuer) OIDC_ISSUER=$2; shift ;;
+    --oidc-client-id) OIDC_CLIENT_ID=$2; shift ;;
+    --oidc-secret) OIDC_SECRET=$2; shift ;;
+    --oidc-name) OIDC_NAME=$2; shift ;;
+    --oidc-claim) OIDC_CLAIM=$2; shift ;;
+    --oidc-tenant) OIDC_TENANT=$2; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage; die "unknown option $1" ;;
   esac
@@ -297,13 +311,28 @@ if [ "$HOSTED" = 1 ]; then
   PG_PASSWORD=${PG_PASSWORD:-$(python3 -c 'import secrets; print(secrets.token_hex(24))')}
   S3_SECRET=${S3_SECRET:-$(python3 -c 'import secrets; print(secrets.token_hex(24))')}
 fi
+# Single sign-on: once Stalwart's OIDC directory is on, internal passwords (the admin's too) stop working, so this
+# script and the account service use Stalwart's recovery admin (random secret, kept in .env) from then on.
+if [ -n "${OIDC_ISSUER:-}" ]; then
+  [ -n "${OIDC_CLIENT_ID:-}" ] && [ -n "${OIDC_SECRET:-}" ] || die "--oidc-issuer also needs --oidc-client-id and --oidc-secret"
+  [[ "$OIDC_SECRET$OIDC_ISSUER$OIDC_CLIENT_ID${OIDC_NAME:-}" != *"'"* ]] || die "Single sign-on settings can't contain a single quote (')"
+  case $OIDC_ISSUER in
+    https://accounts.google.com) OIDC_NAME=${OIDC_NAME:-Google} ;;
+    https://login.microsoftonline.com/*) OIDC_NAME=${OIDC_NAME:-Microsoft}
+      # preferred_username can be changed by users in some tenants: the verified email (xms_edov) only.
+      [ "${OIDC_CLAIM:-email}" = email ] || die "For Microsoft, single sign-on uses the verified email claim only (no --oidc-claim)" ;;
+  esac
+  OIDC_NAME=${OIDC_NAME:-your organisation} OIDC_CLAIM=${OIDC_CLAIM:-email}
+  RECOVERY_ADMIN=${RECOVERY_ADMIN:-admin:$(python3 -c 'import secrets; print(secrets.token_hex(24))')}
+fi
 say "Writing $HERE/.env"
 umask 077
 {
   for v in COMPOSE_PROJECT_NAME MAIL_DOMAIN MAIL_HOSTNAME ACME_EMAIL PUBLIC_URL WEB_DIST \
            RELAY_HOST RELAY_PORT RELAY_USER RELAY_PASSWORD RELAY_SPF SERVER_IP CADDY_CERT_ISSUER \
            ADMIN_PORT HTTP_PORT HTTPS_PORT SMTP_PORT SUBMISSIONS_PORT SUBMISSION_PORT IMAPS_PORT \
-           MONITORING ALERT_EMAIL HOSTED COMPOSE_FILE PG_PASSWORD S3_SECRET; do
+           MONITORING ALERT_EMAIL HOSTED COMPOSE_FILE PG_PASSWORD S3_SECRET \
+           OIDC_ISSUER OIDC_CLIENT_ID OIDC_SECRET OIDC_NAME OIDC_CLAIM OIDC_TENANT RECOVERY_ADMIN; do
     [ -n "${!v:-}" ] && printf "%s='%s'\n" "$v" "${!v}"
   done
 } > .env
@@ -473,7 +502,8 @@ refresh_certs
 ask USER_NAME "First mailbox name (NAME@$MAIL_DOMAIN), empty to skip"
 if [ -n "$USER_NAME" ]; then
   [[ $USER_NAME =~ ^[a-z0-9._-]+$ ]] || die "Mailbox name may use only a-z, 0-9, dot, dash, underscore"
-  if [ -z "$USER_PASS" ]; then
+  if [ -n "${OIDC_ISSUER:-}" ]; then :  # single sign-on: the mailbox signs in at the provider, no password
+  elif [ -z "$USER_PASS" ]; then
     if [ "$YES" = 0 ] && [ -t 0 ]; then
       read -r -s -p "Password for $USER_NAME@$MAIL_DOMAIN (empty = generate one): " USER_PASS; echo
     fi
@@ -493,7 +523,7 @@ if [ -n "$USER_NAME" ]; then
       && alias=",\"aliases\":{\"0\":{\"name\":\"postmaster\",\"domainId\":$(jstr "$domain_id")}}"
     api "[[\"x:Account/set\",{\"create\":{\"u\":{\"@type\":\"User\",\"name\":$(jstr "$USER_NAME"),
       \"domainId\":$(jstr "$domain_id"),\"roles\":{\"@type\":\"User\"},
-      \"credentials\":{\"0\":{\"@type\":\"Password\",\"secret\":$(jstr "$USER_PASS")}}$alias}}},\"a\"]]" >/dev/null
+      $([ -n "${OIDC_ISSUER:-}" ] || echo "\"credentials\":{\"0\":{\"@type\":\"Password\",\"secret\":$(jstr "$USER_PASS")}},")\"description\":\"First mailbox (install.sh)\"$alias}}},\"a\"]]" >/dev/null
     say "Created $USER_NAME@$MAIL_DOMAIN${NEW_PASS:+ with password: $USER_PASS  (shown once)}"
   fi
 fi
@@ -514,7 +544,7 @@ say "Webmail sign-in (OAuth) registered for $PUBLIC_URL/"
 
 # System sender for the account service (sign-up codes): noreply@domain with a random password, kept in
 # .system-mail.env (root only) and read by the signup container. Created once; re-runs keep it.
-if [ ! -f .system-mail.env ]; then
+if [ ! -f .system-mail.env ] && [ -z "${OIDC_ISSUER:-}" ]; then  # (no passwords with single sign-on: sign-up stays off)
   sys_pass=$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')
   domains=$(api '[["x:Domain/get",{"ids":null,"properties":["name"]},"d"]]')
   domain_id=$(jget "next(d['id'] for d in r[0][1]['list'] if d['name'] == '$MAIL_DOMAIN')" <<<"$domains")
@@ -526,6 +556,26 @@ fi
 
 # On a first install .system-mail.env didn't exist yet when the stack started; this recreates Alertmanager with it.
 if [ "${MONITORING:-0}" = 1 ]; then dc up -d >/dev/null; fi
+
+# ---------------------------------------------------------------------------------------------
+# Single sign-on (--oidc-issuer): Stalwart's OIDC directory accepts the provider's signed ID tokens (checking
+# signature, issuer, audience = our client id, expiry) and creates accounts in this server's domains on first sign-in;
+# the account service (signup/sso.mjs) runs the sign-in. Server-wide: per-domain directories are Stalwart Enterprise.
+if [ -n "${OIDC_ISSUER:-}" ]; then
+  dir="\"description\":\"OpenMail single sign-on\",\"issuerUrl\":$(jstr "$OIDC_ISSUER"),\"claimUsername\":$(jstr "$OIDC_CLAIM"),\"acceptedAudiences\":{$(jstr "$OIDC_CLIENT_ID"):true},\"allowIdTokenClaims\":true,\"unscopedTokens\":\"interoperable\""
+  dirs=$(api '[["x:Directory/get",{"ids":null,"properties":["description"]},"d"]]')
+  dir_id=$(jget "next((d['id'] for d in r[0][1]['list'] if d.get('description') == 'OpenMail single sign-on'), None)" <<<"$dirs")
+  if [ -n "$dir_id" ]; then api "[[\"x:Directory/set\",{\"update\":{$(jstr "$dir_id"):{$dir}}},\"d\"]]" >/dev/null
+  else dir_id=$(api "[[\"x:Directory/set\",{\"create\":{\"d\":{\"@type\":\"Oidc\",$dir}}},\"d\"]]" | jget "r[0][1]['created']['d']['id']"); fi
+  api "[[\"x:Authentication/set\",{\"update\":{\"singleton\":{\"directoryId\":$(jstr "$dir_id")}}},\"a\"]]" >/dev/null
+  api '[["x:Action/set",{"create":{"a":{"@type":"ReloadSettings"}}},"a"]]' >/dev/null  # without a reload the old directory stays live
+  if [ "$(cat .admin-credentials)" != "$RECOVERY_ADMIN" ]; then
+    cp .admin-credentials .admin-credentials.before-sso
+    (umask 077; printf '%s\n' "$RECOVERY_ADMIN" > .admin-credentials)
+  fi
+  dc up -d --force-recreate signup >/dev/null
+  say "Single sign-on on: people sign in with $OIDC_NAME. Register $PUBLIC_URL/api/sso/callback as the redirect URI there."
+fi
 
 # ---------------------------------------------------------------------------------------------
 # Daily certificate hand-over from Caddy to Stalwart.

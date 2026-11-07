@@ -27,7 +27,7 @@ export function setCookie(name, value, maxAge, secure = true) {
 const validUser = (u) => typeof u === 'string' && /^[^\s@<>()]{1,64}@[^\s@<>()]{1,253}$/.test(u);
 const validToken = (t) => typeof t === 'string' && t.length >= 10 && t.length <= 4096 && /^[\w.~+/=-]+$/.test(t);
 
-export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf }) {
+export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf, sso = null }) {
   const limit = new RateLimiter(cfg.sessionPerMinute ?? 60, 60e3); // refreshes per network per minute
   const secure = cfg.secureCookies !== false;
   // Two tabs refreshing at once send the same cookie; the second would carry a token Stalwart already rotated away and
@@ -36,11 +36,12 @@ export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf }) 
   // The reuse window is a few seconds (tabs opening together), not longer: a replayed old cookie after that gets nothing.
   const REUSE_MS = 5_000;
   const recent = new Map(); // old refresh token → { at, promise }
-  const refreshOnce = (token) => {
+  const refreshOnce = (token, username) => {
     const now = Date.now();
     for (const [k, v] of recent) if (now - v.at > REUSE_MS) recent.delete(k);
     if (!recent.has(token)) {
-      const promise = stalwart('/auth/token', { grant_type: 'refresh_token', refresh_token: token })
+      // Single sign-on sessions (sso.mjs) refresh with the outside provider instead.
+      const promise = (token.startsWith('sso:') ? (sso ? sso.refresh(token, username) : Promise.resolve({ ok: false, body: {} })) : stalwart('/auth/token', { grant_type: 'refresh_token', refresh_token: token }))
         .then((r) => { if (!r.ok) recent.delete(token); return r; }, (e) => { recent.delete(token); throw e; });
       recent.set(token, { at: now, promise });
     }
@@ -77,14 +78,14 @@ export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf }) 
 
     const token = readCookies(req.headers.cookie)[name];
     if (m[1] === 'forget') {
-      if (token) { recent.delete(token); await stalwart('/auth/revoke', { token, token_type_hint: 'refresh_token' }).catch(() => {}); }
+      if (token) { recent.delete(token); await (token.startsWith('sso:') ? Promise.resolve(sso?.forget(token)) : stalwart('/auth/revoke', { token, token_type_hint: 'refresh_token' })).catch(() => {}); }
       res.setHeader('Set-Cookie', setCookie(name, '', 0, secure));
       return send(res, 200, { ok: true }), true;
     }
 
     // refresh
     if (!token) return fail(res, 401, 'unauthorized', 'Not remembered on this device.'), true;
-    const r = await refreshOnce(token);
+    const r = await refreshOnce(token, body.username);
     if (!r.ok || !r.body.access_token) {
       res.setHeader('Set-Cookie', setCookie(name, '', 0, secure)); // dead token: forget it
       return fail(res, 401, 'unauthorized', 'Your session has ended. Please sign in again.'), true;

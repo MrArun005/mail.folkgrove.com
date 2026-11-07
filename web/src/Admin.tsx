@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Button } from './Button';
 import { confirmIt, notify, promptIt } from './Dialog';
 import type { Jmap } from './jmap';
+import { RetentionAdmin } from './Retention';
 
 /**
  * Admin console (/admin): users, blocked addresses and new-account limits, and the outgoing queue. Every call goes
  * to the account service (signup/admin.mjs), which checks that the signed-in account is on its ADMINS list.
  */
-type Tab = 'overview' | 'users' | 'teams' | 'limits' | 'queue' | 'held' | 'domains' | 'abuse';
-const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['teams', 'Team mailboxes'], ['limits', 'Blocked & limits'], ['queue', 'Message trace'], ['held', 'Held mail'], ['domains', 'Domains'], ['abuse', 'Suspended & inactive']];
+type Tab = 'overview' | 'users' | 'teams' | 'limits' | 'queue' | 'held' | 'domains' | 'abuse' | 'retention';
+const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['teams', 'Team mailboxes'], ['limits', 'Blocked & limits'], ['queue', 'Message trace'], ['held', 'Held mail'], ['domains', 'Domains'], ['abuse', 'Suspended & inactive'], ['retention', 'Retention']];
 
 interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; sending: boolean; admin: boolean; newAccount: boolean }
 interface Held { id: string; at: string; login: string; from: string; to: string[]; subject: string; size: number; score: number; reasons: string[] }
@@ -56,6 +57,7 @@ export function Admin({ client }: { client: Jmap }) {
         {tab === 'domains' && <Domains client={client} />}
         {tab === 'abuse' && <><Suspended client={client} /><Inactive client={client} /></>}
         {tab === 'held' && <HeldMail client={client} />}
+        {tab === 'retention' && <RetentionAdmin client={client} />}
       </main>
     </div>
   );

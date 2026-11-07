@@ -9,6 +9,8 @@ import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
 import { accountRoutes } from './account.mjs';
 import { adminRoutes } from './admin.mjs';
+import { ssoRoutes } from './sso.mjs';
+import { policyStore, retentionRoutes, sweep } from './retention.mjs';
 import { sharingRoutes } from './sharing.mjs';
 import { fileRoutes } from './files.mjs';
 import { domainRoutes } from './domains.mjs';
@@ -27,6 +29,8 @@ export function configFromEnv(env = process.env) {
     : { user: adminText.slice(0, adminText.indexOf(':')), pass: adminText.slice(adminText.indexOf(':') + 1) };
   if (!admin.user || !admin.pass) throw new Error('Set ADMIN_USER and ADMIN_PASS, or ADMIN_FILE (JSON {"user","pass"})');
   if (!env.DOMAIN) throw new Error('Set DOMAIN (the mail domain new accounts are created in)');
+  if (env.OIDC_ISSUER && !(env.OIDC_CLIENT_ID && (env.OIDC_SECRET || env.OIDC_SECRET_FILE) && env.PUBLIC_URL))
+    throw new Error('Single sign-on (OIDC_ISSUER) also needs OIDC_CLIENT_ID, OIDC_SECRET (or OIDC_SECRET_FILE) and PUBLIC_URL');
   // SIGNUP=off: an account service for an existing server (masked aliases) with public sign-up switched off.
   const signupEnabled = env.SIGNUP !== 'off';
   const inviteRequired = env.INVITE_REQUIRED !== 'false';
@@ -75,6 +79,11 @@ export function configFromEnv(env = process.env) {
     reservedDomains: (env.RESERVED_DOMAINS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
     dnsServers: (env.DNS_SERVERS || '').split(',').map((s) => s.trim()).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+    retentionFile: env.RETENTION_FILE || null, // retention rules (retention.mjs)
+    // Single sign-on (sso.mjs): an outside OpenID Connect provider. PUBLIC_URL is the webmail address (callback).
+    oidc: env.OIDC_ISSUER ? { issuer: env.OIDC_ISSUER, clientId: env.OIDC_CLIENT_ID, name: env.OIDC_NAME || 'your organisation',
+      secret: env.OIDC_SECRET_FILE ? readFileSync(env.OIDC_SECRET_FILE, 'utf8').trim() : env.OIDC_SECRET, publicUrl: (env.PUBLIC_URL || '').replace(/\/$/, ''),
+      claim: env.OIDC_CLAIM || 'email', tenant: env.OIDC_TENANT || null } : null, // tenant: Google hd / Entra tid that must match
     // Abuse and inactive accounts (abuse.mjs): Stalwart posts events to EVENTS_URL; state survives restarts in STATE_FILE.
     eventsUrl: env.EVENTS_URL || null,
     stateFile: env.STATE_FILE || null,
@@ -296,16 +305,25 @@ export function createApp(cfg) {
     setTimeout(run, 60_000).unref(); setInterval(run, 3600e3).unref();
   }
   const account = accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
+  const retentionStore = policyStore(cfg.retentionFile);
   const files = fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const abuse = abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
   const hold = holdRoutes({ cfg, jmap, getDomainId, send, fail, readJson, abuse });
-  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, abuse, hold, ipOf: (req) => ipKey(clientIp(req)) });
+  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, abuse, hold, ipOf: (req) => ipKey(clientIp(req)), retention: retentionStore });
   const domains = cfg.customDomains === false ? null : domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   // Re-check every claimed domain's TXT record every 6 hours (a missing one pauses the domain after 7 days).
   if (domains) setInterval(() => domains.recheckAll().catch((e) => console.error('domains:', e.message)), 6 * 3600e3).unref();
   const wkd = wkdRoutes({ cfg, jmap, getDomainId, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
-  const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const sharing = sharingRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter });
+  const mailJmap = (calls) => jmap(calls, ['urn:ietf:params:jmap:mail']); // retention reads and destroys mail
+  const retention = retentionRoutes({ cfg, jmap: mailJmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)), store: retentionStore });
+  // The retention job: daily, first run a few minutes after start. Only does work when a rule is set.
+  if (cfg.retentionJob !== false) {
+    const run = () => sweep({ jmap: mailJmap, policy: retentionStore.get(), dryRun: false, log: console.log }).catch((e) => console.error('retention:', e.message));
+    setTimeout(run, 5 * 60e3).unref(); setInterval(run, 86400e3).unref();
+  }
+  const sso = cfg.oidc ? ssoRoutes({ cfg, send, fail, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) }) : null;
+  const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)), sso });
 
   const server = Object.assign(createServer(async (req, res) => {
     // Our own request timeout instead of server.requestTimeout, so that one route can lengthen it: a client gets
@@ -324,6 +342,8 @@ export function createApp(cfg) {
       if ((url.pathname.startsWith('/api/files') || url.pathname.startsWith('/f/')) && await files(req, res, url)) return;
       if (domains && url.pathname.startsWith('/api/domains') && await domains(req, res, url)) return;
       if (/^\/api\/(events|blocked|sending)/.test(url.pathname) && await abuse(req, res, url)) return;
+      if (url.pathname === '/api/retention' && await retention(req, res, url)) return;
+      if (sso && url.pathname.startsWith('/api/sso') && await sso.handle(req, res, url)) return;
       // Called by Stalwart only (not under /api/, so the proxy never forwards it), with the hook secret.
       if (url.pathname === '/internal/outbound-hook' && req.method === 'POST' && hold) return await hold.hook(req, res);
       if (url.pathname.startsWith('/.well-known/openpgpkey/') && await wkd(req, res, url)) return;
