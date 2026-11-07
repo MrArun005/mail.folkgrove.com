@@ -31,7 +31,9 @@ export interface Rendered { srcdoc: string; blockedImages: number; trackers: str
 /** `inline` maps Content-ID → data: URL for images embedded in the message (cid: references). */
 export function buildSrcdoc(html: string, allowRemoteImages: boolean, inline: Record<string, string> = {}): Rendered {
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  doc.querySelectorAll('script, base, meta[http-equiv]').forEach((el) => el.remove());
+  // <link> (prefetch/preconnect) and <meta> can reach the network outside CSP's reach; <a ping> beacons on click.
+  doc.querySelectorAll('script, base, meta, link').forEach((el) => el.remove());
+  doc.querySelectorAll('[ping]').forEach((el) => el.removeAttribute('ping'));
   doc.querySelectorAll('img[src^="cid:" i]').forEach((img) => {
     const data = inline[img.getAttribute('src')!.slice(4).replace(/^<|>$/g, '')];
     if (data) img.setAttribute('src', data); else img.removeAttribute('src');
@@ -53,11 +55,14 @@ export function buildSrcdoc(html: string, allowRemoteImages: boolean, inline: Re
   const csp = doc.createElement('meta');
   csp.httpEquiv = 'Content-Security-Policy';
   csp.content = `default-src 'none'; style-src 'unsafe-inline'; img-src ${img}; font-src data:`;
+  const noPrefetch = doc.createElement('meta');
+  noPrefetch.httpEquiv = 'x-dns-prefetch-control';
+  noPrefetch.content = 'off';
   const base = doc.createElement('base');
   base.target = '_blank'; // links open in a new tab, never inside the frame
   const style = doc.createElement('style');
   style.textContent = 'body{margin:16px;font:15px/1.5 system-ui,sans-serif;color:#111;background:#fff;word-wrap:break-word}img{max-width:100%;height:auto}';
-  doc.head.prepend(csp, base, style);
+  doc.head.prepend(csp, noPrefetch, base, style);
 
   return { srcdoc: '<!doctype html>' + doc.documentElement.outerHTML, blockedImages, trackers: [...trackers] };
 }

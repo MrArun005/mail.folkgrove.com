@@ -1,7 +1,9 @@
 // Minimal JMAP client (RFC 8620 core, 8621 mail + submission). Talks to Stalwart directly; we have no backend.
+import { SCRIPT_NAME } from './rules';
+
 // ponytail: Basic auth over HTTPS for the MVP. Move to OAuth (Stalwart supports it) before the public instance.
 
-const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse'];
+const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve'];
 export const UNDO_SECONDS = 10;
 
 export interface Mailbox { id: string; name: string; role: string | null; unreadEmails: number; sortOrder: number }
@@ -13,7 +15,7 @@ export interface EmailSummary {
 }
 export interface EmailFull extends EmailSummary {
   cc: Address[] | null; replyTo: Address[] | null;
-  messageId: string[] | null; inReplyTo: string[] | null; references: string[] | null; mailboxIds: Record<string, boolean>;
+  blobId: string; messageId: string[] | null; inReplyTo: string[] | null; references: string[] | null; mailboxIds: Record<string, boolean>;
   attachments: Attachment[]; html: string | null; text: string | null;
   /** RFC 2369/8058 List-Unsubscribe: where to unsubscribe, and whether a one-click POST is allowed. */
   unsubscribe: { urls: string[]; oneClick: boolean } | null;
@@ -36,7 +38,7 @@ const clean = (a: Address) => (a.name ? { name: a.name, email: a.email } : { ema
 const pathOnly = (url: string) => url.replace(/^https?:\/\/[^/]+/, ''); // keep {placeholders} intact
 
 const SUMMARY = ['threadId', 'subject', 'from', 'to', 'preview', 'receivedAt', 'keywords', 'hasAttachment'];
-const FULL = [...SUMMARY, 'cc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
+const FULL = [...SUMMARY, 'blobId', 'cc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
   'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText'];
 
 export class Jmap {
@@ -151,6 +153,39 @@ export class Jmap {
   setStarred(threadId: string, starred: boolean) { return this.patchThread(threadId, null, { 'keywords/$flagged': starred || null }); }
   /** Gmail-style label: the conversation also appears in that folder. */
   addToMailbox(threadId: string, mailboxId: string) { return this.patchThread(threadId, null, { [`mailboxIds/${mailboxId}`]: true }); }
+
+  async renameMailbox(id: string, name: string) {
+    await this.call([['Mailbox/set', { accountId: this.accountId, update: { [id]: { name } } }, 'r']]);
+  }
+
+  /** Deleting a folder keeps messages that are also elsewhere; ones only in this folder are deleted. */
+  async deleteMailbox(id: string) {
+    await this.call([['Mailbox/set', { accountId: this.accountId, destroy: [id], onDestroyRemoveEmails: true }, 'd']]);
+  }
+
+  /** The raw message (headers + MIME) for "Show original". */
+  async original(e: { blobId: string }): Promise<string> {
+    return (await this.download({ blobId: e.blobId, name: 'message.eml', type: 'message/rfc822', size: 0 })).text();
+  }
+
+  // ── Filters: one Sieve script owned by this app (rules.ts compiles it) ──
+
+  async getRules(): Promise<{ id: string | null; script: string }> {
+    const [r] = await this.call([['SieveScript/get', { accountId: this.accountId }, 'g']]);
+    const mine = (r.list as { id: string; name: string; blobId: string }[]).find((x) => x.name === SCRIPT_NAME);
+    if (!mine) return { id: null, script: '' };
+    const blob = await this.download({ blobId: mine.blobId, name: 'rules.sieve', type: 'application/sieve', size: 0 });
+    return { id: mine.id, script: await blob.text() };
+  }
+
+  async saveRules(script: string, existingId: string | null) {
+    const { blobId } = await this.upload(Object.assign(new Blob([script], { type: 'application/sieve' }), { name: 'rules.sieve' }));
+    await this.call([['SieveScript/set', {
+      accountId: this.accountId,
+      ...(existingId ? { update: { [existingId]: { blobId } } } : { create: { s: { name: SCRIPT_NAME, blobId } } }),
+      onSuccessActivateScript: existingId ?? '#s',
+    }, 's']]);
+  }
 
   async createMailbox(name: string): Promise<string> {
     const [r] = await this.call([['Mailbox/set', { accountId: this.accountId, create: { m: { name } } }, 'c']]);

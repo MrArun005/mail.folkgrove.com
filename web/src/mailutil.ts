@@ -125,3 +125,29 @@ export function draftFromEmail(e: EmailFull): Draft {
     inReplyTo: e.inReplyTo ?? undefined, references: e.references ?? undefined, // a resumed reply stays in its thread
   };
 }
+
+// ── Unsubscribe (RFC 2369 / 8058) ────────────────────────
+// The List-Unsubscribe header is written by the sender, so treat it as hostile: only public https endpoints
+// get a one-click POST, the mailto subject is fixed, and the user always sees the real destination first.
+
+export type UnsubscribePlan =
+  | { kind: 'post'; url: string; host: string }
+  | { kind: 'mail'; to: string }
+  | { kind: 'open'; url: string; host: string }
+  | null;
+
+const PRIVATE_HOST = /^(localhost|.*\.local|.*\.internal|.*\.lan|\[.*\]|(\d{1,3}\.){3}\d{1,3})$/i;
+
+export function unsubscribePlan(u: { urls: string[]; oneClick: boolean } | null): UnsubscribePlan {
+  if (!u) return null;
+  const https = u.urls.map((x) => { try { return new URL(x); } catch { return null; } })
+    .find((x): x is URL => !!x && x.protocol === 'https:' && !PRIVATE_HOST.test(x.hostname) && x.hostname.includes('.'));
+  if (https && u.oneClick) return { kind: 'post', url: https.href, host: https.hostname };
+  const mailto = u.urls.find((x) => /^mailto:/i.test(x));
+  if (mailto) {
+    const addr = decodeURIComponent(mailto.slice(7).split('?')[0]).trim();
+    if (EMAIL.test(addr)) return { kind: 'mail', to: addr };
+  }
+  if (https) return { kind: 'open', url: https.href, host: https.hostname };
+  return null;
+}

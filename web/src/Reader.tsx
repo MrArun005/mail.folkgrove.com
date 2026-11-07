@@ -7,8 +7,9 @@ import { buildSrcdoc } from './safeHtml';
 import { Menu, TimeChoices } from './Menu';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star';
+export type MoreAction = 'original' | 'print' | 'block' | 'filter';
 
-export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe }: {
+export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
   /** Folders the user created (moving/labelling targets). */
   folders: Mailbox[];
@@ -17,6 +18,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   /** mailboxId, or null to create a folder first; label=true keeps it where it is too. */
   onMoveTo: (mailboxId: string | null, label: boolean) => void;
   onUnsubscribe: (m: EmailFull) => void;
+  onMore: (what: MoreAction, m: EmailFull) => void;
 }) {
   // Newest message open, older ones folded, like a paper trail. A message that arrives while reading opens too.
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -58,6 +60,21 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
             </>}
           </Menu>
         ))}
+        <Menu label="More" align="right" button={<Button variant="quiet" icon="more" label="More" />}>
+          {(close) => {
+            const sender = last.from?.[0]?.email;
+            const item = (what: MoreAction, icon: Parameters<typeof Icon>[0]['name'], text: string) =>
+              <button className="menu-item" role="menuitem" onClick={() => { close(); onMore(what, last); }}><Icon name={icon} size={16} />{text}</button>;
+            return <>
+              {item('print', 'print', 'Print')}
+              {item('original', 'file', 'Show original')}
+              {sender && sender.toLowerCase() !== me.toLowerCase() && <>
+                {item('filter', 'tag', 'Filter messages like this')}
+                {item('block', 'junk', `Block ${sender}`)}
+              </>}
+            </>;
+          }}
+        </Menu>
       </div>
 
       <h1 className="subject">{last.subject?.replace(/^((re|fwd?|aw|sv)\s*:\s*)+/i, '') || '(no subject)'}</h1>

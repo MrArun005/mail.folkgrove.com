@@ -389,3 +389,16 @@ button.chip:hover { background: var(--hover); border-color: var(--muted); }
   .toast { left: var(--s4); right: var(--s4); translate: none; bottom: 80px; }
   .menu-list { position: fixed; left: var(--s3) !important; right: var(--s3) !important; top: auto; bottom: var(--s3); min-width: 0; }
 }
+
+/* Settings: filters and folders */
+.rule-list { display: grid; border: 1px solid var(--rule); border-radius: var(--r-md); }
+.rule-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: var(--h-lg); padding: 0 var(--s2) 0 var(--s3); color: var(--ink); font-size: var(--t-md); }
+.rule-list li + li { border-top: 1px solid var(--rule); }
+.rule-list .row-btns { display: flex; gap: 2px; color: var(--ink-2); }
+.rule-list .btn { color: var(--ink-2); }
+.rule-form { display: grid; gap: var(--s3); padding: var(--s4); border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--list); }
+.rule-form .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s3); }
+.rule-form .actions { display: flex; justify-content: flex-end; gap: var(--s2); }
+.settings .btn.start { justify-self: start; }
+select.input { appearance: auto; }
+@media (max-width: 860px) { .rule-form .row3 { grid-template-columns: 1fr; } }

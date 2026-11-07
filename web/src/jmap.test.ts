@@ -139,14 +139,27 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     await c.call([['Mailbox/set', { accountId: c.accountId, destroy: [id], onDestroyRemoveEmails: true /* the message stays in Inbox */ }, 'd']]);
   });
 
-  it('updates display name, signature and vacation reply', async () => {
+  it('updates display name and signature', async () => {
     const c = await login();
     await c.setIdentity({ name: 'Alice Test', textSignature: 'Alice\n-- sent with OpenMail' });
     expect((await c.getIdentityFresh()).name).toBe('Alice Test');
-    await c.setVacation({ isEnabled: true, subject: 'Away', textBody: 'Back Monday.' });
-    expect((await c.vacation()).isEnabled).toBe(true);
-    await c.setVacation({ isEnabled: false, subject: null, textBody: null });
     await c.setIdentity({ name: '', textSignature: '' });
+  });
+
+  it('out-of-office and filters stay active together (one Sieve script)', async () => {
+    const c = await login();
+    const { toSieve, parseScript } = await import('./rules');
+    const folders = { trash: 'Deleted Items', junk: 'Junk Mail' };
+    const before = await c.getRules();
+    await c.saveRules(toSieve([{ id: '1', from: 'x@y.org', action: 'star' }], folders,
+      { enabled: true, from: '2026-01-01', to: '2099-01-01', subject: 'Away', body: 'Back soon' }), before.id);
+    const [r] = await c.call([['SieveScript/get', { accountId: c.accountId, properties: ['name', 'isActive'] }, 'g']]);
+    const active = (r.list as { name: string; isActive: boolean }[]).filter((x) => x.isActive).map((x) => x.name);
+    expect(active).toEqual(['openmail']);
+    const data = parseScript((await c.getRules()).script);
+    expect(data.vacation.enabled).toBe(true);
+    expect(data.rules).toHaveLength(1);
+    await c.saveRules(toSieve([], folders), (await c.getRules()).id);
   });
 
   it('pushes a change notification when something changes', async () => {
@@ -161,6 +174,38 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     await c.setStarred(t.threadId, false);
     expect(changes).toBeGreaterThan(0);
   });
+
+  it('filters run on the server when mail arrives (Sieve)', async () => {
+    const c = await login();
+    const boxes = await c.mailboxes();
+    const { toSieve } = await import('./rules');
+    const before = await c.getRules();
+    const tag = `rules-${Date.now()}`;
+    await c.saveRules(toSieve([{ id: '1', subject: tag, action: 'move', folder: 'Rules Test' }], { trash: 'Deleted Items', junk: 'Junk Mail' }), before.id);
+    expect((await c.getRules()).script).toContain(tag);
+
+    // Deliver a real message over SMTP and check where it lands.
+    const net = await import('node:net');
+    await new Promise<void>((ok, fail) => {
+      const lines = ['EHLO test.example.org', 'MAIL FROM:<sender@example.org>', 'RCPT TO:<alice@openmail.test>', 'DATA',
+        `From: sender@example.org\r\nTo: alice@openmail.test\r\nSubject: ${tag}\r\nDate: ${new Date().toUTCString()}\r\nMessage-ID: <${tag}@example.org>\r\n\r\nhello\r\n.`, 'QUIT'];
+      const sock = net.connect(2525, 'localhost');
+      let i = 0;
+      sock.on('data', (d: Buffer) => { if (/^[45]/m.test(d.toString())) fail(new Error(d.toString())); if (i < lines.length) sock.write(lines[i++] + '\r\n'); });
+      sock.on('close', () => ok()); sock.on('error', fail);
+    });
+    let landed: string | undefined;
+    for (let i = 0; i < 40 && !landed; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      const hit = (await c.threads({ text: tag }))[0];
+      if (hit) { const [m] = await c.thread(hit.threadId); landed = (await c.mailboxes()).find((b) => m.mailboxIds[b.id])?.name; }
+    }
+    expect(landed, 'the message should have been filed by the rule').toBe('Rules Test');
+    const folder = (await c.mailboxes()).find((b) => b.name === 'Rules Test')!;
+    await c.deleteMailbox(folder.id);
+    await c.saveRules(before.script || toSieve([], { trash: 'Deleted Items', junk: 'Junk Mail' }), before.id ?? (await c.getRules()).id);
+    void boxes;
+  }, 20_000);
 
   it('suggests contacts, people I write to first, never me', async () => {
     const c = await login();

@@ -3,10 +3,13 @@ import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
 import { Icon, roleIcon } from './icons';
 import { Jmap, UNDO_SECONDS, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
-import { displayName, draftFor, draftFromEmail, type ReplyMode } from './mailutil';
+import { displayName, draftFor, draftFromEmail, formatAddresses, textToHtml, unsubscribePlan, type ReplyMode } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
-import { Reader, shortDate, type Action } from './Reader';
+import { Reader, shortDate, type Action, type MoreAction } from './Reader';
+import { addRule } from './Filters';
+import type { Rule } from './rules';
+import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
 import { applyTheme, Settings } from './Settings';
 import { cache } from './store';
@@ -44,6 +47,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const [threadVersion, setThreadVersion] = useState(0); // bump to reload the open conversation
   const [contacts, setContacts] = useState<Address[]>(() => cache.get(key('contacts')) ?? []);
   const [identity, setIdentity] = useState<Identity | null>(null);
+  const [rulePrefill, setRulePrefill] = useState<Partial<Rule> | undefined>();
   const toastTimer = useRef<number>(0);
   const lastClicked = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -199,25 +203,50 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
   async function unsubscribe(m: EmailFull) {
     const who = displayName(m.from?.[0]);
-    if (!m.unsubscribe || !confirm(`Unsubscribe from ${who}?`)) return;
-    const https = m.unsubscribe.urls.find((u) => u.startsWith('https:'));
-    const mailto = m.unsubscribe.urls.find((u) => u.startsWith('mailto:'));
+    const plan = unsubscribePlan(m.unsubscribe);
+    if (!plan) return say({ text: `This message doesn’t include a safe way to unsubscribe from ${who}.` }, 6000);
+    const where = plan.kind === 'mail' ? `by sending an email to ${plan.to}` : plan.kind === 'post' ? `via ${plan.host}` : `on ${plan.host} (opens in a new tab)`;
+    if (!confirm(`Unsubscribe from ${who} ${where}?`)) return;
     try {
-      if (https && m.unsubscribe.oneClick) {
+      if (plan.kind === 'post') {
         // RFC 8058 one-click: a plain form POST. no-cors because we never need to read the reply.
-        await fetch(https, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' });
+        await fetch(plan.url, { method: 'POST', mode: 'no-cors', credentials: 'omit', referrerPolicy: 'no-referrer',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' });
         say({ text: `Unsubscribed from ${who}` });
-      } else if (mailto) {
-        const u = new URL(mailto);
-        await client.send({ to: [{ name: null, email: decodeURIComponent(u.pathname) }], cc: [], subject: u.searchParams.get('subject') ?? 'unsubscribe',
-          html: '<p>unsubscribe</p>', text: 'unsubscribe', attachments: [] }, boxes);
-        say({ text: `Sent an unsubscribe request to ${who}` });
-      } else if (https) {
-        window.open(https, '_blank', 'noopener,noreferrer');
-        say({ text: `Opened ${who}’s unsubscribe page` });
+      } else if (plan.kind === 'mail') {
+        await client.send({ to: [{ name: null, email: plan.to }], cc: [], subject: 'unsubscribe', html: '<p>unsubscribe</p>', text: 'unsubscribe', attachments: [] }, boxes);
+        say({ text: `Sent an unsubscribe request to ${plan.to}` });
+      } else {
+        window.open(plan.url, '_blank', 'noopener,noreferrer');
+        say({ text: `Opened ${plan.host} to finish unsubscribing` });
       }
     } catch (e) { fail(e); }
   }
+
+  async function more(what: MoreAction, m: EmailFull) {
+    const sender = m.from?.[0]?.email ?? '';
+    try {
+      if (what === 'original') {
+        const url = URL.createObjectURL(new Blob([await client.original(m)], { type: 'text/plain;charset=utf-8' }));
+        window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      } else if (what === 'print') {
+        // Same isolation as reading (CSP, no scripts, trackers removed), plus a printable header.
+        const head = `<h1 style="font:600 20px system-ui">${escape(m.subject ?? '')}</h1><p style="font:13px system-ui;color:#555">From: ${escape(formatAddresses(m.from))}<br>To: ${escape(formatAddresses(m.to))}<br>${new Date(m.receivedAt).toLocaleString()}</p><hr>`;
+        const { srcdoc } = buildSrcdoc(head + (m.html ?? textToHtml(m.text ?? '')), false);
+        const url = URL.createObjectURL(new Blob([srcdoc], { type: 'text/html' }));
+        const w = window.open(url, '_blank');
+        w?.addEventListener('load', () => { w.print(); URL.revokeObjectURL(url); });
+      } else if (what === 'filter') {
+        setRulePrefill({ from: sender }); setOverlay('settings');
+      } else if (what === 'block') {
+        if (!confirm(`Block ${sender}? Their messages will go straight to Junk. You can undo this in Settings → Filters.`)) return;
+        await addRule(client, boxes, { id: crypto.randomUUID(), from: sender, action: 'block' });
+        await act('junk', [m.threadId]);
+        say({ text: `Blocked ${sender}` });
+      }
+    } catch (e) { fail(e); }
+  }
+  const escape = (t: string) => t.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
   // ── Writing ────────────────────────────────────────────
 
@@ -471,7 +500,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
                 inTrash={role === 'trash'} inJunk={role === 'junk'}
                 onAction={(a) => act(a, [threadId])} onReply={reply} onBack={() => setThreadId(null)}
                 onSnooze={(d) => act({ snooze: d }, [threadId])} onMoveTo={(id, label) => act({ moveTo: id, label }, [threadId])}
-                onUnsubscribe={unsubscribe} />
+                onUnsubscribe={unsubscribe} onMore={more} />
             </ErrorBoundary>
           : <div className="reader-empty">
               <p>{selected.size ? `${selected.size} selected` : 'Select a conversation to read it.'}</p>
@@ -489,7 +518,9 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       )}
 
       {overlay === 'palette' && <Palette commands={commands} onClose={() => setOverlay(null)} />}
-      {overlay === 'settings' && <Settings client={client} onClose={() => setOverlay(null)} onSaved={(m) => { setOverlay(null); say({ text: m }); loadIdentity(); }} />}
+      {overlay === 'settings' && <Settings client={client} boxes={boxes} prefillRule={rulePrefill}
+        onClose={() => { setOverlay(null); setRulePrefill(undefined); }} onFoldersChanged={refresh}
+        onSaved={(m) => { setOverlay(null); setRulePrefill(undefined); say({ text: m }); loadIdentity(); }} />}
       {overlay === 'help' && (
         <div className="overlay" onClick={() => setOverlay(null)} onKeyDown={(e) => e.key === 'Escape' && setOverlay(null)}>
           <section className="sheet help" role="dialog" aria-label="Keyboard shortcuts" onClick={(e) => e.stopPropagation()}>

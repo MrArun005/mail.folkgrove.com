@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { Jmap, Vacation } from './jmap';
+import type { Jmap, Mailbox } from './jmap';
+import { FiltersSection, FoldersSection, loadScript, saveScript } from './Filters';
+import type { Rule, Vacation } from './rules';
 import { Button } from './Button';
 import { textToHtml } from './mailutil';
 
@@ -14,7 +16,10 @@ export const savedTheme = (): Theme => { try { return (localStorage.getItem('om:
 
 const dateOnly = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
 
-export function Settings({ client, onClose, onSaved }: { client: Jmap; onClose: () => void; onSaved: (msg: string) => void }) {
+export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFoldersChanged }: {
+  client: Jmap; boxes: Mailbox[]; prefillRule?: Partial<Rule>;
+  onClose: () => void; onSaved: (msg: string) => void; onFoldersChanged: () => void;
+}) {
   const [name, setName] = useState('');
   const [signature, setSignature] = useState('');
   const [vac, setVac] = useState<Vacation | null>(null);
@@ -23,30 +28,29 @@ export function Settings({ client, onClose, onSaved }: { client: Jmap; onClose: 
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    Promise.all([client.getIdentityFresh(), client.vacation()]).then(([id, v]) => {
+    Promise.all([client.getIdentityFresh(), loadScript(client)]).then(([id, script]) => {
       setName(id.name === id.email ? '' : id.name);
       setSignature(id.textSignature ?? '');
-      setVac(v);
+      setVac(script.data.vacation);
     }, (e) => setError(e.message));
   }, [client]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (vac?.isEnabled && vac.fromDate && vac.toDate && vac.toDate < vac.fromDate) return setError('The out-of-office end date is before the start date.');
+    if (vac?.enabled && vac.from && vac.to && vac.to < vac.from) return setError('The out-of-office end date is before the start date.');
     setBusy(true); setError('');
     try {
       await client.setIdentity({ name: name.trim(), textSignature: signature, htmlSignature: signature.trim() ? textToHtml(signature) : '' });
-      if (vac) await client.setVacation({
-        isEnabled: vac.isEnabled, subject: vac.subject || null, textBody: vac.textBody || null,
-        fromDate: vac.fromDate || null, toDate: vac.toDate || null,
-      });
+      if (vac) {
+        const { data } = await loadScript(client); // keep the filters exactly as they are
+        await saveScript(client, boxes, { ...data, vacation: vac });
+      }
       applyTheme(theme);
       onSaved('Settings saved');
     } catch (err) { setError(`Couldn’t save: ${(err as Error).message}`); }
     finally { setBusy(false); }
   }
 
-  const day = (v: string) => (v ? new Date(v + 'T00:00:00').toISOString().replace(/\.\d+Z$/, 'Z') : null);
 
   return (
     <div className="overlay" onMouseDown={onClose}>
@@ -64,18 +68,21 @@ export function Settings({ client, onClose, onSaved }: { client: Jmap; onClose: 
         <section>
           <h3>Out-of-office reply</h3>
           {vac ? <>
-            <label className="inline"><input type="checkbox" className="check" checked={vac.isEnabled} onChange={(e) => setVac({ ...vac, isEnabled: e.target.checked })} />Automatically reply while I’m away</label>
-            <fieldset disabled={!vac.isEnabled}>
+            <label className="inline"><input type="checkbox" className="check" checked={vac.enabled} onChange={(e) => setVac({ ...vac, enabled: e.target.checked })} />Automatically reply while I’m away</label>
+            <fieldset disabled={!vac.enabled}>
               <div className="row2">
-                <label>First day<input className="input" type="date" value={dateOnly(vac.fromDate)} onChange={(e) => setVac({ ...vac, fromDate: day(e.target.value) })} /></label>
-                <label>Last day<input className="input" type="date" value={dateOnly(vac.toDate)} onChange={(e) => setVac({ ...vac, toDate: day(e.target.value) })} /></label>
+                <label>First day<input className="input" type="date" value={dateOnly(vac.from ?? null)} onChange={(e) => setVac({ ...vac, from: e.target.value || null })} /></label>
+                <label>Last day<input className="input" type="date" value={dateOnly(vac.to ?? null)} onChange={(e) => setVac({ ...vac, to: e.target.value || null })} /></label>
               </div>
               <label>Subject<input className="input" value={vac.subject ?? ''} onChange={(e) => setVac({ ...vac, subject: e.target.value })} placeholder="Out of office" /></label>
-              <label>Message<textarea className="input" rows={3} value={vac.textBody ?? ''} onChange={(e) => setVac({ ...vac, textBody: e.target.value })} placeholder="I’m away until Monday and will reply when I’m back." /></label>
+              <label>Message<textarea className="input" rows={3} value={vac.body ?? ''} onChange={(e) => setVac({ ...vac, body: e.target.value })} placeholder="I’m away until Monday and will reply when I’m back." /></label>
             </fieldset>
-            <p className="fine">Each sender gets the reply at most once while it’s on.</p>
+            <p className="fine">Each sender gets the reply at most once a day. Blocked senders never get it.</p>
           </> : <p className="fine">Loading…</p>}
         </section>
+
+        <FiltersSection client={client} boxes={boxes} prefill={prefillRule} />
+        <FoldersSection client={client} boxes={boxes} onChanged={onFoldersChanged} />
 
         <section>
           <h3>Appearance</h3>

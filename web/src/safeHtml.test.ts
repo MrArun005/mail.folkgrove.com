@@ -10,7 +10,7 @@ it('strips tracking parameters but keeps the rest of the link', () => {
 
 const html = `<p>Hi</p><img src="https://t.example.net/o.gif" width="1" height="1">
   <img src="https://cdn.example.org/photo.jpg" width="600"><img src="//px.example.com/x" style="display: none">
-  <a href="https://ex.org/?utm_campaign=z&q=1">go</a><script>alert(1)</script><meta http-equiv="refresh" content="0;url=https://evil">`;
+  <a href="https://ex.org/?utm_campaign=z&q=1" ping="https://beacon.example/p">go</a><link rel="dns-prefetch" href="//leak.example"><link rel="stylesheet" href="https://css.example/a.css"><script>alert(1)</script><meta http-equiv="refresh" content="0;url=https://evil">`;
 
 it('removes tracking pixels always, blocks other remote images until allowed', () => {
   const r = buildSrcdoc(html, false);
@@ -19,7 +19,8 @@ it('removes tracking pixels always, blocks other remote images until allowed', (
   expect(r.srcdoc).not.toContain('o.gif');
   expect(r.srcdoc).toContain("img-src data:;");
   expect(r.srcdoc).toContain('href="https://ex.org/?q=1"');
-  for (const bad of ['<script', 'http-equiv="refresh"']) expect(r.srcdoc).not.toContain(bad);
+  for (const bad of ['<script', 'http-equiv="refresh"', 'leak.example', 'css.example', 'beacon.example']) expect(r.srcdoc).not.toContain(bad);
+  expect(r.srcdoc).toContain('x-dns-prefetch-control');
 
   const loaded = buildSrcdoc(html, true);
   expect(loaded.blockedImages).toBe(0);

@@ -30,7 +30,7 @@ const mail = (over: Partial<EmailFull>): EmailFull => ({
   id: '1', threadId: 't', subject: 'Lunch', preview: '', receivedAt: '2026-11-07T12:00:00Z', keywords: {}, hasAttachment: false,
   from: [{ name: 'Carol', email: 'carol@x.org' }], to: [{ name: null, email: 'me@o.test' }, { name: null, email: 'dan@x.org' }],
   cc: [{ name: null, email: 'eve@x.org' }], replyTo: null, messageId: ['m1@x'], inReplyTo: null, references: ['m0@x'],
-  mailboxIds: {}, attachments: [], unsubscribe: null, html: null, text: 'hi <there>', ...over,
+  blobId: 'b0', mailboxIds: {}, attachments: [], unsubscribe: null, html: null, text: 'hi <there>', ...over,
 });
 
 it('reply goes to the sender, threads correctly and quotes (escaped)', () => {
@@ -67,4 +67,15 @@ it('forward has no recipients, carries the original and its files', () => {
   expect(d.subject).toBe('Fwd: Lunch');
   expect(d.html).toContain('From: Carol &#60;carol@x.org&#62;');
   expect(d.attachments.map((a) => a.blobId)).toEqual(['b']);
+});
+
+it('unsubscribe never targets private hosts and never takes the subject from the header', async () => {
+  const { unsubscribePlan } = await import('./mailutil');
+  expect(unsubscribePlan({ urls: ['https://list.example.com/u?x=1', 'mailto:u@list.example.com'], oneClick: true }))
+    .toEqual({ kind: 'post', url: 'https://list.example.com/u?x=1', host: 'list.example.com' });
+  // Private / local targets are refused for the silent POST; falls back to the mailto.
+  for (const bad of ['https://192.168.1.1/reset', 'https://localhost/x', 'https://router.local/x', 'https://[::1]/x', 'http://list.example.com/u'])
+    expect(unsubscribePlan({ urls: [bad, 'mailto:u@list.example.com?subject=Wire%20money'], oneClick: true })).toEqual({ kind: 'mail', to: 'u@list.example.com' });
+  expect(unsubscribePlan({ urls: ['https://list.example.com/u'], oneClick: false })).toEqual({ kind: 'open', url: 'https://list.example.com/u', host: 'list.example.com' });
+  expect(unsubscribePlan({ urls: ['javascript:alert(1)', 'mailto:not-an-address'], oneClick: true })).toBeNull();
 });
