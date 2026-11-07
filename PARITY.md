@@ -116,7 +116,7 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 | Masked addresses | ⬜ | ✅ | See above |
 | 150+ recipients from mail apps | ✅ | ✅ | 500 per message for signed-in senders (was 100) |
 | Priority Inbox / important | ✅ | ⬜ | Next |
-| Search chips + typeahead | ✅ | 🟡 | Operators work; chips next |
+| Search chips + typeahead | ✅ | ✅ | One-click filters (unread, starred, attachments, last 7 days, sent) and “From <person>” as you type |
 | AI (summarise, smart reply) | ✅ | ⬜ | Opt-in, your own key or a local model |
 | Offline mail | ✅ | ⬜ | Installable today; mail offline later |
 | Large files as links | ✅ | ⬜ | |

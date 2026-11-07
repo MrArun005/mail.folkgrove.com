@@ -645,6 +645,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
             onChange={(e) => { setQuery(e.target.value); setThreadId(null); }}
             onKeyDown={(e) => { if (e.key === 'Escape') { setQuery(''); e.currentTarget.blur(); } }} />
         </div>
+        {query && <SearchChips query={query} contacts={contacts} onChange={(q) => { setQuery(q); setThreadId(null); }} />}
 
         {selected.size > 0 ? (
           <div className="bulkbar" role="toolbar" aria-label="Selected conversations">
@@ -794,6 +795,32 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
           </section>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Gmail-style one-click filters under the search box, plus "From <person>" for a name being typed. */
+function SearchChips({ query, contacts, onChange }: { query: string; contacts: Address[]; onChange: (q: string) => void }) {
+  const week = new Date(Date.now() - 7 * 86400e3).toISOString().slice(0, 10);
+  const chips: [string, string, RegExp][] = [
+    ['Unread', 'is:unread', /(^|\s)is:unread\b/], ['Starred', 'is:starred', /(^|\s)is:starred\b/],
+    ['Has attachment', 'has:attachment', /(^|\s)has:attach\w*/], ['Last 7 days', `after:${week}`, /(^|\s)after:\S+/],
+    ['Sent', 'in:sent', /(^|\s)in:sent\b/],
+  ];
+  const toggle = (token: string, re: RegExp) => onChange(re.test(query) ? query.replace(re, ' ').replace(/\s+/g, ' ').trim() : `${query.trim()} ${token}`.trim());
+  // The last word, if it's plain text, may be the start of a name: offer people who match.
+  const last = /(?:^|\s)([^\s:"]{2,})$/.exec(query)?.[1]?.toLowerCase();
+  const people = last ? contacts.filter((c) => c.email.toLowerCase().includes(last) || c.name?.toLowerCase().includes(last)).slice(0, 3) : [];
+  return (
+    <div className="search-chips" role="toolbar" aria-label="Search filters">
+      {people.map((c) => (
+        <button key={c.email} className="filter-chip person" onClick={() => onChange(query.replace(new RegExp(`${last!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), `from:${c.email}`))}>
+          <Icon name="person" size={14} />From {c.name || c.email}
+        </button>
+      ))}
+      {chips.map(([label, token, re]) => (
+        <button key={label} className={`filter-chip${re.test(query) ? ' on' : ''}`} aria-pressed={re.test(query)} onClick={() => toggle(token, re)}>{label}</button>
+      ))}
     </div>
   );
 }

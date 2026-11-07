@@ -640,3 +640,16 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .import-progress .bar { flex: 1; height: 6px; border-radius: var(--r-full); background: var(--hover); overflow: hidden; }
 .import-progress .bar span { display: block; height: 100%; background: var(--accent); transition: width var(--dur) var(--ease-out); }
 .import-progress .fine { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Search filters: chips under the search box (native buttons by DESIGN §6 exception: they are toggles in a row) */
+.search-chips { display: flex; gap: var(--s2); overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--gutter-list)); padding: 0 var(--gutter-list); }
+.search-chips::-webkit-scrollbar { display: none; }
+.filter-chip { flex: none; }
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: var(--h-sm); padding: 0 var(--s3);
+  border: 1px solid var(--rule); border-radius: var(--r-full); background: var(--paper); color: var(--ink-2); font-size: var(--t-sm); white-space: nowrap;
+  transition: background-color var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
+}
+.filter-chip:hover { background: var(--hover); }
+.filter-chip.on { background: var(--accent-wash); border-color: color-mix(in oklch, var(--accent) 40%, transparent); color: var(--accent); font-weight: 600; }
+.filter-chip.person { border-style: dashed; }
