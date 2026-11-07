@@ -1,0 +1,13 @@
+{
+  "appId": "org.openmail.app",
+  "appName": "OpenMail",
+  "webDir": "../shell",
+  "appendUserAgent": "OpenMailApp",
+  "server": {
+    "allowNavigation": ["*"],
+    "errorPath": "index.html"
+  },
+  "plugins": {
+    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] }
+  }
+}

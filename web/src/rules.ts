@@ -29,6 +29,8 @@ export interface ScriptData {
   sigReply?: string;
   /** HEY-style Screener: mail from anyone not on `allow` waits in the Screener folder until approved. */
   screener?: { on: boolean; allow: string[] };
+  /** Shared folders or mailboxes hidden from "Shared with me": "accountId" or "accountId/mailboxId". */
+  hiddenShares?: string[];
 }
 export const SCREENER = 'Screener';
 const isAddress = (a: string) => /^[^\s@"\\]+@[^\s@"\\]+\.[^\s@"\\]+$/.test(a);

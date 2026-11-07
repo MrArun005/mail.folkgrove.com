@@ -76,6 +76,13 @@ services:
       ADMINS: ${ADMINS:-}   # who may use the admin console at /admin (usernames, comma-separated)
       CLIENT_IP_HEADER: x-real-ip
       RETIRED_FILE: /data/retired-names.txt  # names of deleted accounts: never given out again (backup.sh copies it)
+      # Large-file links (signup/files.mjs). The files live in each user's own storage in Stalwart; this is the list of links.
+      FILES_DB: /data/file-links.json
+      MAX_FILE_BYTES: ${MAX_FILE_BYTES:-2147483648}         # biggest file (2 GiB)
+      FILES_QUOTA_BYTES: ${FILES_QUOTA_BYTES:-5368709120}   # all of one user's links together (5 GiB); their storage quota applies too
+      STATE_FILE: /data/state.json  # sending suspensions and last sign-in per account (abuse.mjs)
+      EVENTS_URL: http://signup:3000/api/events  # Stalwart posts sign-ins, refusals and bounces here (internal only)
+      INACTIVE_MONTHS: ${INACTIVE_MONTHS:-}  # inactive-account reminders; empty = 12 with SIGNUP=on, else off
       RETENTION_FILE: /data/retention.json   # retention rules (signup/retention.mjs)
       # Single sign-on (install.sh --oidc-*); empty = off.
       OIDC_ISSUER: ${OIDC_ISSUER:-}

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { confirmIt, notify } from './Dialog';
 import { createPortal } from 'react-dom';
 import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
 import { Button } from './Button';
 import { Icon } from './icons';
-import { displayName, fileSize, formatAddresses, type ReplyMode } from './mailutil';
+import { displayName, fileLinks, fileSize, formatAddresses, type ReplyMode } from './mailutil';
 import { canSuggestReplies, canSummarize, canTranslate, languageName, suggestReplies, summarize, translate, visibleText } from './ai';
 import { buildSrcdoc } from './safeHtml';
 import { span, type CalEvent } from './calendar';
@@ -14,7 +14,7 @@ import { Menu, TimeChoices } from './Menu';
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
 export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task';
 
-export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt }: {
+export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt, footer }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
   /** Folders the user created (moving/labelling targets). */
   folders: Mailbox[];
@@ -26,6 +26,8 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   onMore: (what: MoreAction, m: EmailFull) => void;
   onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void>;
   onReceipt: (m: EmailFull, send: boolean) => void;
+  /** Shown under the conversation (team comments in a shared mailbox). */
+  footer?: ReactNode;
 }) {
   // Newest message open, older ones folded, like a paper trail. A message that arrives while reading opens too.
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -109,6 +111,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
           <Button icon="replyAll" title="Reply all (a)" onClick={() => onReply('replyAll', last)}>Reply all</Button>}
         <Button icon="forward" title="Forward (f)" onClick={() => onReply('forward', last)}>Forward</Button>
       </div>
+      {footer}
     </article>
   );
 }
@@ -146,6 +149,8 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
   }, [embedded]);
   const html = useMemo(() => (m.html ? buildSrcdoc(m.html, showImages, inline) : null), [m, showImages, inline]);
   const files = m.attachments.filter((a) => !embedded.includes(a));
+  // Large files sent as download links (signup/files.mjs) look like attachments too.
+  const links = useMemo(() => fileLinks(`${m.html ?? ''} ${m.text ?? ''}`, location.origin), [m]);
   const sender = m.from?.[0];
   return (
     <section className="message">
@@ -203,7 +208,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
       ) : html
         ? <MessageFrame title={`Message from ${displayName(sender)}`} srcdoc={html.srcdoc} />
         : <div className="letter">{m.text}</div>}
-      {files.length > 0 && (
+      {files.length + links.length > 0 && (
         <ul className="chips" aria-label="Attachments">
           {files.map((a) => (
             <li key={a.blobId + a.name}>
@@ -212,6 +217,14 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
                 <Icon name="file" size={16} /><span className="fname">{a.name ?? 'Untitled file'}</span>
                 <span className="fsize">{fileSize(a.size)}</span><Icon name={previewKind(a) ? 'search' : 'download'} size={16} />
               </button>
+            </li>
+          ))}
+          {links.map((l) => (
+            <li key={l.url}>
+              <a className="chip" href={l.url} target="_blank" rel="noopener noreferrer" title={`Download ${l.name}`}>
+                <Icon name="file" size={16} /><span className="fname">{l.name}</span>
+                <span className="fsize">{fileSize(l.size)}</span><span className="flink">Download</span>
+              </a>
             </li>
           ))}
         </ul>

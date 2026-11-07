@@ -19,7 +19,7 @@
 		file_server
 	}
 	# Installable-app files at the root of the build.
-	@pwa path /sw.js /manifest.webmanifest /icon.svg /legal/*
+	@pwa path /sw.js /manifest.webmanifest /icon.svg /icons/* /legal/*
 	handle @pwa {
 		root * /srv
 		header /sw.js Cache-Control "no-cache"
@@ -35,7 +35,9 @@
 	# and the web client simply hides its "Create an account" link.
 	# X-Real-IP is always overwritten with the real client address (clients can't spoof it), so per-IP rate
 	# limits work. Run the signup container with CLIENT_IP_HEADER=x-real-ip.
-	@signup path /api/signup /api/username-available /api/aliases /api/aliases/* /api/session/* /api/account /api/admin/* /api/retention /api/sso /api/sso/*
+	# /api/events is left out on purpose: only Stalwart posts to it, on the internal network.
+	# /api/files and /f/*: large-file links (upload, and the public download page).
+	@signup path /api/signup /api/username-available /api/aliases /api/aliases/* /api/session/* /api/account /api/admin/* /api/domains /api/domains/* /api/sending /api/sending/* /api/blocked /api/files /api/files/* /f/* /api/principal /api/retention /api/sso /api/sso/*
 	handle @signup {
 		reverse_proxy signup:3000 {
 			header_up X-Real-IP {remote_host}

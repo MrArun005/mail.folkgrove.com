@@ -12,6 +12,7 @@ Last updated: [date]. [Operator name] ("we") runs the OpenMail service at [domai
 | Your username, password (stored hashed by the mail server), two-factor secret and app passwords | Signing in | Until you change them or delete your account |
 | The email address you verified at sign-up, the time you signed up and the invite code you used | Proving you're a real person; contacting you about your account | With your account |
 | Masked addresses you create | They deliver to you | With your account; a deleted masked address stays switched off on your account so it is never reused |
+| The time of your last sign-in, and any sending suspension (when, why, when lifted) | The inactive-account policy; stopping spam sent from accounts | With your account, removed within a day of deleting it (suspension history: the last 20 entries) |
 | Server logs (see below) | Keeping the service running and stopping abuse | [Until the log is rotated: set a retention, e.g. 30 days] |
 | Encrypted backups of all of the above | Recovering from failures | The newest [14] backups are kept; older ones are deleted |
 | Usernames and masked addresses of deleted accounts | So nobody can take over an old address and receive its password resets | Forever (just the name, nothing else) |

@@ -1,10 +1,11 @@
 import { Fragment, Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { SendingBlocked } from './Sending';
 import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
 import { Icon, roleIcon } from './icons';
-import { Jmap, UNDO_SECONDS, type Attachment, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
-import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode, type Signature } from './mailutil';
+import { Jmap, UNDO_SECONDS, type SharedAccount, type Attachment, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
+import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, fileSize, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode, type Signature } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { SubscriptionsList } from './Subscriptions';
@@ -18,12 +19,14 @@ import { NotesView } from './Notes';
 import { addRule, loadScript, saveScript } from './Filters';
 import { SCREENER, UPDATES, type Rule, type ScriptData } from './rules';
 import { enablePush, notifyOn, showMail } from './notify';
+import { setBadge, takeLaunch } from './launch';
 import { offlineStore } from './offline';
 import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
 import { applyTheme, Settings } from './Settings';
 import { cache } from './store';
 import { describe } from './when';
+import { SharedRail, TeamComments, useShared } from './Sharing';
 
 const PAGE = 50;
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
@@ -43,14 +46,29 @@ class ErrorBoundary extends Component<{ children: ReactNode; resetKey: unknown }
   render() { return this.state.failed ? <p className="empty">This conversation couldn’t be displayed. Try another one, or reload the page.</p> : this.props.children; }
 }
 
-export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
+type MailProps = {
   client: Jmap; onLogout: () => void;
   /** Accounts signed in on this tab (Gmail-style switcher), active first. */
   accounts: string[]; onSwitch: (username: string) => void; onAddAccount: () => void;
+};
+
+/** Your mail, or another account you can open (shared folders, delegated or team mailbox) with the same screen. */
+export function Mail(props: MailProps) {
+  const [open, setOpen] = useState<{ acc: SharedAccount; box?: string } | null>(null);
+  const client = useMemo(() => (open ? props.client.as(open.acc) : props.client), [props.client, open]);
+  const shared = useShared(props.client);
+  return <MailView key={open ? `${open.acc.id}/${open.box ?? ''}` : ''} {...props} client={client} own={props.client} sharing={shared}
+    opened={open?.acc ?? null} startView={open?.box} onOpenShared={(acc, box) => setOpen(acc && { acc, box })} />;
+}
+
+function MailView({ client, own, sharing, opened, startView, onOpenShared, onLogout, accounts, onSwitch, onAddAccount }: MailProps & {
+  /** Your own account (Settings, the shared list); `client` is the account on screen. */
+  own: Jmap; sharing: ReturnType<typeof useShared>; opened: SharedAccount | null; startView?: string;
+  onOpenShared: (acc: SharedAccount | null, box?: string) => void;
 }) {
-  const key = (k: string) => `${client.username}:${k}`;
+  const key = (k: string) => `${client.scope}:${k}`;
   const [boxes, setBoxes] = useState<Mailbox[]>(() => cache.get(key('boxes')) ?? []);
-  const [view, setView] = useState<string | null>(null); // mailbox id or virtual folder; null = Inbox
+  const [view, setView] = useState<string | null>(startView ?? null); // mailbox id or virtual folder; null = Inbox
   const [tab, setTab] = useState<'primary' | 'updates'>('primary'); // Inbox categories
   const [categories, setCategories] = useState(true);
   const [subs, setSubs] = useState<Subscription[] | null>(null);
@@ -75,6 +93,9 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
   const [contacts, setContacts] = useState<Address[]>(() => cache.get(key('contacts')) ?? []);
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [rulePrefill, setRulePrefill] = useState<Partial<Rule> | undefined>();
+  // Settings are always your own, also while another mailbox is open.
+  const [ownBoxes, setOwnBoxes] = useState<Mailbox[] | null>(null);
+  useEffect(() => { if (opened && overlay === 'settings') own.mailboxes().then(setOwnBoxes, fail); }, [opened, overlay]);
   const toastTimer = useRef<number>(0);
   const lastClicked = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -328,7 +349,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
 
     try {
       const each = (f: (t: string) => Promise<unknown>) => Promise.all(tids.map(f));
-      const box = (r: string) => boxes.find((b) => b.role === r)!.id;
+      const box = (r: string) => { const id = boxes.find((b) => b.role === r)?.id; if (!id) throw new Error('this shared mailbox has no folder for that'); return id; };
       if (typeof a === 'object' && 'snooze' in a) { await each((t) => client.snooze(t, source, a.snooze, boxes)); say({ text: `${many} snoozed until ${describe(a.snooze)}` }); }
       else if (typeof a === 'object') {
         const name = boxes.find((b) => b.id === target)?.name ?? 'the new folder';
@@ -475,7 +496,26 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
     templates: () => client.templates(),
     saveTemplate: (d) => client.saveTemplate(d),
     deleteTemplate: (id) => client.deleteTemplate(id),
+    share: (f, days) => client.shareFile(f, days),
+    maxUpload: client.maxUpload,
   };
+  // Opened from outside: the Compose shortcut, an email link or "Share to OpenMail" (launch.ts).
+  useEffect(() => {
+    takeLaunch().then(async (l) => {
+      if (!l) return;
+      // Shared files come from outside (any site can post to /share): attach them only when the person says so.
+      // Names are the sender's text: control/direction characters stripped, shortened, shown after the warning.
+      const label = (f: File) => `${f.name.replace(/[\p{Cc}\p{Cf}]/gu, '').slice(0, 60) || 'Untitled file'} (${fileSize(f.size)})`;
+      if (l.files.length && !(await confirmIt({ title: `Attach ${l.files.length === 1 ? 'a shared file' : `${l.files.length} shared files`}?`, danger: true,
+        body: `Only attach files you shared to OpenMail just now. ${l.files.slice(0, 5).map(label).join(' · ')}${l.files.length > 5 ? ' …' : ''}`, confirm: 'Attach' }))) l.files = [];
+      const attachments = await Promise.all(l.files.map((f) => client.upload(f))).catch((e) => { fail(e); return []; });
+      setCompose(withSignature({ ...EMPTY_DRAFT, to: l.to, cc: l.cc, bcc: l.bcc, subject: l.subject, html: l.body ? textToHtml(l.body) : '', text: l.body, attachments }));
+    });
+  }, [client]);
+  // Unread Inbox mail on the app icon.
+  // ponytail: the active account's Inbox only; other signed-in accounts don't add to it.
+  useEffect(() => setBadge(boxes.find((b) => b.role === 'inbox')?.unreadEmails ?? 0), [boxes]);
+  useEffect(() => () => setBadge(0), []); // signed out
   function closeCompose(outcome: 'saved' | 'discarded' | 'closed') {
     setCompose(null);
     if (outcome === 'saved') say({ text: 'Draft saved' });
@@ -582,12 +622,15 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
   const navItems = [
     ...boxes.slice(0, 1),
     { id: STARRED, name: 'Starred', role: STARRED, unreadEmails: 0, sortOrder: 0 },
-    ...boxes.slice(1).flatMap((b) => (b.role === 'drafts' ? [b, { id: SCHEDULED, name: 'Scheduled', role: SCHEDULED, unreadEmails: 0, sortOrder: 0 }] : [b])),
-    { id: SUBSCRIPTIONS, name: 'Subscriptions', role: SUBSCRIPTIONS, unreadEmails: 0, sortOrder: 0 },
-    { id: CONTACTS, name: 'Contacts', role: CONTACTS, unreadEmails: 0, sortOrder: 0 },
-    { id: CALENDAR, name: 'Calendar', role: CALENDAR, unreadEmails: 0, sortOrder: 0 },
-    { id: TASKS, name: 'Tasks', role: TASKS, unreadEmails: 0, sortOrder: 0 },
-    { id: NOTES, name: 'Notes', role: NOTES, unreadEmails: 0, sortOrder: 0 },
+    ...boxes.slice(1).flatMap((b) => (b.role === 'drafts' && !opened ? [b, { id: SCHEDULED, name: 'Scheduled', role: SCHEDULED, unreadEmails: 0, sortOrder: 0 }] : [b])),
+    // Someone else's mailbox shows its mail only; your contacts, calendar, tasks and notes stay in yours.
+    ...(opened ? [] : [
+      { id: SUBSCRIPTIONS, name: 'Subscriptions', role: SUBSCRIPTIONS, unreadEmails: 0, sortOrder: 0 },
+      { id: CONTACTS, name: 'Contacts', role: CONTACTS, unreadEmails: 0, sortOrder: 0 },
+      { id: CALENDAR, name: 'Calendar', role: CALENDAR, unreadEmails: 0, sortOrder: 0 },
+      { id: TASKS, name: 'Tasks', role: TASKS, unreadEmails: 0, sortOrder: 0 },
+      { id: NOTES, name: 'Notes', role: NOTES, unreadEmails: 0, sortOrder: 0 },
+    ]),
   ];
 
   const commands: Command[] = [
@@ -668,6 +711,10 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
       <nav className="rail" aria-label="Folders">
         <p className="wordmark">OpenMail</p>
         <Button variant="primary" size="lg" icon="compose" className="compose-btn" onClick={newMessage} title="Compose (c)">Compose</Button>
+        {opened && <p className="banner banner--info shared-banner" role="status"><Icon name={opened.team ? 'inbox' : 'person'} size={16} />
+          <span className="grow" title={opened.name}>{opened.team ? 'Team mailbox' : opened.whole ? 'Delegated mailbox' : 'Shared folders'}: <b>{opened.name.replace(/@.*/, '')}</b>
+            {!opened.team && opened.canSend && <><br />You send on their behalf.</>}</span>
+          <Button variant="link" onClick={() => onOpenShared(null)}>Back to my mail</Button></p>}
         {/* The main places, then "More" (folded by default, like Gmail), then the folders you made. */}
         {[navItems.filter((b) => b.role && (MAIN.includes(b.role) || railOpen || b.id === current)), navItems.filter((b) => !b.role)].map((group, gi) => (
           <div key={gi} className="rail-group">
@@ -692,6 +739,8 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
             </ul>
           </div>
         ))}
+        <SharedRail accounts={sharing.accounts} hidden={sharing.hidden} current={{ account: opened?.id ?? null, box: current }}
+          onOpen={(a, b) => onOpenShared(a, b)} onHide={(k) => sharing.hide(k).catch(fail)} onUnhide={() => sharing.unhideAll().catch(fail)} />
         {saved.length > 0 && (
           <div className="saved">
             <p className="rail-label">Saved searches</p>
@@ -720,6 +769,15 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
                   <Icon name={a === client.username ? 'check' : 'person'} size={16} /><span className="grow">{a}</span>
                 </button>
               ))}
+              {sharing.accounts.some((a) => a.whole) && <>
+                <p className="menu-title menu-sep">Mailboxes you can open</p>
+                {opened && <button className="menu-item" role="menuitem" onClick={() => { close(); onOpenShared(null); }}><Icon name="person" size={16} /><span className="grow">My mailbox</span></button>}
+                {sharing.accounts.filter((a) => a.whole).map((a) => (
+                  <button key={a.id} className="menu-item" role="menuitem" aria-current={a.id === opened?.id} onClick={() => { close(); onOpenShared(a); }}>
+                    <Icon name={a.id === opened?.id ? 'check' : a.team ? 'inbox' : 'person'} size={16} /><span className="grow">{a.name}</span>
+                  </button>
+                ))}
+              </>}
               <button className="menu-item menu-sep" role="menuitem" onClick={() => { close(); onAddAccount(); }}><Icon name="compose" size={16} />Add another account</button>
             </>}
           </Menu>
@@ -737,6 +795,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
         if (hasMore && el.scrollTop + el.clientHeight > el.scrollHeight - 600) loadMore();
       }}>
         <div className="list-head">
+        <SendingBlocked client={client} />
         {!online && <p className="banner banner--info offline-banner" role="status">You’re offline. {client.offline ? 'Showing saved mail' : 'Mail you haven’t opened isn’t available'}{outbox ? ` · ${outbox} waiting to send` : ''}.</p>}
         <div className="search">
           <Icon name="search" />
@@ -804,6 +863,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
         ) : (
           <>
             {list === null && <div className="rows-loading" aria-busy="true">{[0, 1, 2, 3, 4].map((i) => <span key={i} />)}</div>}
+            {opened && currentBox?.myRights && !currentBox.myRights.mayRemoveItems && <p className="list-note">Shared with you to read. You can’t move, delete or change these messages.</p>}
             {inScreener && !!list?.length && <p className="list-note">First-time senders. Allow them into your Inbox, or block them for good.</p>}
             {list?.length === 0 && <p className="empty">{inScreener ? 'Nobody new is waiting. New senders show up here first.' : emptyText}</p>}
             <ul className={`rows${selected.size ? ' selecting' : ''}`}>
@@ -858,7 +918,8 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
                 inTrash={role === 'trash'} inJunk={role === 'junk'}
                 onAction={(a) => act(a, [threadId])} onReply={reply} onBack={() => setThreadId(null)}
                 onSnooze={(d) => act({ snooze: d }, [threadId])} onMoveTo={(id, label) => act({ moveTo: id, label }, [threadId])}
-                onUnsubscribe={unsubscribe} onMore={more} onRsvp={rsvp} onReceipt={receipt} />
+                onUnsubscribe={unsubscribe} onMore={more} onRsvp={rsvp} onReceipt={receipt}
+                footer={opened?.whole && <TeamComments client={client} threadId={threadId} version={threadVersion} me={own.username} />} />
             </ErrorBoundary>
           : <div className="reader-empty">
               <p>{selected.size ? `${selected.size} selected` : 'Select a conversation to read it.'}</p>
@@ -878,7 +939,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
       )}
 
       {overlay === 'palette' && <Palette commands={commands} onClose={() => setOverlay(null)} />}
-      {overlay === 'settings' && <Settings client={client} boxes={boxes} prefillRule={rulePrefill}
+      {overlay === 'settings' && (!opened || ownBoxes) && <Settings client={own} boxes={ownBoxes ?? boxes} prefillRule={rulePrefill}
         onClose={() => { setOverlay(null); setRulePrefill(undefined); reloadCategories(); }} onFoldersChanged={refresh} onIdentitiesChanged={loadIdentity} onAccountDeleted={onLogout}
         onSaved={(m) => { setOverlay(null); setRulePrefill(undefined); say({ text: m }); loadIdentity(); reloadCategories(); }} />}
       {overlay === 'help' && (

@@ -3,6 +3,7 @@ import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
 import type { Jmap, Mailbox } from './jmap';
 import { describeRule, parseScript, toSieve, validateRule, type Rule, type RuleAction, type ScriptData } from './rules';
+import { ShareFolder } from './Sharing';
 
 const ACTIONS: { value: RuleAction; label: string }[] = [
   { value: 'move', label: 'Move to folder' }, { value: 'read', label: 'Mark as read' }, { value: 'star', label: 'Star it' },
@@ -124,6 +125,7 @@ export function FiltersSection({ client, boxes, prefill }: { client: Jmap; boxes
 export function FoldersSection({ client, boxes, onChanged }: { client: Jmap; boxes: Mailbox[]; onChanged: () => void }) {
   const mine = boxes.filter((b) => !b.role);
   const [error, setError] = useState('');
+  const [sharing, setSharing] = useState<string | null>(null);
   async function run(f: () => Promise<unknown>) {
     setError('');
     try { await f(); onChanged(); } catch (e) { setError((e as Error).message); }
@@ -142,6 +144,7 @@ export function FoldersSection({ client, boxes, onChanged }: { client: Jmap; box
                   <option value="">Top level</option>
                   {mine.filter((p) => p.id !== b.id && !(p.path ?? '').startsWith(`${b.path}/`)).map((p) => <option key={p.id} value={p.id}>Inside {p.path}</option>)}
                 </select>
+                <Button variant="quiet" size="sm" icon="person" label={`Share ${b.name}…`} pressed={sharing === b.id} onClick={() => setSharing(sharing === b.id ? null : b.id)} />
                 <Button variant="quiet" size="sm" icon="folder" label={`New folder inside ${b.name}`} onClick={async () => {
                   const name = await promptIt({ title: `New folder inside “${b.name}”`, label: 'Folder name', confirm: 'Create folder' });
                   if (name) run(() => client.createMailbox(name, b.id));
@@ -155,6 +158,7 @@ export function FoldersSection({ client, boxes, onChanged }: { client: Jmap; box
                   if (await confirmIt({ title: `Delete the folder “${b.name}”?`, body: 'Messages that are only in this folder are deleted too.', confirm: 'Delete folder', danger: true })) run(() => client.deleteMailbox(b.id));
                 }} />
               </span>
+              {sharing === b.id && <ShareFolder client={client} box={b} onDone={() => {}} />}
             </li>
           ))}
         </ul>

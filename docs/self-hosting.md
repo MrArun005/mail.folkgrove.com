@@ -142,7 +142,9 @@ A brand-new domain and IP have no sending reputation. Big providers may send you
 
 ## 5. Administration
 
-OpenMail's own admin console is at `https://mx.example.com/admin`: users (create, disable, reset password, storage limits), blocked IP addresses, new-account sending limits and the outgoing queue. Set `ADMINS=you` (usernames, comma-separated) for the account service, then sign in to the web app as one of them.
+OpenMail's own admin console is at `https://mx.example.com/admin`: users (create, disable, reset password, storage limits), blocked IP addresses, new-account sending limits, the outgoing queue and users' own domains. Set `ADMINS=you` (usernames, comma-separated) for the account service, then sign in to the web app as one of them.
+
+**Users' own domains.** Anyone with an account can add a domain they own in Settings → Your domain: they prove it with a TXT record, then add MX, SPF (`include:` your main domain), DKIM and DMARC records, which the page lists and checks live. The account service creates the domain in Stalwart (with its DKIM keys) and the user's address on it. Defaults: 3 domains per account (`MAX_DOMAINS`), 10 addresses per domain (`MAX_DOMAIN_ADDRESSES`); `CUSTOM_DOMAINS=off` turns it off; `RESERVED_DOMAINS` refuses more domains besides your own. The admin console's Domains tab lists them with owner and status. The checks use the server's DNS resolver (`DNS_SERVERS=1.1.1.1` to pick one); if a domain's TXT record is gone for 7 days, its addresses pause until it's back. For your *own* extra domains, use Stalwart's admin as before.
 
 Stalwart's full admin interface is at `https://mx.example.com/admin/` (note the slash at the end). Sign in with the details in `.admin-credentials`. From there you can manage everything else: settings, spam filter, logs.
 

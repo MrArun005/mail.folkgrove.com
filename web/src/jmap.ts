@@ -11,6 +11,7 @@ const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ie
 // must still be able to do everything else.
 const CONTACTS = 'urn:ietf:params:jmap:contacts';
 const STALWART = 'urn:stalwart:jmap';
+const SHARE = 'urn:ietf:params:jmap:mail:share';
 const CALENDARS = ['urn:ietf:params:jmap:calendars', 'urn:ietf:params:jmap:calendars:parse'];
 export const UNDO_SECONDS = 10;
 
@@ -19,7 +20,28 @@ export interface Mailbox {
   parentId?: string | null;
   /** Nesting depth (0 = top level) and the full "Parent/Child" path, which is what Sieve filters file into. */
   depth?: number; path?: string;
+  /** What the signed-in user may do here (matters in mailboxes shared with them). */
+  myRights?: Rights;
 }
+/** JMAP mailbox rights (RFC 8621 §2), as used in Mailbox.myRights and shareWith. */
+export type Rights = Partial<Record<'mayReadItems' | 'mayAddItems' | 'mayRemoveItems' | 'maySetSeen' | 'maySetKeywords' | 'mayCreateChild' | 'mayRename' | 'maySubmit' | 'mayDelete', boolean>>;
+export type Access = 'read' | 'write' | 'full';
+const READ: Rights = { mayReadItems: true };
+const WRITE: Rights = { ...READ, maySetSeen: true, maySetKeywords: true, mayAddItems: true, mayRemoveItems: true };
+export const ACCESS: Record<Access, Rights> = { read: READ, write: WRITE, full: { ...WRITE, mayCreateChild: true, mayRename: true, mayDelete: true } };
+export const accessOf = (r: Rights): Access => (r.mayDelete ? 'full' : r.mayRemoveItems ? 'write' : 'read');
+/** Another account this user can open: a team mailbox (group), a delegated mailbox, or someone's shared folders. */
+export interface SharedAccount {
+  id: string; name: string; boxes: Mailbox[];
+  /** Team mailbox (a Stalwart group): members send as it with its own identity. */
+  team: boolean;
+  /** The whole mailbox is open to you (team, or delegated with its Inbox), not just some folders. */
+  whole: boolean;
+  /** You may send from it: as the team, or on behalf of the owner (delegation with send permission). */
+  canSend: boolean;
+}
+export interface Person { id: string; name: string; email: string }
+export interface Comment { id: string; author: Address; text: string; at: string }
 export interface Address { name: string | null; email: string }
 export interface Attachment { blobId: string; name: string | null; type: string; size: number; cid?: string | null; disposition?: string | null }
 export interface EmailSummary {
@@ -50,6 +72,8 @@ export interface Draft {
   inReplyTo?: string[]; references?: string[];
   /** Ask the recipient for a read receipt. */
   receipt?: boolean;
+  /** Delegation: From is this owner's address and Sender is you ("on behalf of"). */
+  onBehalfOf?: string;
   /** Bring it back to the Inbox if nobody replies within this many days. */
   followUpDays?: number;
 }
@@ -71,6 +95,7 @@ export const SESSION_EXPIRED = 'om:session-expired';
 export const TEMPLATES = 'Templates';
 export const TASKS = 'Tasks'; // app storage like Templates: hidden from the folder list
 export const NOTES = 'Notes';
+export const COMMENTS = 'Comments'; // team comments in a shared mailbox, hidden like Tasks
 export interface Note { id: string; title: string; body: string; updatedAt: string; pinned: boolean }
 export interface Task { id: string; title: string; done: boolean; due: string | null; threadId: string | null; createdAt: string }
 export interface Subscription { from: Address; count: number; lastAt: string; unsubscribe: { urls: string[]; oneClick: boolean } }
@@ -86,7 +111,17 @@ const SUMMARY = ['threadId', 'subject', 'from', 'to', 'preview', 'receivedAt', '
 const FULL = [...SUMMARY, 'blobId', 'cc', 'bcc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
   'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses'];
 
+/** Your own domain (signup/domains.mjs). ok: live in DNS; null = DNS didn't answer. */
+export interface DnsRecord { kind: 'verify' | 'mx' | 'spf' | 'dkim' | 'dmarc'; name: string; type: string; value: string; ok?: boolean | null }
+export interface CustomDomain {
+  name: string; status: 'pending' | 'active' | 'missing' | 'paused'; missingSince: string | null; pausesAt: string | null; dkimPending: boolean;
+  records: DnsRecord[]; addresses: { name: string; email: string; enabled: boolean; main: boolean }[]; maxAddresses: number;
+}
 export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
+/** A large file sent as a download link (signup/files.mjs). url is absolute; expires is ms since 1970, null = never. */
+export interface SharedFile { id: string; url: string; name: string; size: number; created: number; expires: number | null; downloads: number }
+/** unblock: 'ok' = you may lift it now, 'wait' = once a day (retryAfter seconds), 'admin' = only an admin can. */
+export interface SendingStatus { suspended: boolean; reason?: string; since?: string | null; unblock?: 'ok' | 'wait' | 'admin'; retryAfter?: number }
 async function aliasReply(r: Response) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.ok) throw Object.assign(new JmapError(j.error?.message ?? `The server returned an error (${r.status})`), { code: j.error?.code as string | undefined });
@@ -121,6 +156,10 @@ export function orderMailboxes(list: Mailbox[]): Mailbox[] {
 
 export class Jmap {
   private identity?: Identity;
+  /** In another account (as()): its address, and for a delegated one, your own client that sends on its behalf. */
+  owner?: string;
+  private via?: Jmap;
+  private mayAct = true;
 
   private constructor(
     private authHeader: () => Promise<string>, private onUnauthorized: (() => Promise<void>) | null, private base: string,
@@ -163,6 +202,7 @@ export class Jmap {
     c.maxConcurrent = Math.max(1, Number(s.capabilities?.['urn:ietf:params:jmap:core']?.maxConcurrentRequests) || 4);
     c.vapidKey = s.capabilities?.['urn:ietf:params:jmap:webpush-vapid']?.applicationServerKey ?? null;
     c.offline = !!offlineUser;
+    c.maxUpload = Number(s.capabilities?.['urn:ietf:params:jmap:core']?.maxSizeUpload) || 50e6;
     return c;
   }
 
@@ -187,6 +227,8 @@ export class Jmap {
   // with one slot left for the live-update stream, which the server counts as a request too.
   private static gates = new Map<string, { inFlight: number; waiting: (() => void)[] }>();
   maxConcurrent = 4;
+  /** Biggest file the server takes as an attachment upload (session maxSizeUpload). */
+  maxUpload = 50e6;
   /** Offline mode (trusted devices only): reads are saved locally and served from there when the network is gone. */
   offline = false;
   private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
@@ -249,9 +291,9 @@ export class Jmap {
   }
   private async mailboxesLive(includeHidden: boolean): Promise<Mailbox[]> {
     const [r] = await this.call([['Mailbox/get', {
-      accountId: this.accountId, properties: ['name', 'role', 'unreadEmails', 'sortOrder', 'parentId'],
+      accountId: this.accountId, properties: ['name', 'role', 'unreadEmails', 'sortOrder', 'parentId', 'myRights'],
     }, 'm']]);
-    if (!includeHidden) r.list = (r.list as Mailbox[]).filter((b) => b.role || ![TEMPLATES, TASKS, NOTES].includes(b.name));
+    if (!includeHidden) r.list = (r.list as Mailbox[]).filter((b) => b.role || ![TEMPLATES, TASKS, NOTES, COMMENTS].includes(b.name));
     return orderMailboxes(r.list);
   }
 
@@ -601,12 +643,40 @@ export class Jmap {
     await aliasReply(await this.fetch(`${this.base}/api/aliases/${encodeURIComponent(id)}`, { method: 'DELETE' }));
   }
 
+  /** Your own domains (the account service, signup/domains.mjs). GET → { domains, maxDomains }, or null when this
+   *  server doesn't offer them; changes → { domain }. Errors carry the service's message. */
+  async customDomains(path = '', method = 'GET', body?: object): Promise<any> {
+    const r = await this.fetch(`${this.base}/api/domains${path}`, { method, ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
+    if (method === 'GET' && (r.status === 404 || r.status === 503)) return null;
+    return aliasReply(r);
+  }
+
   /** Delete this account for good (the account service, signup/account.mjs). Errors carry the service's `code`. */
   async deleteAccount(body: { password: string; code?: string; confirm: string }): Promise<void> {
     const r = await this.fetch(`${this.base}/api/account`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (r.status === 404 || r.status === 502) throw new JmapError('This server can’t delete accounts from here. Ask its administrator.');
     await aliasReply(r);
   }
+
+  // ── Large-file links (the account service, signup/files.mjs) ──
+
+  /** Upload a file that's too big to attach into your own storage; returns its download link. */
+  async shareFile(file: File, expiresDays: 7 | 30 | 0): Promise<SharedFile> {
+    const r = await this.fetch(`${this.base}/api/files?name=${encodeURIComponent(file.name)}&expires=${expiresDays}`,
+      { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+    if (r.status === 404 || r.status === 502) throw new JmapError('This server can’t send large files as links. Ask its administrator.');
+    return this.absolute((await aliasReply(r)).file);
+  }
+  /** null = this server doesn't run the account service. */
+  async sharedFiles(): Promise<SharedFile[] | null> {
+    const r = await this.fetch(`${this.base}/api/files`);
+    if (r.status === 404 || r.status === 502 || r.status === 503) return null;
+    return (await aliasReply(r)).files.map((f: SharedFile) => this.absolute(f));
+  }
+  async revokeFile(id: string): Promise<void> {
+    await aliasReply(await this.fetch(`${this.base}/api/files/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+  }
+  private absolute = (f: SharedFile): SharedFile => ({ ...f, url: (this.base || location.origin) + f.url });
 
   // ── Export (Settings → Export your data) ──────────────
 
@@ -664,6 +734,17 @@ export class Jmap {
     return aliasReply(r);
   }
 
+  /** Is sending suspended for this account (signup/abuse.mjs)? null = this server doesn't run the account service. */
+  async sendingStatus(): Promise<SendingStatus | null> {
+    const r = await this.fetch(`${this.base}/api/sending`).catch(() => null);
+    if (!r || r.status === 404 || r.status === 502 || r.status === 503) return null;
+    return aliasReply(r);
+  }
+  /** Lift your own suspension (once a day; a second suspension within a week needs an admin). Errors carry `code`. */
+  async unblockSending(): Promise<void> {
+    await aliasReply(await this.fetch(`${this.base}/api/sending/unblock`, { method: 'POST' }));
+  }
+
   /** The identity a draft sends as: its chosen From address if the account still owns it, else the main one. */
   private async identityFor(d: Draft): Promise<Identity> {
     const main = await this.getIdentity();
@@ -673,10 +754,12 @@ export class Jmap {
 
   /** Email/set create payload. Stalwart rejects explicit nulls on create, so optional fields are omitted when empty. */
   private async compose(d: Draft, mailboxId: string) {
-    const me = await this.identityFor(d);
+    const me = await (this.via ?? this).identityFor(d);
+    const fromMe = [me.name && me.name !== me.email ? { name: me.name, email: me.email } : { email: me.email }];
+    const behalf = d.onBehalfOf ?? (this.via && this.owner);
     return {
       mailboxIds: { [mailboxId]: true }, keywords: { $draft: true, $seen: true },
-      from: [me.name && me.name !== me.email ? { name: me.name, email: me.email } : { email: me.email }],
+      from: behalf ? [{ email: behalf }] : fromMe, ...(behalf && { sender: fromMe }),
       subject: d.subject,
       ...(d.to.length && { to: d.to.map(clean) }),
       ...(d.cc.length && { cc: d.cc.map(clean) }),
@@ -856,6 +939,14 @@ export class Jmap {
    */
   /** sendAt: schedule for later (SMTP FUTURERELEASE HOLDUNTIL, up to 30 days on Stalwart). */
   async send(d: Draft, boxes: Mailbox[], sendAt?: Date): Promise<{ submissionId: string; emailId: string }> {
+    if (!this.mayAct) throw new JmapError(`You can read ${this.owner} but not send from it. Ask its owner for permission to send.`);
+    if (this.via) {
+      // Delegation: Stalwart has no send-as for another account, so it goes out from your own account with
+      // From: owner and Sender: you. ponytail: the Sent copy and Undo live in your own mailbox, not the owner's.
+      const r = await this.via.send({ ...d, id: undefined, onBehalfOf: this.owner }, await this.via.mailboxes(), sendAt);
+      if (d.id) await this.deleteDraft(d.id).catch(() => {}); // the draft was saved in the owner's Drafts
+      return r;
+    }
     const me = await this.identityFor(d);
     const drafts = this.box(boxes, 'drafts'), sent = this.box(boxes, 'sent');
     const [created, sub] = await this.call([
@@ -870,7 +961,10 @@ export class Jmap {
         onSuccessUpdateEmail: { '#s': { [`mailboxIds/${drafts}`]: null, [`mailboxIds/${sent}`]: true, 'keywords/$draft': null,
           ...(d.followUpDays && { 'keywords/$followup': true, [`keywords/$followup-${Math.floor((+(sendAt ?? new Date()) + d.followUpDays * 86400e3) / 1000)}`]: true }) } },
       }, 's'],
-    ]);
+    ]).catch((e) => {
+      // Sending suspended (signup/abuse.mjs): the server refuses the submission; the message stays in Drafts.
+      throw /^forbidden:/.test((e as Error).message) ? new JmapError('Sending is switched off for your account right now, so this wasn’t sent. It’s saved in Drafts. The notice above your inbox says why and what to do.') : e;
+    });
     return { submissionId: sub.created.s.id, emailId: created.created.d.id };
   }
 
@@ -923,6 +1017,7 @@ export class Jmap {
 
   /** Recipients the server refused for this submission, with its reason in plain words (empty = all fine so far). */
   async deliveryProblems(submissionId: string): Promise<{ email: string; reason: string }[]> {
+    if (this.via) return this.via.deliveryProblems(submissionId);
     const [r] = await this.call([['EmailSubmission/get', { accountId: this.accountId, ids: [submissionId], properties: ['deliveryStatus', 'undoStatus'] }, 'g']]);
     const st = r.list[0]?.deliveryStatus ?? {};
     return Object.entries(st as Record<string, { delivered: string; smtpReply: string }>)
@@ -952,6 +1047,7 @@ export class Jmap {
   async declineReadReceipt(id: string) { await this.call([['Email/set', { accountId: this.accountId, update: { [id]: { 'keywords/$mdnsent': true } } }, 'k']]); }
 
   async undoSend(submissionId: string, emailId: string, boxes: Mailbox[]): Promise<void> {
+    if (this.via) return this.via.undoSend(submissionId, emailId, await this.via.mailboxes());
     await this.call([
       ['EmailSubmission/set', { accountId: this.accountId, update: { [submissionId]: { undoStatus: 'canceled' } } }, 'u'],
       ['Email/set', { accountId: this.accountId, update: { [emailId]: {
@@ -1125,6 +1221,91 @@ export class Jmap {
     }
     return [...seen.values()].sort((x, y) => y.n - x.n).map((x) => x.a);
   }
+
+  // ── Sharing (RFC 8621 shareWith + RFC 9670 sharing): folders, delegation, team mailboxes, team comments ──
+
+  /** A client for another account in your session (shared folders, delegated or team mailbox). Shares your request gate. */
+  as(acc: SharedAccount): Jmap {
+    const c = new Jmap(this.authHeader, this.onUnauthorized, this.base, acc.id, this.username, this.apiUrl, this.downloadUrl, this.uploadUrl, this.eventSourceUrl);
+    Object.assign(c, { maxConcurrent: this.maxConcurrent, vapidKey: this.vapidKey, owner: acc.name, mayAct: acc.canSend, via: acc.team ? undefined : this });
+    return c;
+  }
+  /** Cache key prefix: your username, plus the account when this is someone else's (starts with `username:`). */
+  get scope() { return this.owner ? `${this.username}:@${this.accountId}` : this.username; }
+
+  /** Every other account you can open, with the folders you can see in each. Read fresh: shares change. */
+  async sharedAccounts(): Promise<SharedAccount[]> {
+    const res = await this.fetch(`${this.base}/jmap/session`);
+    if (!res.ok) throw new JmapError(`The mail server returned an error (${res.status})`);
+    const s = await res.json();
+    const others = Object.entries(s.accounts as Record<string, { name: string; accountCapabilities: Record<string, unknown> }>)
+      .filter(([id, a]) => id !== this.accountId && a.accountCapabilities['urn:ietf:params:jmap:mail']).slice(0, 16); // ponytail: 16 = calls per request
+    if (!others.length) return [];
+    const got = await this.call(others.map(([id]) => ['Mailbox/get', { accountId: id, properties: ['name', 'role', 'unreadEmails', 'sortOrder', 'parentId', 'myRights'] }, id]));
+    return others.map(([id, a], i) => {
+      const boxes = orderMailboxes((got[i].list as Mailbox[]).filter((b) => b.role || ![TEMPLATES, TASKS, NOTES, COMMENTS].includes(b.name)));
+      const team = !!a.accountCapabilities['urn:ietf:params:jmap:submission'];
+      const inbox = boxes.find((b) => b.role === 'inbox');
+      return { id, name: a.name, boxes, team, whole: team || !!inbox, canSend: team || !!inbox?.myRights?.maySubmit };
+    });
+  }
+
+  /** Someone on this server by exact address (the account service: Stalwart's directory search is off for users). */
+  async findPerson(email: string): Promise<Person> {
+    const r = await this.fetch(`${this.base}/api/principal?email=${encodeURIComponent(email.trim())}`);
+    if ([404, 502, 503].includes(r.status) && !r.headers.get('content-type')?.includes('json')) throw new JmapError('Sharing needs the account service, which isn’t running on this server.');
+    return (await aliasReply(r)).principal;
+  }
+  /** Everyone your folders are shared with, by principal id (the account service: Principal/get can't see them). */
+  async sharedWith(): Promise<Map<string, Person>> {
+    const r = await this.fetch(`${this.base}/api/principal?shared=1`);
+    if (!r.ok && !r.headers.get('content-type')?.includes('json')) return new Map(); // no account service: ids only
+    return new Map(((await aliasReply(r)).people as Person[]).map((p) => [p.id, p]));
+  }
+  /** Who each of your folders is shared with, and how. */
+  async shares(): Promise<{ id: string; name: string; role: string | null; shareWith: Record<string, Rights> }[]> {
+    const [r] = await this.call([['Mailbox/get', { accountId: this.accountId, properties: ['name', 'role', 'shareWith'] }, 's']], [SHARE]);
+    return (r.list as { id: string; name: string; role: string | null; shareWith: Record<string, Rights> | null }[]).map((b) => ({ ...b, shareWith: b.shareWith ?? {} }));
+  }
+  /** Give someone rights on these folders, or take them away (null). */
+  async share(mailboxIds: string[], principalId: string, rights: Rights | null) {
+    await this.call([['Mailbox/set', { accountId: this.accountId, update: Object.fromEntries(mailboxIds.map((id) => [id, { [`shareWith/${principalId}`]: rights }])) }, 's']], [SHARE]);
+  }
+  /**
+   * Delegation: full access to every folder, and optionally permission to send on your behalf (maySubmit on the Inbox).
+   * ponytail: folders made later aren't shared until delegation is saved again. Send permission is checked by the
+   * app only: Stalwart lets any user put any From address on mail (see PARITY.md).
+   */
+  async delegate(principalId: string, sendOnBehalf: boolean | null) {
+    const ids = (await this.mailboxes(true)).map((b) => b.id);
+    await this.share(ids, principalId, sendOnBehalf === null ? null : { ...ACCESS.full, maySubmit: sendOnBehalf });
+  }
+
+  // Team comments: like Tasks, small messages in a hidden "Comments" folder of the shared account, one keyword per
+  // conversation. They are never submitted, so nothing goes outside. ponytail: keyed by thread id; if the server
+  // merges threads, older comments stay on the old id. The author is the From address, which members could forge.
+  private commentKey = (threadId: string) => (/^[\w-]{1,64}$/.test(threadId) ? `$om-thread-${threadId}` : null);
+  async comments(threadId: string): Promise<Comment[]> {
+    const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === COMMENTS), k = this.commentKey(threadId);
+    if (!box || !k) return [];
+    const [, r] = await this.call([
+      ['Email/query', { accountId: this.accountId, filter: { operator: 'AND', conditions: [{ inMailbox: box.id }, { hasKeyword: k }] }, sort: [{ property: 'receivedAt', isAscending: true }], limit: 500 }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: ['from', 'receivedAt', 'textBody', 'bodyValues'], fetchTextBodyValues: true }, 'g'],
+    ]);
+    return (r.list as any[]).map((e) => ({ id: e.id, author: e.from?.[0] ?? { name: null, email: '' }, at: e.receivedAt,
+      text: e.textBody?.[0] ? e.bodyValues?.[e.textBody[0].partId]?.value ?? '' : '' }));
+  }
+  async addComment(threadId: string, text: string, name?: string): Promise<string> {
+    const k = this.commentKey(threadId);
+    if (!k || !text.trim()) throw new JmapError('Write something first');
+    const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === COMMENTS)?.id ?? await this.createMailbox(COMMENTS);
+    const [r] = await this.call([['Email/set', { accountId: this.accountId, create: { c: {
+      mailboxIds: { [box]: true }, keywords: { $seen: true, [k]: true }, from: [name ? { name, email: this.username } : { email: this.username }],
+      subject: 'Team comment', bodyValues: { t: { value: text.trim().slice(0, 10_000) } }, textBody: [{ partId: 't', type: 'text/plain' }],
+    } } }, 'c']]);
+    return r.created.c.id;
+  }
+  deleteComment(id: string) { return this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
 }
 
 function toCalEvent(e: any): CalEvent {

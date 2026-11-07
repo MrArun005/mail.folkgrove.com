@@ -306,6 +306,9 @@ button.chip:hover { background: var(--hover); border-color: var(--muted); }
 .chip .fsize { color: var(--muted); white-space: nowrap; }
 .chip .btn { margin-right: calc(-1 * var(--s2)); color: var(--muted); }
 .chip.pending { color: var(--muted); border-style: dashed; }
+a.chip { text-decoration: none; }
+a.chip:hover { background: var(--hover); border-color: var(--muted); }
+.chip .flink { color: var(--accent); font-weight: 500; white-space: nowrap; }
 
 /* ═══ Compose sheet ════════════════════════════════════ */
 .compose {
@@ -627,6 +630,16 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .switch input:disabled + span { opacity: .5; }
 .alias-list .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alias-list li.off code { opacity: .55; }
+/* Settings → Your domain (Domains.tsx): long DNS values wrap instead of widening the sheet */
+.domain-card { display: grid; gap: var(--s2); min-width: 0; padding: var(--s3) 0; }
+.domain-card > *, .dns-list li > .grow { min-width: 0; }
+.domain-head { display: flex; align-items: center; gap: var(--s2); min-height: var(--h-sm); }
+.domain-head .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dns-list li { align-items: flex-start; padding-block: var(--s2); }
+.rule-list.dns-list li > .grow { display: grid; gap: 2px; white-space: normal; }
+.dns-list li > .grow > code { font-size: var(--t-sm); overflow-wrap: anywhere; user-select: all; }
+.dns-list .pill { flex: none; margin-top: 2px; }
+.domain-at { align-self: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
 
 .list-more { display: flex; justify-content: center; padding: var(--s3) 0 var(--s6); }
 .pill--warn { background: color-mix(in srgb, var(--star) 20%, transparent); color: color-mix(in srgb, var(--star) 70%, var(--ink)); }
@@ -804,3 +817,24 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   .admin-table .acts { display: flex; flex-wrap: wrap; gap: var(--s1); white-space: normal; padding-top: var(--s1); }
   .admin-table .acts .btn--sm { height: var(--h-md); } /* tap targets on phones (DESIGN §10) */
 }
+
+/* Sharing: "Shared with me" in the rail, share panel in Settings → Folders, team comments under a conversation */
+.shared-rail .rail-link { margin: var(--s1) var(--s3); font-size: var(--t-sm); }
+.shared-banner { margin: 0; overflow-wrap: anywhere; }
+.rule-list li:has(.share-panel) { flex-wrap: wrap; padding-bottom: var(--s3); }
+.share-panel { flex-basis: 100%; display: grid; gap: var(--s2); }
+.share-panel .inline-form, .settings .inline-form { flex-wrap: wrap; }
+.team-comments { display: grid; gap: var(--s3); margin: var(--s6) 0 0 var(--text-col); padding-top: var(--s4); border-top: 1px solid var(--rule); }
+.team-comments .rail-label { padding: 0; margin: 0; }
+.comment { padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--hover); }
+.comment-meta { display: flex; align-items: center; gap: var(--s2); color: var(--muted); font-size: var(--t-sm); }
+.comment-meta b { color: var(--ink); font-weight: 600; }
+.comment-meta .btn { margin-left: auto; }
+.comment-text { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--t-md); color: var(--ink); }
+@media (max-width: 860px) { .shared-banner { flex: none; white-space: nowrap; } .shared-rail .rail-label, .shared-rail .rail-link { display: none; } .team-comments { margin-left: 0; } }
+.admin-table .member { display: flex; align-items: center; gap: var(--s1); }
+/* Settings → Shared files: name and details wrap on narrow screens instead of hiding the expiry. */
+.files-list li > .grow { white-space: normal; overflow-wrap: anywhere; padding: var(--s2) 0; }
+/* Sending suspended (Sending.tsx) */
+.banner--warn { background: color-mix(in srgb, var(--star) 18%, transparent); color: var(--ink); }
+.banner--warn .grow { flex-basis: 100%; } /* the action goes under the explanation */

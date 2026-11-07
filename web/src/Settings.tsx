@@ -6,10 +6,14 @@ import type { Rule, Vacation } from './rules';
 import { Button } from './Button';
 import { SecuritySection } from './Security';
 import { AddressesSection } from './Addresses';
+import { SharedFilesSection } from './SharedFiles';
+import { DomainsSection } from './Domains';
 import { ImportSection } from './Import';
 import { DeleteAccountSection, ExportSection } from './Export';
+import { InstallSection } from './Install';
 import { disablePush, enablePush, notifyOn, notifySupported, setNotify } from './notify';
 import { chooseSignature, textToHtml, type Signature } from './mailutil';
+import { DelegatesSection } from './Sharing';
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -143,11 +147,14 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         </section>
 
         <AddressesSection client={client} onChanged={onIdentitiesChanged} />
+        <SharedFilesSection client={client} />
+        <DomainsSection client={client} onChanged={onIdentitiesChanged} />
         <SecuritySection username={client.username} />
         <CategoriesSection client={client} boxes={boxes} />
         <ScreenerSection client={client} boxes={boxes} />
         <FiltersSection client={client} boxes={boxes} prefill={prefillRule} />
         <FoldersSection client={client} boxes={boxes} onChanged={onFoldersChanged} />
+        <DelegatesSection client={client} />
         <ImportSection client={client} onDone={onFoldersChanged} />
         <ExportSection client={client} />
         <RetentionSection client={client} />
@@ -166,6 +173,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
             <p className="fine">{pushNote || 'On this device, while OpenMail isn’t the window you’re looking at.'}</p>
           </section>
         )}
+        <InstallSection />
 
         <section>
           <h3>Appearance</h3>

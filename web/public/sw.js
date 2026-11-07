@@ -4,13 +4,22 @@
 // In development it is registered with ?push-only, so it never caches anything (the dev server must stay live).
 const PUSH_ONLY = new URL(self.location.href).searchParams.has('push-only');
 const SHELL = 'openmail-shell-v1';
-self.addEventListener('install', (e) => { self.skipWaiting(); e.waitUntil(caches.open(SHELL).then((c) => c.addAll(['/', '/icon.svg']))); });
+self.addEventListener('install', (e) => { self.skipWaiting(); e.waitUntil(caches.open(SHELL).then((c) => c.addAll(['/', '/icon.svg', '/icons/icon-192.png']))); });
 self.addEventListener('activate', (e) => e.waitUntil(
   caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== SHELL).map((k) => caches.delete(k)))).then(() => self.clients.claim()),
 ));
 self.addEventListener('fetch', (e) => {
-  if (PUSH_ONLY) return;
   const url = new URL(e.request.url);
+  // "Share to OpenMail" (manifest share_target): keep the shared files for the page, then open Compose with them.
+  if (e.request.method === 'POST' && url.origin === location.origin && url.pathname === '/share') {
+    // Any website can post here too (a form can't be told apart from the share sheet in a service worker), so the
+    // page asks before uploading shared files (Mail.tsx), and nothing is ever sent without the person pressing Send.
+    // Where the browser does show Sec-Fetch-Site here, refuse anything from another site as an extra layer.
+    const site = e.request.headers.get('Sec-Fetch-Site');
+    if (site && site !== 'none' && site !== 'same-origin') { e.respondWith(Response.redirect('/', 303)); return; }
+    e.respondWith(share(e.request)); return;
+  }
+  if (PUSH_ONLY) return;
   if (e.request.method !== 'GET' || url.origin !== location.origin || /^\/(jmap|api|\.well-known)/.test(url.pathname)) return;
   if (e.request.mode === 'navigate') {
     // Network first for the page, so updates arrive; cached shell when offline.
@@ -23,6 +32,17 @@ self.addEventListener('fetch', (e) => {
     return r;
   })));
 });
+
+async function share(request) {
+  const form = await request.formData();
+  const cache = await caches.open('om-share');
+  await Promise.all((await cache.keys()).map((k) => cache.delete(k))); // only the newest share
+  await Promise.all(form.getAll('files').filter((f) => typeof f !== 'string').map((f, i) =>
+    cache.put(`/share/${i}`, new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream', 'X-Name': encodeURIComponent(f.name) } }))));
+  const q = new URLSearchParams({ share: '' });
+  for (const k of ['title', 'text', 'url']) if (form.get(k)) q.set(k, form.get(k));
+  return Response.redirect(`/?${q}`, 303);
+}
 
 // ── Push ──────────────────────────────────────────────
 // The server's pushes carry no message content (only "something was delivered"), so the notification can't leak
@@ -39,8 +59,9 @@ self.addEventListener('push', (e) => {
     // A tab you're looking at handles it. Otherwise always show one (browsers require it for every push); a hidden
     // open tab then replaces this generic one with sender and subject (same tag), so there's never two.
     if (tabs.some((t) => t.visibilityState === 'visible')) return;
+    self.navigator.setAppBadge?.().catch(() => {}); // a dot on the app icon: the count comes when the app opens
     return self.registration.showNotification('New mail', {
-      body: 'Open OpenMail to read it.', tag: 'om-new-mail', renotify: true, icon: '/icon.svg', badge: '/icon.svg',
+      body: 'Open OpenMail to read it.', tag: 'om-new-mail', renotify: true, icon: '/icons/icon-192.png', badge: '/icons/badge-96.png',
     });
   }));
 });
