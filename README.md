@@ -41,6 +41,10 @@ PLAN.md, PARITY.md   roadmap; feature-by-feature plan to beat Zoho Mail and Gmai
 
 Email HTML is untrusted. Each message renders in a sandboxed `<iframe>` with no scripts and no same-origin access. A Content-Security-Policy blocks all network requests and blocks remote images (tracking pixels) until you click **Load images**. If you find a way around this, please report it privately rather than opening a public issue.
 
+## Data rights and legal drafts
+
+Settings → **Export your data** downloads everything (mail as .mbox, contacts .vcf, calendar .ics, settings .json); Settings → **Delete your account** erases it, and the address is retired, never reused. Drafts of the terms of service, privacy policy, acceptable use policy, law enforcement guidelines and inactive-account policy are in [docs/legal/](docs/legal/) (served at `/legal/*.html`; rebuild with `node docs/legal/build.mjs`). **They are drafts: have a lawyer review them before public launch.**
+
 ## Contributing
 
 Pick a ⬜ or 🟡 row in [PARITY.md](PARITY.md), open an issue saying you're on it, and send a PR. Keep changes small; prefer platform features over new dependencies.

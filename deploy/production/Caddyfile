@@ -17,7 +17,7 @@
 		file_server
 	}
 	# Installable-app files at the root of the build.
-	@pwa path /sw.js /manifest.webmanifest /icon.svg
+	@pwa path /sw.js /manifest.webmanifest /icon.svg /legal/*
 	handle @pwa {
 		root * /srv
 		header /sw.js Cache-Control "no-cache"
@@ -33,7 +33,7 @@
 	# and the web client simply hides its "Create an account" link.
 	# X-Real-IP is always overwritten with the real client address (clients can't spoof it), so per-IP rate
 	# limits work. Run the signup container with CLIENT_IP_HEADER=x-real-ip.
-	@signup path /api/signup /api/username-available /api/aliases /api/aliases/* /api/session/*
+	@signup path /api/signup /api/username-available /api/aliases /api/aliases/* /api/session/* /api/account
 	handle @signup {
 		reverse_proxy signup:3000 {
 			header_up X-Real-IP {remote_host}

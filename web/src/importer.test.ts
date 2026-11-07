@@ -18,7 +18,7 @@ it('splits an mbox at "From " lines, even when a separator straddles two chunks'
   for (const size of [7, 64, 100000]) {
     const msgs = await all(splitMbox(chunks(mbox, size)));
     expect(msgs).toHaveLength(2);
-    expect(msgs[0]).toBe('X-Gmail-Labels: Inbox,Starred,Work/Clients,Category Promotions\nSubject: one\n\nHello\nFrom the archives\nbye');
+    expect(msgs[0]).toBe('X-Gmail-Labels: Inbox,Starred,Work/Clients,Category Promotions\nSubject: one\n\nHello\nFrom the archives\nbye\n'); // keeps its own last line break
     expect(msgs[1].startsWith('X-Gmail-Labels: Sent,Unread')).toBe(true);
   }
 });

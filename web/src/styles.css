@@ -153,6 +153,7 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 .login .btn { width: 100%; margin-top: var(--s1); }
 .login .fine { text-align: center; }
 .login .btn.alt { justify-self: center; font-size: var(--t-sm); }
+.login .legal-links { text-align: center; font-size: var(--t-xs); }
 .login .fine.ok { color: var(--safe); }
 .login .fine, .login .error { margin-top: calc(-1 * var(--s2)); }
 .login .fine:last-child { margin-top: 0; }
@@ -603,7 +604,7 @@ select.input { appearance: auto; }
 .totp-setup { display: grid; grid-template-columns: 168px 1fr; gap: var(--s4); align-items: start; }
 .totp-setup .qr { width: 168px; height: 168px; image-rendering: pixelated; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--white); padding: var(--s1); }
 .totp-setup .steps { display: grid; gap: var(--s3); }
-.totp-setup .actions { display: flex; gap: var(--s2); }
+.totp-setup .actions, .delete-account .actions { display: flex; gap: var(--s2); }
 code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .inline-form { display: flex; gap: var(--s2); }
 .inline-form .input { flex: 1; min-width: 0; }
