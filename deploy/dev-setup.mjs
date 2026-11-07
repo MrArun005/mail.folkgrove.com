@@ -68,6 +68,9 @@ const admin = JSON.parse(readFileSync(SECRET_FILE, 'utf8'));
     : { create: { c: { clientId: 'openmail-web', ...fields } } }, 'c']]);
 }
 
+// Same sending limit as production (install.sh): 500 recipients per message for signed-in senders, 100 on port 25.
+await jmap(admin, [['x:MtaStageRcpt/set', { update: { singleton: { maxRecipients: { match: { 0: { if: '!is_empty(authenticated_as)', then: '500' } }, else: '100' } } } }, 'r']]);
+
 // Dev only: switch off inbound rate limits. The test suite sends bursts of mail to one mailbox and would hit
 // "25 per hour per sender domain and recipient" within a couple of runs. Production keeps Stalwart's defaults.
 {

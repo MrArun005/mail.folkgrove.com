@@ -324,6 +324,16 @@ fi
 api "[[\"x:MtaOutboundStrategy/set\",{\"update\":{\"singleton\":{\"route\":{
   \"match\":{\"0\":{\"if\":\"is_local_domain(rcpt_domain)\",\"then\":\"'local'\"}},\"else\":\"$route\"}}}},\"s\"]]" >/dev/null
 
+# Sending limits (docs/research/scale.md): signed-in senders may address 500 recipients per message (the default
+# 100 stops a 150-person message from Thunderbird or Outlook; port 25 keeps 100), outgoing mail is spam-scanned
+# too, and each account can reach at most 2,000 outside recipients a day (raise for trusted users).
+api '[["x:MtaStageRcpt/set",{"update":{"singleton":{"maxRecipients":{"match":{"0":{"if":"!is_empty(authenticated_as)","then":"500"}},"else":"100"}}}},"r"]]' >/dev/null
+api '[["x:MtaStageData/set",{"update":{"singleton":{"enableSpamFilter":{"match":{},"else":"true"}}}},"d"]]' >/dev/null
+if ! api '[["x:MtaInboundThrottle/get",{"ids":null,"properties":["description"]},"t"]]' | grep -q 'Per-account daily recipient cap'; then
+  api '[["x:MtaInboundThrottle/set",{"create":{"t":{"description":"Per-account daily recipient cap","enable":true,"key":{"authenticatedAs":true},
+    "match":{"match":{},"else":"!is_empty(authenticated_as) && !is_local_domain(rcpt_domain)"},"rate":{"count":2000,"period":86400000}}}},"t"]]' >/dev/null
+fi
+
 # Apply the changes above (listeners only take effect after a restart).
 if [ "$NEED_RESTART" = 1 ]; then restart_stalwart
 else api '[["x:Action/set",{"create":{"a":{"@type":"ReloadSettings"}}},"a"]]' >/dev/null; fi

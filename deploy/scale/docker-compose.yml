@@ -1,0 +1,114 @@
+# Multi-node reference stack (open-source features only). Not production: fixed dev passwords, no TLS
+# certificates, everything on one Docker host. It exists to prove the moving parts fit together.
+#
+#   docker compose -f deploy/scale/docker-compose.yml up -d
+#   node deploy/scale/setup.mjs          # configures stores, coordinator, limits; restarts the nodes
+#   node deploy/scale/loadtest.mjs --port 12525 -n 200    # SMTP through the load balancer
+#
+# Layout (see docs/research/scale.md for why):
+#   haproxy  ── TCP + PROXY protocol v2 ──►  stalwart-1, stalwart-2   (identical, stateless nodes)
+#   stalwart-* ──► postgres  (data store + search store; also holds the mail queue)
+#              ──► seaweedfs (S3-compatible blob store: message bodies, attachments)
+#              ──► valkey    (in-memory store: rate-limit counters, locks; and the cluster coordinator)
+#
+# Host ports (chosen not to clash with the dev server in deploy/docker-compose.yml):
+#   12525 SMTP (25)   12465 SMTPS submission (465)   12993 IMAPS (993)   18081 HTTP/JMAP/admin (8080)
+#   127.0.0.1:18091 / 18092  stalwart-1 / stalwart-2 HTTP directly (setup + per-node checks; bypasses haproxy)
+#
+# ponytail: MinIO is not used. Its Docker Hub / quay images are no longer publicly pullable (checked
+# 2026-11-07), so this uses SeaweedFS (Apache-2.0). Any S3-compatible store works: AWS S3, Garage,
+# Ceph RGW, Cloudflare R2, Backblaze B2.
+name: openmail-scale
+
+x-stalwart: &stalwart
+  image: stalwartlabs/stalwart:v1.0.3
+  init: true
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+    valkey: { condition: service_started }
+  volumes:
+    # The only per-node storage setting: where the shared data store is. Everything else lives in it.
+    - ./config.json:/etc/stalwart/config.json:ro
+  networks: [mail]
+
+services:
+  stalwart-1:
+    <<: *stalwart
+    hostname: stalwart-1
+    environment:
+      STALWART_HOSTNAME: stalwart-1       # unique per node: the node id lease is keyed on it
+      PG_PASSWORD: ${PG_PASSWORD:-scale-dev-pg}
+      # ponytail: dev-only fixed admin. With config.json present there is no bootstrap wizard, so the
+      # recovery admin is the first way in. In production create a real admin, then remove this.
+      STALWART_RECOVERY_ADMIN: admin:${ADMIN_PASSWORD:-scale-dev-admin}
+      S3_SECRET: ${S3_SECRET:-scale-dev-s3-secret}
+    ports: ["127.0.0.1:18091:8080"]
+
+  stalwart-2:
+    <<: *stalwart
+    hostname: stalwart-2
+    # Start after node 1 is healthy: two nodes creating the PostgreSQL tables of an empty database at the
+    # same moment fails ("duplicate key value violates unique constraint pg_type_typname_nsp_index").
+    depends_on:
+      postgres: { condition: service_healthy }
+      valkey: { condition: service_started }
+      stalwart-1: { condition: service_healthy }
+    environment:
+      STALWART_HOSTNAME: stalwart-2
+      PG_PASSWORD: ${PG_PASSWORD:-scale-dev-pg}
+      STALWART_RECOVERY_ADMIN: admin:${ADMIN_PASSWORD:-scale-dev-admin}
+      S3_SECRET: ${S3_SECRET:-scale-dev-s3-secret}
+    ports: ["127.0.0.1:18092:8080"]
+
+  haproxy:
+    image: haproxy:3.0-alpine
+    restart: unless-stopped
+    depends_on: [stalwart-1, stalwart-2]
+    volumes: ["./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"]
+    ports: ["12525:25", "12465:465", "12993:993", "18081:8080"]
+    networks:
+      # Fixed address: it is the only source Stalwart trusts to send PROXY protocol headers.
+      mail: { ipv4_address: 172.30.0.10 }
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stalwart
+      POSTGRES_USER: stalwart
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-scale-dev-pg}
+    # Each node opens up to poolMaxConnections (default 16-32) per store that points here; keep the sum
+    # over all nodes and stores below max_connections.
+    command: ["postgres", "-c", "max_connections=300", "-c", "shared_buffers=512MB"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "stalwart"]
+      interval: 2s
+      retries: 30
+    volumes: [pg-data:/var/lib/postgresql/data]
+    networks: [mail]
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    # Stalwart's advice: a memory cap and an eviction policy that only evicts keys with a TTL.
+    command: ["valkey-server", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru", "--save", ""]
+    networks: [mail]
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.97
+    restart: unless-stopped
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json", "-volume.max=0"]
+    volumes:
+      - ./seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro
+      - s3-data:/data
+    networks: [mail]
+
+networks:
+  mail:
+    ipam:
+      config: [{ subnet: 172.30.0.0/24 }]
+
+volumes:
+  pg-data:
+  s3-data:

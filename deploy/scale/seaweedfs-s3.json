@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "stalwart",
+      "credentials": [{ "accessKey": "stalwart", "secretKey": "scale-dev-s3-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
