@@ -1,6 +1,6 @@
 FROM node:20-alpine
 WORKDIR /app
-COPY package.json lib.mjs server.mjs aliases.mjs session.mjs mailer.mjs ./
+COPY package.json lib.mjs server.mjs aliases.mjs session.mjs mailer.mjs tiers.mjs ./
 USER node
 ENV PORT=3000
 EXPOSE 3000

@@ -63,3 +63,27 @@ test('sign-up needs a code sent to an existing address; wrong code refused; righ
   assert.equal((await fetch(`${STALWART}/jmap/session`, { headers: { Authorization: basic(`${username}@openmail.test`, password) } })).status, 200, 'the new account works');
   assert.equal((await signup({ username, password, recoveryEmail: 'real.person@example.com', verifyCode: code })).status, 400, 'a code works once');
 });
+
+test('tiers: a new sign-up lands on the new-accounts list; promotion after the window removes it', { skip }, async () => {
+  const admin = JSON.parse(readFileSync(ADMIN_FILE, 'utf8'));
+  const H = { 'Content-Type': 'application/json', Authorization: basic(admin.user, admin.pass) };
+  const api = async (m) => (await (await fetch(`${STALWART}/jmap/`, { method: 'POST', headers: H, body: JSON.stringify({ using: ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap'], methodCalls: m }) })).json()).methodResponses[0][1];
+  const { tiers } = await import('../tiers.mjs');
+  const domainId = (await api([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).list.find((d) => d.name === 'openmail.test').id;
+  const name = `t-tier-${Date.now().toString(36)}`, addr = `${name}@openmail.test`;
+  const created = await api([['x:Account/set', { create: { n: { '@type': 'User', name, domainId, credentials: { 0: { '@type': 'Password', secret: 'tier test pass 1234' } } } } }, 'c']]);
+  const t = tiers({ jmap: api, getDomainId: async () => domainId, cfg: {} });
+  try {
+    await t.markNew(addr);
+    const onList = async () => (await api([['x:MemoryLookupKey/query', { filter: { namespace: 'new-accounts' } }, 'q']])).ids.length &&
+      (await api([['x:MemoryLookupKey/get', { ids: (await api([['x:MemoryLookupKey/query', { filter: { namespace: 'new-accounts' } }, 'q']])).ids }, 'g']])).list.some((k) => k.key === addr);
+    assert.ok(await onList(), 'marked new');
+    assert.ok(!(await t.promote(Date.now())).includes(addr), 'not yet: still inside the window');
+    let promoted = [];
+    for (let i = 0; i < 20 && !promoted.includes(addr); i++) { await new Promise((r) => setTimeout(r, 250)); promoted = await t.promote(Date.now() + 15 * 86400e3); }
+    assert.ok(promoted.includes(addr), 'promoted after 14 days');
+    assert.ok(!(await onList()), 'off the list');
+  } finally {
+    await api([['x:Account/set', { destroy: [created.created.n.id] }, 'd']]);
+  }
+});

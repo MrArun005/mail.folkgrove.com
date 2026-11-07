@@ -69,7 +69,8 @@ const admin = JSON.parse(readFileSync(SECRET_FILE, 'utf8'));
 }
 
 // Same sending limit as production (install.sh): 500 recipients per message for signed-in senders, 100 on port 25.
-await jmap(admin, [['x:MtaStageRcpt/set', { update: { singleton: { maxRecipients: { match: { 0: { if: '!is_empty(authenticated_as)', then: '500' } }, else: '100' } } } }, 'r']]);
+await jmap(admin, [['x:MtaStageRcpt/set', { update: { singleton: { maxRecipients: { match: {
+  0: { if: "key_exists('new-accounts', authenticated_as)", then: '50' }, 1: { if: '!is_empty(authenticated_as)', then: '500' } }, else: '100' } } } }, 'r']]);
 
 // Dev only: the test suite deliberately fails sign-ins (wrong passwords, 2FA codes). Don't let that ban this machine.
 await jmap(admin, [['x:Security/set', { update: { singleton: { authBanRate: { count: 100000, period: 86400000 } } } }, 's']]);

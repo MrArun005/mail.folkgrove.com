@@ -327,7 +327,16 @@ api "[[\"x:MtaOutboundStrategy/set\",{\"update\":{\"singleton\":{\"route\":{
 # Sending limits (docs/research/scale.md): signed-in senders may address 500 recipients per message (the default
 # 100 stops a 150-person message from Thunderbird or Outlook; port 25 keeps 100), outgoing mail is spam-scanned
 # too, and each account can reach at most 2,000 outside recipients a day (raise for trusted users).
-api '[["x:MtaStageRcpt/set",{"update":{"singleton":{"maxRecipients":{"match":{"0":{"if":"!is_empty(authenticated_as)","then":"500"}},"else":"100"}}}},"r"]]' >/dev/null
+# New accounts (on the "new-accounts" list, kept by the account service for their first 14 days) get Zoho-like limits:
+# 50 recipients per message and 50 outside recipients an hour. Established: 500 and 500. Everyone: 2,000 a day.
+api '[["x:MtaStageRcpt/set",{"update":{"singleton":{"maxRecipients":{"match":{"0":{"if":"key_exists('"'"'new-accounts'"'"', authenticated_as)","then":"50"},"1":{"if":"!is_empty(authenticated_as)","then":"500"}},"else":"100"}}}},"r"]]' >/dev/null
+for tier in new established; do
+  if [ $tier = new ]; then m="key_exists('new-accounts', authenticated_as)"; n=50; else m="!key_exists('new-accounts', authenticated_as)"; n=500; fi
+  if ! api '[["x:MtaInboundThrottle/get",{"ids":null,"properties":["description"]},"t"]]' | grep -q "Hourly recipients ($tier)"; then
+    api "[[\"x:MtaInboundThrottle/set\",{\"create\":{\"t\":{\"description\":\"Hourly recipients ($tier)\",\"enable\":true,\"key\":{\"authenticatedAs\":true},
+      \"match\":{\"match\":{},\"else\":\"!is_empty(authenticated_as) && !is_local_domain(rcpt_domain) && $m\"},\"rate\":{\"count\":$n,\"period\":3600000}}}},\"t\"]]" >/dev/null
+  fi
+done
 api '[["x:MtaStageData/set",{"update":{"singleton":{"enableSpamFilter":{"match":{},"else":"true"}}}},"d"]]' >/dev/null
 if ! api '[["x:MtaInboundThrottle/get",{"ids":null,"properties":["description"]},"t"]]' | grep -q 'Per-account daily recipient cap'; then
   api '[["x:MtaInboundThrottle/set",{"create":{"t":{"description":"Per-account daily recipient cap","enable":true,"key":{"authenticatedAs":true},

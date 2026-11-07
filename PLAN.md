@@ -50,7 +50,8 @@ Tracked row by row in [PARITY.md](PARITY.md).
 - [x] Sign-up: invite codes, per-IP limits, reserved names, quotas, optional Turnstile
 - [ ] Hosted stack on PostgreSQL + S3 (reuse `deploy/scale/`), with PostgreSQL backups (pg_dump + WAL archiving)
 - [x] Email verification at sign-up: a 6-digit code to an existing address (hashed, 15 min, 5 tries, rate-limited per network and per address), sent from a system account through our own server
-- [ ] Abuse controls (each with numbers in [scale.md](docs/research/scale.md) §10): new-account sending tiers, outbound spam held for review, forwarding limits (one confirmed forwarding address per account), abuse@ mailbox, complaint/bounce-rate suspension (e.g. > 0.3% complaints over 7 days with ≥ 200 sends)
+- [x] Sending tiers (verified on the dev server): new accounts (first 14 days, `new-accounts` list kept by the account service) get 50 recipients per message and 50 outside recipients an hour; established 500 / 500; everyone 2,000 a day; filter forwarding is capped at one redirect per message (Stalwart default).
+- [ ] Abuse controls still to build: outbound spam held for review, automatic sending block on bounce/complaint spikes with self-service unblock, complaint/bounce-aware promotion (ARF reports), abuse@ mailbox
 - [ ] Monitoring: Prometheus + Alertmanager. Alerts: queue age > 30 min, delivery failures > 5% per provider for 15 min, back-pressure rising 5 min
 - [ ] Terms, privacy policy, GDPR export/delete, law-enforcement request process
 - Expected volume: invite-only, under 100k messages a day at launch. Scale stages 2–3 in scale.md are reference, not commitments.

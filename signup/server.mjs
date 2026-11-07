@@ -8,6 +8,7 @@ import { checkUsername, checkPassword, RateLimiter, ipKey, Invites } from './lib
 import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
 import { sendMail } from './mailer.mjs';
+import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 
 export function configFromEnv(env = process.env) {
@@ -218,7 +219,11 @@ export function createApp(cfg) {
       console.error('signup: create failed:', e.message);
       return fail(res, 503, 'unavailable', MSG.unavailable);
     }
-    if (r.created?.n) return send(res, 201, { ok: true, email: `${username}@${cfg.domain}` });
+    if (r.created?.n) {
+      // New accounts start on the lower sending tier (install.sh rules); failing to mark one is logged, not fatal.
+      await tiers.markNew(`${username}@${cfg.domain}`).catch((e) => console.error('signup: tier mark failed:', e.message));
+      return send(res, 201, { ok: true, email: `${username}@${cfg.domain}` });
+    }
 
     refund();
     const err = r.notCreated?.n ?? {};
@@ -245,6 +250,12 @@ export function createApp(cfg) {
   }
 
   const aliases = aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const tiers = makeTiers({ jmap, getDomainId, cfg });
+  // Promote aged-out new accounts once an hour (and shortly after start). unref: never keeps the process alive.
+  if (cfg.signupEnabled !== false) {
+    const run = () => tiers.promote().then((p) => p.length && console.log('tiers: promoted', p.length), (e) => console.error('tiers:', e.message));
+    setTimeout(run, 60_000).unref(); setInterval(run, 3600e3).unref();
+  }
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
   return createServer(async (req, res) => {
