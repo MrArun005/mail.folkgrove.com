@@ -25,7 +25,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test('From parsing: one address, never one hidden in a display name or comment', () => {
   for (const [v, want] of [['Ann <Ann@X.org>', 'ann@x.org'], ['"you@ok.org" <boss@x.org>', 'boss@x.org'], ['"Doe, Jane" <jane@x.org>', 'jane@x.org'],
-    ['a@x.org, b@y.org', ''], ['(you@ok.org) boss@x.org', 'boss@x.org'], ['<a@x.org> b@y.org', ''], ['', '']]) assert.equal(addressOf(v), want, v);
+    ['a@x.org, b@y.org', ''], ['(you@ok.org) boss@x.org', 'boss@x.org'], ['<a@x.org> b@y.org', ''], ['', ''],
+    ['"a\\"b@c.org" <z@w.org>', 'z@w.org'], ['((x) you@ok.org) boss@x.org', 'boss@x.org'], ['"unbalanced <a@b.org>', ''], ['(x") boss@x.org', 'boss@x.org'],
+    ['<a@b.org><c@d.org>', ''], ['=?utf-8?Q?boss@x.org?= <me@ok.org>', '']]) assert.equal(addressOf(v), want, v);
 });
 
 test('outbound score counts the message, not the connection', () => {

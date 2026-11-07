@@ -27,14 +27,34 @@ const HELD = 'This message looks like spam, so it is held for review. An adminis
 export const rawOf = (m) => m.headers.map(([n, v]) => `${n}:${v}`).join('') + '\r\n' + m.contents;
 const header = (m, name) => m.headers.find(([n]) => n.toLowerCase() === name)?.[1].trim() ?? '';
 /**
- * The one address in a From/Sender value, or '' when it holds none or several. Quoted display names and (comments)
- * are dropped first, so `"you@ok.org" <boss@x.org>` is boss@x.org, never you@ok.org.
+ * The one address in a From/Sender value, or '' when it holds none, several, or anything malformed. Scanned left to
+ * right (quoted strings with \-escapes, nested comments), so `"you@ok.org" <boss@x.org>` is boss@x.org. With an
+ * <angle-addr>, only that counts (the rest is the display name); without one, the value must be a single address.
  */
-export const addressOf = (v) => {
-  const bare = String(v).replace(/"(?:[^"\\]|\\.)*"/g, ' ').replace(/\((?:[^()\\]|\\.)*\)/g, ' ');
-  const found = [...new Set(bare.match(/[^\s<>,;:"()]+@[^\s<>,;:"()]+/g) ?? [])].map((a) => a.toLowerCase());
-  return found.length === 1 ? found[0] : '';
-};
+export function addressOf(v) {
+  let outside = '', angles = [], cur = null, depth = 0;
+  const t = String(v);
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (depth > 0) { if (c === '\\') i++; else if (c === '(') depth++; else if (c === ')') depth--; continue; }
+    if (c === '"') { // quoted string: skip to its unescaped end
+      let j = i + 1;
+      for (; j < t.length && t[j] !== '"'; j++) if (t[j] === '\\') j++;
+      if (j >= t.length) return '';
+      i = j; outside += ' '; continue;
+    }
+    if (c === '(') { depth = 1; outside += ' '; continue; }
+    if (c === ')') return '';
+    if (c === '<') { if (cur !== null) return ''; cur = ''; continue; }
+    if (c === '>') { if (cur === null) return ''; angles.push(cur); cur = null; outside += ' '; continue; }
+    if (cur !== null) cur += c; else outside += c;
+  }
+  if (depth || cur !== null) return '';
+  const addr = (x) => /^[^\s@<>()",;:\\]+@[^\s@<>()",;:\\]+$/.test(x.trim()) ? x.trim().toLowerCase() : '';
+  // An @ outside the brackets would be a second address (a display name can't hold a bare @): refuse.
+  if (angles.length) return angles.length === 1 && !outside.includes('@') ? addr(angles[0]) : '';
+  return addr(outside);
+}
 const headers = (m, name) => m.headers.filter(([n]) => n.toLowerCase() === name).map(([, v]) => v.trim());
 
 /** Score from ClassifySpam's tags, counting only tags about the content; reasons = the tags that added to it. */
