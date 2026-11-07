@@ -1,5 +1,6 @@
 // Minimal JMAP client (RFC 8620 core, 8621 mail + submission). Talks to Stalwart directly; we have no backend.
 import { SCRIPT_NAME, UPDATES } from './rules';
+import { isOffline, offlineStore } from './offline';
 import type { CalEvent } from './calendar';
 import { buildReply, parseInvite, replyWord, type Invite, type PartStat } from './ics';
 import { buildMdn } from './mailutil';
@@ -134,17 +135,25 @@ export class Jmap {
   }
 
   /** OAuth sign-in: tokens come from the session and are refreshed on expiry or a 401. */
-  static connect(session: { header(): Promise<string>; refresh(): Promise<void> }, base = ''): Promise<Jmap> {
-    return Jmap.open(() => session.header(), () => session.refresh(), base);
+  static connect(session: { header(): Promise<string>; refresh(): Promise<void>; remembered?: boolean; username?: string }, base = ''): Promise<Jmap> {
+    // Trusted device: keep the session details too, so the app can open with no connection.
+    return Jmap.open(() => session.header(), () => session.refresh(), base, session.remembered ? session.username : undefined);
   }
 
   /** base '' = same origin (prod, and dev via the Vite proxy). */
-  private static async open(authHeader: () => Promise<string>, onUnauthorized: (() => Promise<void>) | null, base: string): Promise<Jmap> {
+  private static async open(authHeader: () => Promise<string>, onUnauthorized: (() => Promise<void>) | null, base: string, offlineUser?: string): Promise<Jmap> {
     const probe = new Jmap(authHeader, onUnauthorized, base, '', '', '', '', '', '');
-    const res = await probe.fetch(`${base}/jmap/session`);
-    if (res.status === 401) throw new JmapError('Wrong email or password');
-    if (!res.ok) throw new JmapError(`The mail server returned an error (${res.status})`);
-    const s = await res.json();
+    let s;
+    try {
+      const res = await probe.fetch(`${base}/jmap/session`);
+      if (res.status === 401) throw new JmapError('Wrong email or password');
+      if (!res.ok) throw new JmapError(`The mail server returned an error (${res.status})`);
+      s = await res.json();
+      if (offlineUser) offlineStore.set(`${offlineUser}:session`, s);
+    } catch (e) {
+      s = offlineUser && isOffline(e) ? await offlineStore.get<any>(`${offlineUser}:session`) : undefined;
+      if (!s) throw e;
+    }
     // A mail session has a mail account; a security-only session (step-up) has just the Stalwart one.
     const accountId = s.primaryAccounts?.['urn:ietf:params:jmap:mail'] ?? s.primaryAccounts?.['urn:stalwart:jmap'] ?? Object.keys(s.accounts ?? {})[0];
     if (!accountId) throw new JmapError('This account has no mailbox');
@@ -153,6 +162,7 @@ export class Jmap {
     const c = new Jmap(authHeader, onUnauthorized, base, accountId, s.username, pathOnly(s.apiUrl), pathOnly(s.downloadUrl), pathOnly(s.uploadUrl), pathOnly(s.eventSourceUrl));
     c.maxConcurrent = Math.max(1, Number(s.capabilities?.['urn:ietf:params:jmap:core']?.maxConcurrentRequests) || 4);
     c.vapidKey = s.capabilities?.['urn:ietf:params:jmap:webpush-vapid']?.applicationServerKey ?? null;
+    c.offline = !!offlineUser;
     return c;
   }
 
@@ -177,6 +187,19 @@ export class Jmap {
   // with one slot left for the live-update stream, which the server counts as a request too.
   private static gates = new Map<string, { inFlight: number; waiting: (() => void)[] }>();
   maxConcurrent = 4;
+  /** Offline mode (trusted devices only): reads are saved locally and served from there when the network is gone. */
+  offline = false;
+  private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+    if (!this.offline) return load();
+    const k = `${this.username}:${key}`;
+    try { const v = await load(); offlineStore.set(k, v); return v; }
+    catch (e) {
+      const saved = isOffline(e) ? await offlineStore.get<T>(k) : undefined;
+      if (saved === undefined) throw e;
+      return saved;
+    }
+  }
+
   /** The server's Web Push (VAPID) public key, when it can push to closed tabs. */
   vapidKey: string | null = null;
   private async slot<T>(fn: () => Promise<T>): Promise<T> {
@@ -222,6 +245,9 @@ export class Jmap {
 
   /** Folders, Inbox first. The Templates folder is app storage, so it's hidden unless asked for. */
   async mailboxes(includeHidden = false): Promise<Mailbox[]> {
+    return this.cached(`boxes:${includeHidden}`, () => this.mailboxesLive(includeHidden));
+  }
+  private async mailboxesLive(includeHidden: boolean): Promise<Mailbox[]> {
     const [r] = await this.call([['Mailbox/get', {
       accountId: this.accountId, properties: ['name', 'role', 'unreadEmails', 'sortOrder', 'parentId'],
     }, 'm']]);
@@ -231,6 +257,9 @@ export class Jmap {
 
   /** Newest matching message of each conversation. */
   async threads(filter: Filter, limit = 50): Promise<EmailSummary[]> {
+    return this.cached(`threads:${JSON.stringify(filter)}:${limit}`, () => this.threadsLive(filter, limit));
+  }
+  private async threadsLive(filter: Filter, limit: number): Promise<EmailSummary[]> {
     const [, r] = await this.call([
       ['Email/query', {
         accountId: this.accountId, filter, collapseThreads: true, limit,
@@ -290,6 +319,9 @@ export class Jmap {
 
   /** Every message in a conversation, oldest first. */
   async thread(threadId: string): Promise<EmailFull[]> {
+    return this.cached(`thread:${threadId}`, () => this.threadLive(threadId));
+  }
+  private async threadLive(threadId: string): Promise<EmailFull[]> {
     const [, r] = await this.call([
       ['Thread/get', { accountId: this.accountId, ids: [threadId] }, 't'],
       ['Email/get', {

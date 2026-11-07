@@ -4,6 +4,7 @@ import { Jmap, JmapError, SESSION_EXPIRED } from './jmap';
 import { Mail } from './Mail';
 import { DialogHost } from './Dialog';
 import { signOutPush } from './notify';
+import { offlineStore } from './offline';
 import { canRememberDevice, forgetSession, Session, signedInAccounts, signIn } from './oauth';
 import { applyDisplayPrefs, applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
@@ -24,7 +25,7 @@ export default function App() {
       try {
         // Resuming in this tab after a reload.
         const s = Session.resume();
-        if (s) { session.current = s; setClient(await Jmap.connect(s)); }
+        if (s) { session.current = s; const c = await Jmap.connect(s); c.offline = s.remembered; setClient(c); }
       } catch (e) {
         session.current = null; forgetSession();
         setError(e instanceof Error ? e.message : String(e));
@@ -41,6 +42,7 @@ export default function App() {
 
   async function open(s: Session) {
     const c = await Jmap.connect(s);
+    c.offline = s.remembered; // offline mail only on devices the person chose to trust
     session.current = s; s.remember(); setClient(c);
   }
   /** Sign out of the current account; stay signed in to any others (switch to the next one). */
@@ -48,6 +50,7 @@ export default function App() {
     if (session.current) cache.clear(`${session.current.username}:`); // their mail leaves this tab now, not later
     // While still signed in: stop this account's background notifications on this browser.
     if (client) await signOutPush(client, signedInAccounts().length > 1);
+    if (session.current) await offlineStore.clear(`${session.current.username}:`); // saved mail leaves with them
     await session.current?.signOut();
     session.current = null;
     const next = Session.resume();
@@ -63,7 +66,7 @@ export default function App() {
 
   if (booting) return <div className="reader-loading" aria-busy="true" />;
   if (!client || adding) return <Login key={error} initialError={error} onCancel={adding ? () => setAdding(false) : undefined}
-    onLogin={(c, s) => { session.current = s; setError(''); setAdding(false); setClient(c); }} />;
+    onLogin={(c, s) => { session.current = s; c.offline = s.remembered; setError(''); setAdding(false); setClient(c); }} />;
   return <><Mail key={client.username} client={client} onLogout={signOut} accounts={signedInAccounts()}
     onSwitch={switchTo} onAddAccount={() => setAdding(true)} /><DialogHost /></>;
 }

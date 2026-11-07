@@ -18,6 +18,7 @@ import { NotesView } from './Notes';
 import { addRule, loadScript, saveScript } from './Filters';
 import { SCREENER, UPDATES, type Rule, type ScriptData } from './rules';
 import { enablePush, notifyOn, showMail } from './notify';
+import { offlineStore } from './offline';
 import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
 import { applyTheme, Settings } from './Settings';
@@ -78,6 +79,31 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
   const lastClicked = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const goPending = useRef(false);
+  // Offline: a banner, and an outbox that empties itself when the connection comes back.
+  const [online, setOnline] = useState(() => navigator.onLine);
+  const [outbox, setOutbox] = useState(0);
+  useEffect(() => {
+    if (!client.offline) return;
+    const key = `${client.username}:outbox`;
+    const flush = async () => {
+      const box = (await offlineStore.get<{ d: Draft; sendAt?: string }[]>(key)) ?? [];
+      setOutbox(box.length);
+      if (!box.length || !navigator.onLine) return;
+      let sent = 0;
+      const b = await client.mailboxes().catch(() => boxes);
+      for (const item of box) {
+        try { await client.send(item.d, b, item.sendAt ? new Date(item.sendAt) : undefined); sent++; }
+        catch { break; } // still failing: keep the rest for next time
+      }
+      const rest = box.slice(sent);
+      await offlineStore.set(key, rest); setOutbox(rest.length);
+      if (sent) { say({ text: sent === 1 ? 'Back online: your message from the Outbox was sent' : `Back online: ${sent} messages from the Outbox were sent` }); refresh(); }
+    };
+    const on = () => { setOnline(true); flush(); }, off = () => setOnline(false);
+    window.addEventListener('online', on); window.addEventListener('offline', off);
+    flush();
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, [client]);
   // Rail: the main places always show; the rest fold under "More" (remembered per device).
   const [railOpen, setRailOpen] = useState(() => { try { return localStorage.getItem('om:rail') === 'open'; } catch { return false; } });
   const toggleRail = (open: boolean) => { setRailOpen(open); try { localStorage.setItem('om:rail', open ? 'open' : 'closed'); } catch { /* fine */ } };
@@ -485,6 +511,13 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
 
   async function send(d: Draft, sendAt?: Date) {
     setCompose(null);
+    if (!navigator.onLine && client.offline) {
+      // Offline: keep it in the outbox; it goes when the connection is back (see the 'online' effect).
+      const box = (await offlineStore.get<{ d: Draft; sendAt?: string }[]>(`${client.username}:outbox`)) ?? [];
+      await offlineStore.set(`${client.username}:outbox`, [...box, { d, sendAt: sendAt?.toISOString() }]);
+      setOutbox(box.length + 1);
+      return say({ text: 'You’re offline. It’s in your Outbox and will send when you’re back online.' }, 6000);
+    }
     const pending = client.send(d, boxes, sendAt);
     let undone = false;
     const undo = async () => {
@@ -704,6 +737,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
         if (hasMore && el.scrollTop + el.clientHeight > el.scrollHeight - 600) loadMore();
       }}>
         <div className="list-head">
+        {!online && <p className="banner banner--info offline-banner" role="status">You’re offline. {client.offline ? 'Showing saved mail' : 'Mail you haven’t opened isn’t available'}{outbox ? ` · ${outbox} waiting to send` : ''}.</p>}
         <div className="search">
           <Icon name="search" />
           <input ref={searchRef} type="search" placeholder="Search mail" value={query} aria-label="Search mail (try from: or has:attachment)"

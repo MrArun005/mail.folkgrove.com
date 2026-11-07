@@ -753,3 +753,5 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .note-title { border: 0; outline: none; background: none; color: var(--ink); font: 500 var(--t-h1)/1.25 var(--ui); padding: var(--s2) 0; }
 .note-body { flex: 1; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: var(--t-read)/1.6 var(--read); padding: var(--s2) 0; }
 @media (max-width: 860px) { .notes { grid-template-columns: 1fr; } .note-editor { padding: var(--s4); } }
+
+.offline-banner { margin: 0; }
