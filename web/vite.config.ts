@@ -10,7 +10,7 @@ export default defineConfig({
   server: {
     proxy: {
       // Public sign-up service (signup/), only when it's running.
-      '/api/signup': signup, '/api/username-available': signup, '/api/aliases': signup,
+      '/api/signup': signup, '/api/username-available': signup, '/api/aliases': signup, '/api/session': signup,
       ...Object.fromEntries(['/jmap', '/.well-known', '/login', '/api/auth', '/auth', '/ui-', '/logo'].map((p) => [p, stalwart])),
     },
   },

@@ -1,0 +1,70 @@
+// "Keep me signed in" against the local dev Stalwart: a real OAuth sign-in, then only the HttpOnly cookie.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createHash, randomBytes } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { createApp } from '../server.mjs';
+import { Invites } from '../lib.mjs';
+import { cookieName, readCookies } from '../session.mjs';
+
+const STALWART = process.env.STALWART_URL || 'http://localhost:8080';
+const ADMIN_FILE = fileURLToPath(new URL('../../deploy/.dev-admin.json', import.meta.url));
+const reachable = await fetch(`${STALWART}/.well-known/jmap`, { redirect: 'manual', signal: AbortSignal.timeout(2000) }).then(() => true, () => false);
+const skip = !reachable ? `Stalwart not reachable at ${STALWART}` : !existsSync(ADMIN_FILE) ? 'no deploy/.dev-admin.json' : false;
+const b64url = (b) => b.toString('base64url');
+
+/** The app's sign-in flow (web/src/oauth.ts authorize), from Node. */
+async function signIn(user, pass) {
+  const verifier = b64url(randomBytes(48)), state = b64url(randomBytes(16));
+  const query = new URLSearchParams({ response_type: 'code', client_id: 'openmail-web', redirect_uri: 'http://localhost:5173/',
+    scope: 'openid offline_access urn:ietf:params:oauth:scope:mail', code_challenge: b64url(createHash('sha256').update(verifier).digest()),
+    code_challenge_method: 'S256', state }).toString();
+  const post = (b) => fetch(`${STALWART}/api/auth`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json());
+  let r = await post({ type: 'authCode', accountName: user, accountSecret: pass, query });
+  if (r.type === 'consentRequired') r = await post({ type: 'authConsent', token: r.token, query, consent: true });
+  const code = new URL(r.location).searchParams.get('code');
+  const t = await fetch(`${STALWART}/auth/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: 'openmail-web', grant_type: 'authorization_code', code, redirect_uri: 'http://localhost:5173/', code_verifier: verifier }) }).then((x) => x.json());
+  return t.refresh_token;
+}
+
+test('keep me signed in: remember, refresh from the cookie only (also two tabs at once), forget', { skip }, async (t) => {
+  const admin = JSON.parse(readFileSync(ADMIN_FILE, 'utf8'));
+  const app = createApp({ stalwartUrl: STALWART, admin, domain: 'openmail.test', signupEnabled: false, inviteRequired: false, invites: new Invites({ text: '' }),
+    turnstileSecret: null, quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], secureCookies: false });
+  await new Promise((r) => app.listen(0, '127.0.0.1', r));
+  t.after(() => app.close());
+  const base = `http://127.0.0.1:${app.address().port}/api/session`;
+  const user = 'alice@openmail.test';
+  let jar = '';
+  const call = async (path, body, headers = { 'X-OpenMail': '1' }) => {
+    const r = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: jar, ...headers }, body: JSON.stringify(body) });
+    const set = r.headers.get('set-cookie');
+    if (set) { const [kv] = set.split(';'); jar = kv.endsWith('=') ? '' : kv; }
+    return { status: r.status, ...(await r.json()) };
+  };
+  const works = async (token) => (await fetch(`${STALWART}/jmap/session`, { headers: { Authorization: `Bearer ${token}` } })).status === 200;
+
+  assert.equal((await call('/refresh', { username: user }, {})).status, 403, 'no CSRF header → refused');
+  assert.equal((await call('/refresh', { username: user })).status, 401, 'nothing remembered yet');
+
+  const rt = await signIn(user, 'alice-dev-pass');
+  const rem = await call('/remember', { username: user, refreshToken: rt });
+  assert.equal(rem.status, 200);
+  assert.ok(jar.startsWith(`${cookieName(user)}=`));
+  assert.ok(await works(rem.access_token));
+
+  const r1 = await call('/refresh', { username: user });
+  assert.equal(r1.status, 200);
+  assert.ok(await works(r1.access_token));
+
+  // Two tabs at once with the same cookie: both must get in (the rotated token isn't used twice).
+  const [a, b] = await Promise.all([call('/refresh', { username: user }), call('/refresh', { username: user })]);
+  assert.deepEqual([a.status, b.status], [200, 200]);
+  assert.equal((await call('/refresh', { username: user })).status, 200, 'and the cookie still works after');
+
+  assert.equal((await call('/forget', { username: user })).status, 200);
+  assert.equal((await call('/refresh', { username: user })).status, 401, 'forgotten');
+  assert.deepEqual(readCookies('a=1; b=x%3Dy'), { a: '1', b: 'x=y' });
+});

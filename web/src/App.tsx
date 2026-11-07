@@ -3,7 +3,7 @@ import { Button } from './Button';
 import { Jmap, JmapError, SESSION_EXPIRED } from './jmap';
 import { Mail } from './Mail';
 import { DialogHost } from './Dialog';
-import { forgetSession, Session, signedInAccounts, signIn } from './oauth';
+import { canRememberDevice, forgetSession, Session, signedInAccounts, signIn } from './oauth';
 import { applyDisplayPrefs, applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
@@ -75,7 +75,9 @@ function Login({ initialError, onLogin, onCancel }: { initialError: string; onLo
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
-  useEffect(() => { signupAvailable().then(setCanSignUp); }, []);
+  const [canKeep, setCanKeep] = useState(false);
+  const [keep, setKeep] = useState(true);
+  useEffect(() => { signupAvailable().then(setCanSignUp); canRememberDevice().then(setCanKeep); }, []);
 
   if (signingUp) return <Signup onCancel={() => setSigningUp(false)}
     onDone={(addr) => { setSigningUp(false); setEmail(addr); setNotice(`Your mailbox ${addr} is ready. Sign in to start using it.`); }} />;
@@ -86,6 +88,7 @@ function Login({ initialError, onLogin, onCancel }: { initialError: string; onLo
     try {
       const s = await signIn(email.trim(), password, needCode ? code : undefined);
       if (s === 'code') { setNeedCode(true); setBusy(false); return; }
+      if (canKeep && keep) await s.rememberOnDevice(); // falls back to this-tab-only if the service says no
       onLogin(await Jmap.connect(s), s);
     } catch (err) {
       setError(err instanceof JmapError || err instanceof Error ? err.message : 'Can’t reach the mail server. Check your connection and try again.');
@@ -104,6 +107,8 @@ function Login({ initialError, onLogin, onCancel }: { initialError: string; onLo
             value={email} onChange={(e) => setEmail(e.target.value)} /></label>
           <label>Password<input className="input" name="password" type="password" autoComplete="current-password" required
             value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+          {canKeep && <label className="inline keep"><input type="checkbox" className="check" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
+            Keep me signed in on this device</label>}
         </> : <>
           <p className="fine">Enter the 6-digit code from your authenticator app for {email}.</p>
           <label>Code<input className="input" name="code" inputMode="numeric" autoComplete="one-time-code" required autoFocus maxLength={7}

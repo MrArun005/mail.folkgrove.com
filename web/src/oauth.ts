@@ -70,43 +70,85 @@ async function tokenRequest(body: Record<string, string>): Promise<Tokens> {
   return { access: j.access_token, refresh: j.refresh_token, expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000, username: j.username ?? '' };
 }
 
-// Several accounts can be signed in at once (Gmail-style switcher): one refresh token per account, plus which is
-// active. Same storage rules as before (sessionStorage: closing the tab signs everyone out).
-type Saved = Record<string, string>; // username → refresh token
+// Several accounts can be signed in at once (Gmail-style switcher). Two kinds:
+//  - this tab only: refresh token in sessionStorage; closing the tab signs out.
+//  - "Keep me signed in": the refresh token is in an HttpOnly cookie held by the account service (signup/session.mjs);
+//    page scripts never see it. This device only remembers the username (localStorage) and asks for access tokens.
+type Saved = Record<string, string>; // username → refresh token (this tab)
 const saved = (): Saved => {
   const old = store.get<{ token: string; username: string }>('refresh'); // single-account format, before switching existed
   if (old) { store.set('refresh', null); store.set('accounts', { [old.username]: old.token }); store.set('active', old.username); }
   return store.get<Saved>('accounts') ?? {};
 };
-/** Usernames signed in on this tab, active first. */
+const device = {
+  get: (): string[] => { try { return JSON.parse(localStorage.getItem('om:remembered') ?? '[]'); } catch { return []; } },
+  set: (l: string[]) => { try { localStorage.setItem('om:remembered', JSON.stringify([...new Set(l)])); } catch { /* private mode */ } },
+  active: (u?: string | null) => { try { if (u === undefined) return localStorage.getItem('om:active'); if (u) localStorage.setItem('om:active', u); else localStorage.removeItem('om:active'); } catch { /* fine */ } return null; },
+};
+const sessionApi = (path: string, body: object) => fetch(`/api/session/${path}`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json', 'X-OpenMail': '1' }, body: JSON.stringify(body), credentials: 'same-origin',
+});
+
+/** True when this server runs the account service, so "Keep me signed in" can work. */
+export async function canRememberDevice(): Promise<boolean> {
+  const r = await fetch('/api/session/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-OpenMail': '1' }, body: '{}' }).catch(() => null);
+  return !!r && (r.status === 400 || r.status === 401); // it answered: present (404/502: not running)
+}
+
+/** Usernames signed in here (this tab and remembered on this device), active first. */
 export function signedInAccounts(): string[] {
-  const a = Object.keys(saved()), active = store.get<string>('active');
+  const a = [...new Set([...Object.keys(saved()), ...device.get()])];
+  const active = store.get<string>('active') ?? device.active();
   return active && a.includes(active) ? [active, ...a.filter((x) => x !== active)] : a;
 }
 /** Drop the active session (it can't be renewed). */
 export const forgetSession = () => {
-  const a = saved(), active = store.get<string>('active');
-  if (active) delete a[active];
-  store.set('accounts', a); store.set('active', Object.keys(a)[0] ?? null);
+  const a = saved(), active = store.get<string>('active') ?? device.active();
+  if (active) { delete a[active]; device.set(device.get().filter((x) => x !== active)); }
+  store.set('accounts', a); store.set('active', null); device.active(null);
 };
 
 /** A token source the JMAP client asks for headers; refreshes shortly before expiry or after a 401. */
 export class Session {
   private refreshing: Promise<void> | null = null;
   private signedOut = false;
+  /** Remembered on this device: tokens come from the account service's HttpOnly cookie. */
+  private cookie = false;
   constructor(private t: Tokens) {}
 
-  /** The active account's session (or a given account's), from this tab's storage. */
+  /** The active account's session (or a given account's): this tab first, then remembered on this device. */
   static resume(username?: string): Session | null {
-    const a = saved(), u = username ?? store.get<string>('active') ?? Object.keys(a)[0];
-    if (!u || !a[u]) return null;
-    store.set('active', u);
-    return new Session({ access: '', refresh: a[u], expiresAt: 0, username: u });
+    const a = saved(), u = username ?? store.get<string>('active') ?? device.active() ?? Object.keys(a)[0] ?? device.get()[0];
+    if (!u) return null;
+    if (a[u]) { store.set('active', u); return new Session({ access: '', refresh: a[u], expiresAt: 0, username: u }); }
+    if (!device.get().includes(u)) return null;
+    const s = new Session({ access: '', refresh: '', expiresAt: 0, username: u });
+    s.cookie = true; store.set('active', u); device.active(u);
+    return s;
   }
 
   get username() { return this.t.username; }
-  /** Save this account's refresh token and make it the active one. */
-  remember() { store.set('accounts', { ...saved(), [this.t.username]: this.t.refresh }); store.set('active', this.t.username); }
+  get remembered() { return this.cookie; }
+  /** Make this account the active one (and keep its tab-only token, if that's its kind). */
+  remember() {
+    if (this.cookie) { store.set('active', this.t.username); device.active(this.t.username); return; }
+    store.set('accounts', { ...saved(), [this.t.username]: this.t.refresh }); store.set('active', this.t.username);
+  }
+
+  /**
+   * "Keep me signed in": hand the refresh token to the account service (it goes into an HttpOnly cookie) and forget
+   * it here. Returns false when this server has no account service; the session then stays tab-only.
+   */
+  async rememberOnDevice(): Promise<boolean> {
+    const r = await sessionApi('remember', { username: this.t.username, refreshToken: this.t.refresh }).catch(() => null);
+    if (!r?.ok) return false;
+    const j = await r.json();
+    this.t = { ...this.t, access: j.access_token, refresh: '', expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000 };
+    this.cookie = true;
+    const a = saved(); delete a[this.t.username]; store.set('accounts', a);
+    device.set([...device.get(), this.t.username]); device.active(this.t.username); store.set('active', this.t.username);
+    return true;
+  }
 
   async header(): Promise<string> {
     if (Date.now() > this.t.expiresAt - 60_000) await this.refresh();
@@ -115,14 +157,24 @@ export class Session {
 
   refresh(): Promise<void> {
     // One refresh at a time: refresh tokens rotate, so a second parallel request would use a dead token.
-    this.refreshing ??= tokenRequest({ grant_type: 'refresh_token', refresh_token: this.t.refresh })
+    this.refreshing ??= (this.cookie ? this.cookieRefresh() : tokenRequest({ grant_type: 'refresh_token', refresh_token: this.t.refresh })
       .then((t) => {
         this.t = { ...t, username: t.username || this.t.username };
         // A refresh that finishes after sign-out must not bring the account back.
         if (!this.signedOut && this.t.username in saved()) store.set('accounts', { ...saved(), [this.t.username]: t.refresh });
-      })
+      }))
       .finally(() => { this.refreshing = null; });
     return this.refreshing;
+  }
+
+  private async cookieRefresh() {
+    const r = await sessionApi('refresh', { username: this.t.username });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.access_token) {
+      device.set(device.get().filter((x) => x !== this.t.username));
+      throw new Error(j.error?.message ?? 'Your session has ended. Please sign in again.');
+    }
+    this.t = { ...this.t, access: j.access_token, expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000 };
   }
 
   async signOut() {
@@ -130,7 +182,9 @@ export class Session {
     await this.refreshing?.catch(() => {}); // then revoke whichever refresh token is current
     const a = saved(); delete a[this.t.username];
     store.set('accounts', a);
-    if (store.get<string>('active') === this.t.username) store.set('active', Object.keys(a)[0] ?? null);
+    device.set(device.get().filter((x) => x !== this.t.username));
+    if (store.get<string>('active') === this.t.username) { store.set('active', null); device.active(null); }
+    if (this.cookie) { await sessionApi('forget', { username: this.t.username }).catch(() => {}); return; }
     await fetch('/auth/revoke', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ client_id: CLIENT_ID, token: this.t.refresh, token_type_hint: 'refresh_token' }),

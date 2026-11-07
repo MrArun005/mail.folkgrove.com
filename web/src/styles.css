@@ -731,3 +731,5 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .nav-more { color: var(--muted); }
 .nav-more svg { transition: transform var(--dur) var(--ease-out); }
 .nav-more svg.flip { transform: rotate(180deg); }
+
+.login label.keep { display: flex; align-items: center; gap: var(--s2); font-weight: 400; }
