@@ -5,6 +5,7 @@ import { Button } from './Button';
 import { Icon, type IconName } from './icons';
 import { cleanHtml, fileSize, formatAddresses, htmlToText, parseAddresses, signatureHtml, type Signature } from './mailutil';
 import { RecipientInput } from './RecipientInput';
+import { canRewrite, rewrite, type RewriteStyle } from './ai';
 import { Menu, TimeChoices } from './Menu';
 
 export interface ComposeApi {
@@ -78,6 +79,27 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
     } else toRef.current?.focus();
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, []);
+
+  /** Rewrite the selection (or the text above the signature and quote) on this device, then put it back in place. */
+  async function polish(style: RewriteStyle) {
+    const ed = editor.current!, sel = getSelection();
+    let range = sel?.rangeCount && ed.contains(sel.anchorNode) && !sel.isCollapsed ? sel.getRangeAt(0).cloneRange() : null;
+    if (!range) {
+      // Whole message: everything before the signature or the quoted reply.
+      range = document.createRange(); range.setStart(ed, 0);
+      const stop = ed.querySelector('[data-sig], blockquote');
+      if (stop) range.setEndBefore(stop.previousElementSibling?.textContent?.startsWith('On ') ? stop.previousElementSibling : stop); else range.setEnd(ed, ed.childNodes.length);
+    }
+    const text = range.toString().trim();
+    if (!text) return setError('Write something first, then ask for help with it.');
+    setStatus('Rewriting on this device…');
+    try {
+      const out = await rewrite(text, style);
+      ed.focus(); sel?.removeAllRanges(); sel?.addRange(range);
+      exec('insertText', out); // one undo step: ⌘Z brings your words back
+      setStatus('Rewritten. ⌘Z to undo.'); changed();
+    } catch (e) { setStatus(''); setError((e as Error).message); }
+  }
 
   /** Swap the signature block in place (or add / remove it), leaving everything else as written. */
   function applySignature(sg: Signature | null) {
@@ -271,6 +293,17 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
                 setStatus(`Saved “${d.subject || 'Untitled template'}” as a template`);
               }} />}
           </Menu>
+          {canRewrite() && (
+            <Menu label="Writing help" up align="right" button={<Button variant="quiet" icon="compose" label="Writing help (on this device)" />}>
+              {(close) => <>
+                <p className="menu-title">Rewrite {getSelection()?.toString().trim() ? 'the selection' : 'your message'}</p>
+                {([['formal', 'More formal'], ['casual', 'More casual'], ['shorter', 'Shorter']] as const).map(([k, t]) => (
+                  <button key={k} className="menu-item" role="menuitem" onClick={() => { close(); polish(k); }}><Icon name="compose" size={16} />{t}</button>
+                ))}
+                <p className="menu-note">Runs on this device. Your words never leave your computer.</p>
+              </>}
+            </Menu>
+          )}
           <Menu label="Remind me" up align="right" button={<Button variant="quiet" icon="bell" pressed={!!followUp}
             label={followUp ? `Reminder if no reply in ${followUp} day${followUp > 1 ? 's' : ''} (click to change)` : 'Remind me if nobody replies'} />}>
             {(close) => <>

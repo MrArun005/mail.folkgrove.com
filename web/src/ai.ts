@@ -41,3 +41,16 @@ export async function summarize(text: string): Promise<string> {
 export const languageName = (code: string) => {
   try { return new Intl.DisplayNames([navigator.language || 'en'], { type: 'language' }).of(code) ?? code; } catch { return code; }
 };
+
+export const canRewrite = () => typeof g.Rewriter?.create === 'function';
+export type RewriteStyle = 'formal' | 'casual' | 'shorter';
+
+/** Rewrite plain text in another tone or length, on this device. */
+export async function rewrite(text: string, style: RewriteStyle): Promise<string> {
+  if ((await g.Rewriter.availability()) === 'unavailable') throw new Error('Writing help isn’t available in this browser.');
+  const r = await g.Rewriter.create({
+    tone: style === 'formal' ? 'more-formal' : style === 'casual' ? 'more-casual' : 'as-is',
+    length: style === 'shorter' ? 'shorter' : 'as-is', format: 'plain-text',
+  });
+  return r.rewrite(text);
+}
