@@ -546,3 +546,6 @@ select.input { appearance: auto; }
 .mchip .mt { color: var(--muted); flex: none; }
 .mchip.all { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .mmore { align-self: flex-start; padding: 0 var(--s1); color: var(--accent); font-size: var(--t-xs); font-weight: 600; }
+
+.banner .grow { flex: 1; min-width: 200px; }
+.banner .grow + .btn--link { margin-left: 0; }

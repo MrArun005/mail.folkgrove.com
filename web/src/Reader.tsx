@@ -11,7 +11,7 @@ import { Menu, TimeChoices } from './Menu';
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star';
 export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact';
 
-export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp }: {
+export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
   /** Folders the user created (moving/labelling targets). */
   folders: Mailbox[];
@@ -22,6 +22,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   onUnsubscribe: (m: EmailFull) => void;
   onMore: (what: MoreAction, m: EmailFull) => void;
   onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void>;
+  onReceipt: (m: EmailFull, send: boolean) => void;
 }) {
   // Newest message open, older ones folded, like a paper trail. A message that arrives while reading opens too.
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -84,7 +85,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
       <h1 className="subject">{last.subject?.replace(/^((re|fwd?|aw|sv)\s*:\s*)+/i, '') || '(no subject)'}</h1>
 
       {messages.map((m) => open.has(m.id)
-        ? <Message key={m.id} client={client} m={m} me={me} onUnsubscribe={onUnsubscribe} onRsvp={onRsvp} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
+        ? <Message key={m.id} client={client} m={m} me={me} onUnsubscribe={onUnsubscribe} onRsvp={onRsvp} onReceipt={onReceipt} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
         : (
           <button key={m.id} className="folded" onClick={() => setOpen((s) => new Set(s).add(m.id))}>
             <span className="who">{displayName(m.from?.[0], me)}</span>
@@ -103,9 +104,10 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   );
 }
 
-function Message({ client, m, me, onFold, onUnsubscribe, onRsvp }: {
+function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
   client: Jmap; m: EmailFull; me: string; onFold?: () => void; onUnsubscribe: (m: EmailFull) => void;
   onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void>;
+  onReceipt: (m: EmailFull, send: boolean) => void;
 }) {
   const [showImages, setShowImages] = useState(false);
   const [inline, setInline] = useState<Record<string, string>>({});
@@ -136,6 +138,14 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp }: {
         </span>
       </header>
       <Invitation client={client} m={m} onRsvp={onRsvp} />
+      {m.receiptTo?.length && !m.keywords.$mdnsent && m.from?.[0]?.email.toLowerCase() !== me.toLowerCase() ? (
+        <p className="banner banner--info">
+          <Icon name="receipt" size={16} />
+          <span className="grow">{displayName(m.from?.[0])} asked to be told when you read this{m.receiptTo[0].email.toLowerCase() !== m.from?.[0]?.email.toLowerCase() ? ` (the receipt would go to ${m.receiptTo[0].email})` : ''}.</span>
+          <Button variant="link" onClick={() => onReceipt(m, true)}>Send receipt</Button>
+          <Button variant="link" onClick={() => onReceipt(m, false)}>Ignore</Button>
+        </p>
+      ) : null}
       {html && html.trackers.length > 0 && (
         <p className="banner banner--safe"><Icon name="shield" size={16} />
           Blocked {html.trackers.length === 1 ? 'a tracking pixel' : `${html.trackers.length} tracking pixels`} from {html.trackers.join(', ')}. The sender can’t see that you opened this.

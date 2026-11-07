@@ -33,6 +33,7 @@ export function Compose({ initial, contacts, api, onSend, onClose }: {
   const [showCc, setShowCc] = useState(initial.cc.length > 0);
   const [subject, setSubject] = useState(initial.subject);
   const [files, setFiles] = useState<Attachment[]>(initial.attachments);
+  const [receipt, setReceipt] = useState(!!initial.receipt);
   const [uploading, setUploading] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState('');
@@ -78,7 +79,7 @@ export function Compose({ initial, contacts, api, onSend, onClose }: {
     const html = copy.innerHTML;
     const attachments = files.filter((a) => !a.cid || html.includes(`cid:${a.cid}`));
     return {
-      ...initial, id: draftId.current, subject: subject.trim(), html, text: htmlToText(html), attachments,
+      ...initial, id: draftId.current, subject: subject.trim(), html, text: htmlToText(html), attachments, receipt,
       to: parseAddresses(to).list, cc: parseAddresses(showCc ? cc : '').list,
     };
   };
@@ -214,6 +215,8 @@ export function Compose({ initial, contacts, api, onSend, onClose }: {
           {tool('quote', 'Quote', () => exec('formatBlock', 'blockquote'))}
           {tool('clearFormat', 'Remove formatting', () => exec('removeFormat'))}
           <Button variant="quiet" icon="clip" label="Attach files" onClick={() => fileInput.current?.click()} />
+          <Button variant="quiet" icon="receipt" label={receipt ? 'Read receipt requested (click to cancel)' : 'Request a read receipt'} pressed={receipt}
+            onClick={() => { setReceipt(!receipt); changed(); }} />
           <Menu label="Templates" up button={<Button variant="quiet" icon="templates" label="Templates" />}>
             {(close) => <TemplatesMenu api={api} close={close}
               onInsert={(t) => {

@@ -2,6 +2,7 @@
 import { SCRIPT_NAME, UPDATES } from './rules';
 import type { CalEvent } from './calendar';
 import { buildReply, parseInvite, replyWord, type Invite, type PartStat } from './ics';
+import { buildMdn } from './mailutil';
 
 
 const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve'];
@@ -22,6 +23,8 @@ export interface EmailFull extends EmailSummary {
   cc: Address[] | null; replyTo: Address[] | null;
   blobId: string; messageId: string[] | null; inReplyTo: string[] | null; references: string[] | null; mailboxIds: Record<string, boolean>;
   attachments: Attachment[]; html: string | null; text: string | null;
+  /** Disposition-Notification-To: the sender asked for a read receipt (we only ever send one if the user says so). */
+  receiptTo: Address[] | null;
   /** RFC 2369/8058 List-Unsubscribe: where to unsubscribe, and whether a one-click POST is allowed. */
   unsubscribe: { urls: string[]; oneClick: boolean } | null;
 }
@@ -33,6 +36,8 @@ export interface Draft {
   to: Address[]; cc: Address[]; subject: string;
   html: string; text: string; attachments: Attachment[];
   inReplyTo?: string[]; references?: string[];
+  /** Ask the recipient for a read receipt. */
+  receipt?: boolean;
 }
 /** An Email/query filter: { inMailbox }, { text }, { hasKeyword }, … */
 export type Filter = Record<string, unknown>;
@@ -52,7 +57,7 @@ const pathOnly = (url: string) => url.replace(/^https?:\/\/[^/]+/, ''); // keep 
 
 const SUMMARY = ['threadId', 'subject', 'from', 'to', 'preview', 'receivedAt', 'keywords', 'hasAttachment'];
 const FULL = [...SUMMARY, 'blobId', 'cc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
-  'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText'];
+  'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses'];
 
 export class Jmap {
   private identity?: { id: string; name: string; email: string };
@@ -162,7 +167,8 @@ export class Jmap {
       };
       const urls: string[] = e['header:List-Unsubscribe:asURLs'] ?? [];
       const unsubscribe = urls.length ? { urls, oneClick: /One-Click/i.test(e['header:List-Unsubscribe-Post:asText'] ?? '') } : null;
-      return { ...e, attachments: e.attachments ?? [], html: join(e.htmlBody, 'text/html'), text: join(e.textBody, 'text/plain'), unsubscribe };
+      return { ...e, attachments: e.attachments ?? [], html: join(e.htmlBody, 'text/html'), text: join(e.textBody, 'text/plain'), unsubscribe,
+        receiptTo: e['header:Disposition-Notification-To:asAddresses'] ?? null };
     }).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
   }
 
@@ -328,6 +334,7 @@ export class Jmap {
       ...(d.cc.length && { cc: d.cc.map(clean) }),
       ...(d.inReplyTo?.length && { inReplyTo: d.inReplyTo }),
       ...(d.references?.length && { references: d.references }),
+      ...(d.receipt && { 'header:Disposition-Notification-To:asAddresses': [{ email: me.email }] }),
       bodyValues: { t: { value: d.text }, h: { value: d.html } },
       textBody: [{ partId: 't', type: 'text/plain' }],
       htmlBody: [{ partId: 'h', type: 'text/html' }],
@@ -518,6 +525,27 @@ export class Jmap {
       .filter(([, v]) => v.delivered === 'no')
       .map(([email, v]) => ({ email, reason: v.smtpReply.replace(/^\d{3}\s+(\d\.\d\.\d+\s+)?/, '').replace(/\.$/, '') || 'the server refused it' }));
   }
+
+  /** Send a read receipt the user chose to send. Not kept in Sent; the original is marked $MDNSent (RFC 3503). */
+  async sendReadReceipt(m: EmailFull, boxes: Mailbox[]): Promise<void> {
+    const to = m.receiptTo?.[0]?.email;
+    if (!to) throw new JmapError('This message didn’t ask for a read receipt');
+    const me = await this.getIdentity();
+    const raw = buildMdn({ from: me.email, to, subject: m.subject ?? '', originalMessageId: m.messageId?.[0], readAt: new Date(),
+      domain: me.email.split('@')[1], id: crypto.randomUUID() });
+    const blob = await this.upload(Object.assign(new Blob([raw], { type: 'message/rfc822' }), { name: 'receipt.eml' }));
+    const [imp] = await this.call([['Email/import', { accountId: this.accountId, emails: { r: {
+      blobId: blob.blobId, mailboxIds: { [this.box(boxes, 'drafts')]: true }, keywords: { $seen: true } } } }, 'i']]);
+    await this.call([
+      ['EmailSubmission/set', { accountId: this.accountId,
+        create: { s: { identityId: me.id, emailId: imp.created.r.id, envelope: { mailFrom: { email: me.email }, rcptTo: [{ email: to }] } } },
+        onSuccessDestroyEmail: ['#s'] }, 's'],
+      ['Email/set', { accountId: this.accountId, update: { [m.id]: { 'keywords/$mdnsent': true } } }, 'k'],
+    ]);
+  }
+
+  /** Decline a receipt request: remember it so we don't ask again. */
+  async declineReadReceipt(id: string) { await this.call([['Email/set', { accountId: this.accountId, update: { [id]: { 'keywords/$mdnsent': true } } }, 'k']]); }
 
   async undoSend(submissionId: string, emailId: string, boxes: Mailbox[]): Promise<void> {
     await this.call([

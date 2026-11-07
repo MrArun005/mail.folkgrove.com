@@ -342,6 +342,14 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     } catch (e) { fail(e); }
   }
 
+  async function receipt(m: EmailFull, send: boolean) {
+    try {
+      if (send) { await client.sendReadReceipt(m, boxes); say({ text: `Read receipt sent to ${m.receiptTo?.[0]?.email}` }); }
+      else { await client.declineReadReceipt(m.id); say({ text: 'No receipt sent' }); }
+      setThreadVersion((v) => v + 1);
+    } catch (e) { fail(e); }
+  }
+
   const escape = (t: string) => t.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
   // ── Writing ────────────────────────────────────────────
@@ -654,7 +662,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
                 inTrash={role === 'trash'} inJunk={role === 'junk'}
                 onAction={(a) => act(a, [threadId])} onReply={reply} onBack={() => setThreadId(null)}
                 onSnooze={(d) => act({ snooze: d }, [threadId])} onMoveTo={(id, label) => act({ moveTo: id, label }, [threadId])}
-                onUnsubscribe={unsubscribe} onMore={more} onRsvp={rsvp} />
+                onUnsubscribe={unsubscribe} onMore={more} onRsvp={rsvp} onReceipt={receipt} />
             </ErrorBoundary>
           : <div className="reader-empty">
               <p>{selected.size ? `${selected.size} selected` : 'Select a conversation to read it.'}</p>

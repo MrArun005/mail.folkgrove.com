@@ -22,7 +22,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Live updates | ✅ | ✅ | Server push, no polling |
 | Show original / headers | ✅ | ✅ | |
 | Print | ✅ | ✅ | Prints with trackers removed |
-| Read receipts (request) | ✅ | ⬜ | Opt-in only; we never send receipts silently |
+| Read receipts (request) | ✅ | ✅ | Request from compose; when asked, you choose Send or Ignore (standard MDN), never automatic |
 | Translate | ✅ (Zia) | ⬜ | Optional, local model where possible |
 | Inbox categories (Updates / Promotions) | 🟡 | ✅ | Primary / Updates, sorted on the server as mail arrives; one switch in Settings |
 
@@ -100,14 +100,13 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 ## Score today
 
 Counting rows a typical Zoho Mail user touches (sections 1–4 plus calendar, contacts and the web app):
-**39 of 50 at parity or better (78%), 4 partial.** The "next batch" items below take that past 80%;
+**40 of 50 at parity or better (80%), 4 partial.** The "next batch" items below take that toward 85%;
 Phase 2.5 (calendar, contacts UI, categories, multiple signatures, multi-account, E2E, OAuth/2FA) takes it past 90%;
 shared mailboxes and import close the rest of the 95%.
 
 ## Order of work
 
-1. **Next batch (small, high value):** several signatures, 2FA enrolment (step-up sign-in), app passwords,
-   read receipts (opt-in).
+1. **Next batch (small, high value):** several signatures, 2FA enrolment (step-up sign-in), app passwords.
 2. **Phase 2 security:** passkeys; branded sign-in page (today it is the mail server's own page).
 3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager, multiple signatures,
    multi-account, E2E (OpenPGP), saved searches, encryption-at-rest toggle.

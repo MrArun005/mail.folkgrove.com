@@ -166,3 +166,26 @@ export function unsubscribePlan(u: { urls: string[]; oneClick: boolean } | null)
   if (https) return { kind: 'open', url: https.href, host: https.hostname };
   return null;
 }
+
+// ── Read receipts (MDN, RFC 8098) ────────────────────────
+// Always the user's choice: we ask, never send automatically, and the request's target address is shown.
+
+/** RFC 2047 encoded-word for header text that isn't plain ASCII. */
+export const encodeHeader = (s: string) =>
+  /^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${btoa(String.fromCharCode(...new TextEncoder().encode(s)))}?=`;
+
+export function buildMdn(o: { from: string; to: string; subject: string; originalMessageId?: string; readAt: Date; domain: string; id: string }): string {
+  const when = o.readAt.toUTCString();
+  return [
+    `From: ${o.from}`, `To: ${o.to}`, `Subject: ${encodeHeader(`Read: ${o.subject}`)}`, `Date: ${when}`,
+    `Message-ID: <${o.id}@${o.domain}>`, 'MIME-Version: 1.0', 'Auto-Submitted: auto-replied',
+    'Content-Type: multipart/report; report-type=disposition-notification; boundary="mdn"', '',
+    '--mdn', 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '',
+    `Your message "${o.subject}" was read on ${when}.`, '',
+    '--mdn', 'Content-Type: message/disposition-notification', '',
+    'Reporting-UA: OpenMail', `Final-Recipient: rfc822;${o.from}`,
+    ...(o.originalMessageId ? [`Original-Message-ID: <${o.originalMessageId}>`] : []),
+    'Disposition: manual-action/MDN-sent-manually; displayed', '',
+    '--mdn--', '',
+  ].join('\r\n');
+}

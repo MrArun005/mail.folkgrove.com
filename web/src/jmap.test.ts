@@ -388,6 +388,25 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     expect(kw['$rsvp-accepted']).toBeUndefined();
   }, 20_000);
 
+  it('read receipts: request one, then send it only when asked; never twice', async () => {
+    const c = await login();
+    const boxes = await c.mailboxes();
+    const subject = `receipt ${Date.now()}`;
+    const { submissionId } = await c.send({ to: [ALICE], cc: [], subject, html: '<p>did you read this?</p>', text: 'did you read this?', attachments: [], receipt: true }, boxes);
+    void submissionId;
+    const inbox = boxes.find((b) => b.role === 'inbox')!.id;
+    let got;
+    for (let i = 0; i < 60 && !got; i++) { await new Promise((r) => setTimeout(r, 500)); got = (await c.threads({ inMailbox: inbox })).find((e) => e.subject === subject); }
+    expect(got, 'message arrives (after the 10-second undo hold)').toBeTruthy();
+    const m = (await c.thread(got!.threadId)).find((x) => x.mailboxIds[inbox])!;
+    expect(m.receiptTo?.[0]?.email).toBe('alice@openmail.test');
+    await c.sendReadReceipt(m, boxes);
+    expect((await c.thread(got!.threadId)).find((x) => x.id === m.id)!.keywords['$mdnsent']).toBe(true);
+    let mdn;
+    for (let i = 0; i < 30 && !mdn; i++) { await new Promise((r) => setTimeout(r, 300)); mdn = (await c.threads({ inMailbox: inbox })).find((e) => e.subject === `Read: ${subject}`); }
+    expect(mdn, 'the receipt is delivered').toBeTruthy();
+  }, 45_000);
+
   it('suggests contacts, people I write to first, never me', async () => {
     const c = await login();
     const people = (await c.contacts()).map((a) => a.email);

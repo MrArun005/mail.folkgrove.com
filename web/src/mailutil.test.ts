@@ -30,7 +30,7 @@ const mail = (over: Partial<EmailFull>): EmailFull => ({
   id: '1', threadId: 't', subject: 'Lunch', preview: '', receivedAt: '2026-11-07T12:00:00Z', keywords: {}, hasAttachment: false,
   from: [{ name: 'Carol', email: 'carol@x.org' }], to: [{ name: null, email: 'me@o.test' }, { name: null, email: 'dan@x.org' }],
   cc: [{ name: null, email: 'eve@x.org' }], replyTo: null, messageId: ['m1@x'], inReplyTo: null, references: ['m0@x'],
-  blobId: 'b0', mailboxIds: {}, attachments: [], unsubscribe: null, html: null, text: 'hi <there>', ...over,
+  blobId: 'b0', mailboxIds: {}, attachments: [], unsubscribe: null, receiptTo: null, html: null, text: 'hi <there>', ...over,
 });
 
 it('reply goes to the sender, threads correctly and quotes (escaped)', () => {
@@ -95,4 +95,17 @@ it('replies and forwards carry the inline images their quoted text shows', () =>
   expect(draftFor('reply', e, 'me@o.test').attachments.map((a) => a.blobId)).toEqual(['m']);
   expect(draftFor('forward', e, 'me@o.test').attachments.map((a) => a.blobId)).toEqual(['m']);
   expect(draftFor('forward', e, 'me@o.test').html).toContain('src="cid:map@x"');
+});
+
+it('builds a standard read receipt (MDN) and encodes non-ASCII subjects', async () => {
+  const { buildMdn, encodeHeader } = await import('./mailutil');
+  const m = buildMdn({ from: 'alice@o.test', to: 'priya@x.org', subject: 'Offsite plan', originalMessageId: 'm1@x', readAt: new Date('2026-11-07T12:00:00Z'), domain: 'o.test', id: 'r1' });
+  expect(m).toContain('Content-Type: multipart/report; report-type=disposition-notification; boundary="mdn"');
+  expect(m).toContain('Subject: Read: Offsite plan');
+  expect(m).toContain('Original-Message-ID: <m1@x>');
+  expect(m).toContain('Disposition: manual-action/MDN-sent-manually; displayed');
+  expect(m).toContain('Auto-Submitted: auto-replied'); // so it never triggers out-of-office loops
+  expect(m.trimEnd().endsWith('--mdn--')).toBe(true);
+  expect(encodeHeader('Read: Café plan')).toBe('=?UTF-8?B?UmVhZDogQ2Fmw6kgcGxhbg==?=');
+  expect(encodeHeader('plain')).toBe('plain');
 });
