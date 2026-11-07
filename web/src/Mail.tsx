@@ -27,6 +27,8 @@ const PAGE = 50;
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
 const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
 // Virtual folders: views that aren't mailboxes on the server.
+/** Always in the rail (Gmail's set); everything else folds under More. */
+const MAIN = ['inbox', 'starred', 'snoozed', 'sent', 'drafts'];
 const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks';
 
 type Toast = { text: string; undo?: () => void } | null;
@@ -75,6 +77,9 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
   const lastClicked = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const goPending = useRef(false);
+  // Rail: the main places always show; the rest fold under "More" (remembered per device).
+  const [railOpen, setRailOpen] = useState(() => { try { return localStorage.getItem('om:rail') === 'open'; } catch { return false; } });
+  const toggleRail = (open: boolean) => { setRailOpen(open); try { localStorage.setItem('om:rail', open ? 'open' : 'closed'); } catch { /* fine */ } };
 
   const inbox = boxes.find((b) => b.role === 'inbox')?.id ?? null;
   /** Cache key for a list: the Inbox has one per category tab. */
@@ -618,10 +623,10 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
       <nav className="rail" aria-label="Folders">
         <p className="wordmark">OpenMail</p>
         <Button variant="primary" size="lg" icon="compose" className="compose-btn" onClick={newMessage} title="Compose (c)">Compose</Button>
-        {/* Mail places first, then the folders you made, under their own label. */}
-        {[navItems.filter((b) => b.role), navItems.filter((b) => !b.role)].map((group, gi) => group.length > 0 && (
+        {/* The main places, then "More" (folded by default, like Gmail), then the folders you made. */}
+        {[navItems.filter((b) => b.role && (MAIN.includes(b.role) || railOpen || b.id === current)), navItems.filter((b) => !b.role)].map((group, gi) => (
           <div key={gi} className="rail-group">
-            {gi === 1 && <p className="rail-label">Folders</p>}
+            {gi === 1 && group.length > 0 && <p className="rail-label">Folders</p>}
             <ul>
               {group.map((b) => (
                 <li key={b.id}>
@@ -632,6 +637,13 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
                   </button>
                 </li>
               ))}
+              {gi === 0 && (
+                <li>
+                  <button className="nav-item nav-more" aria-expanded={railOpen} onClick={() => toggleRail(!railOpen)}>
+                    <Icon name="chevron" className={railOpen ? 'flip' : ''} /><span className="name">{railOpen ? 'Less' : 'More'}</span>
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
         ))}
@@ -667,9 +679,9 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
             </>}
           </Menu>
           <span className="links">
-            <Button variant="link" onClick={() => setOverlay('settings')}>Settings</Button>
-            <Button variant="link" onClick={() => setOverlay('palette')} title="Find any action (⌘K)">Commands</Button>
-            <Button variant="link" onClick={onLogout}>Sign out</Button>
+            <Button variant="quiet" size="sm" icon="settings" label="Settings" onClick={() => setOverlay('settings')} />
+            <Button variant="quiet" size="sm" icon="command" label="Find any action" shortcut="⌘K" onClick={() => setOverlay('palette')} />
+            <Button variant="quiet" size="sm" icon="logout" label={`Sign out of ${client.username}`} onClick={onLogout} />
           </span>
         </div>
       </nav>

@@ -35,6 +35,8 @@ const paths = {
   more: 'M10 5h.01M10 10h.01M10 15h.01',
   calendar: 'M3.5 5.5h13v11h-13zM3.5 9h13M7 3.5v3M13 3.5v3',
   next: 'M8 4l6 6-6 6',
+  chevron: 'M5 8l5 5 5-5',
+  logout: 'M8 4H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M13 13.5 16.5 10 13 6.5M16.5 10H8',
   person: 'M10 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3.5 17a6.5 6.5 0 0 1 13 0',
   templates: 'M4 3.5h12v13H4zM7 7h6M7 10h6M7 13h3',
   mute: 'M4 8v4h3l4 3.5v-11L7 8zM14 8l4 4M18 8l-4 4',
@@ -48,9 +50,9 @@ const paths = {
 
 export type IconName = keyof typeof paths;
 
-export function Icon({ name, size = 18, filled = false }: { name: IconName; size?: number; filled?: boolean }) {
+export function Icon({ name, size = 18, filled = false, className }: { name: IconName; size?: number; filled?: boolean; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill={filled ? 'currentColor' : 'none'} stroke="currentColor"
+    <svg className={className} width={size} height={size} viewBox="0 0 20 20" fill={filled ? 'currentColor' : 'none'} stroke="currentColor"
       strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={paths[name]} />
     </svg>

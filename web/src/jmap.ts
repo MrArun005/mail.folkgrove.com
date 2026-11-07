@@ -148,7 +148,9 @@ export class Jmap {
     if (!accountId) throw new JmapError('This account has no mailbox');
     // Session URLs may be absolute with the server's internal hostname (e.g. behind a proxy).
     // Keep only the path and use the origin we actually reached.
-    return new Jmap(authHeader, onUnauthorized, base, accountId, s.username, pathOnly(s.apiUrl), pathOnly(s.downloadUrl), pathOnly(s.uploadUrl), pathOnly(s.eventSourceUrl));
+    const c = new Jmap(authHeader, onUnauthorized, base, accountId, s.username, pathOnly(s.apiUrl), pathOnly(s.downloadUrl), pathOnly(s.uploadUrl), pathOnly(s.eventSourceUrl));
+    c.maxConcurrent = Math.max(1, Number(s.capabilities?.['urn:ietf:params:jmap:core']?.maxConcurrentRequests) || 4);
+    return c;
   }
 
   /** Authenticated fetch. On a 401 with OAuth, refresh the token once and retry. */
@@ -166,13 +168,42 @@ export class Jmap {
     return res;
   }
 
+  // The server allows only a few API requests in flight per account (session maxConcurrentRequests; Stalwart: 4).
+  // The app starts many at once on load, so extra ones wait their turn here instead of failing with 400.
+  // One queue per account, shared by every client object for it (a reload or a second component may make another),
+  // with one slot left for the live-update stream, which the server counts as a request too.
+  private static gates = new Map<string, { inFlight: number; waiting: (() => void)[] }>();
+  maxConcurrent = 4;
+  private async slot<T>(fn: () => Promise<T>): Promise<T> {
+    const key = `${this.base}|${this.username}`;
+    const g = Jmap.gates.get(key) ?? Jmap.gates.set(key, { inFlight: 0, waiting: [] }).get(key)!;
+    const limit = Math.max(1, this.maxConcurrent - 1);
+    while (g.inFlight >= limit) await new Promise<void>((r) => g.waiting.push(r));
+    g.inFlight++;
+    try { return await fn(); } finally { g.inFlight--; g.waiting.shift()?.(); }
+  }
+
   async call(methodCalls: [string, object, string][], extra: string[] = []): Promise<any[]> {
+    for (let attempt = 0; ; attempt++) {
+      try { return await this.slot(() => this.callOnce(methodCalls, extra)); }
+      catch (e) {
+        // Another tab or device can still push us over the limit: back off briefly and try again.
+        if (attempt >= 3 || !(e instanceof JmapError) || !/concurrent requests/i.test(e.message)) throw e;
+        await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+      }
+    }
+  }
+
+  private async callOnce(methodCalls: [string, object, string][], extra: string[]): Promise<any[]> {
     const res = await this.fetch(this.base + this.apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ using: [...USING, ...extra], methodCalls }),
     });
-    if (!res.ok) throw new JmapError(`The mail server returned an error (${res.status})`);
+    if (!res.ok) {
+      const detail = await res.json().then((j) => j?.detail as string | undefined, () => undefined);
+      throw new JmapError(detail && /concurrent requests/i.test(detail) ? detail : `The mail server returned an error (${res.status})`);
+    }
     const { methodResponses } = await res.json();
     for (const [name, args] of methodResponses) {
       if (name === 'error') throw new JmapError(`${args.type}: ${args.description ?? ''}`);

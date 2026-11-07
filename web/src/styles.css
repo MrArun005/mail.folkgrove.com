@@ -174,9 +174,10 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 .nav-item.active { background: var(--accent-wash); color: var(--accent); font-weight: 600; }
 .nav-item .name { flex: 1; }
 .nav-item .count { font-size: var(--t-xs); font-weight: 700; font-variant-numeric: tabular-nums; }
-.me { margin-top: auto; padding: var(--s3) 0 0 var(--s3); border-top: 1px solid var(--rule); display: grid; gap: var(--s1); }
+.me { margin-top: auto; padding: var(--s2) 0 0 var(--s3); border-top: 1px solid var(--rule); display: flex; align-items: center; gap: var(--s1); }
+.me > .menu { flex: 1; min-width: 0; }
 .me .addr { color: var(--ink-2); font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.me .links { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); }
+.me .links { display: flex; flex: none; gap: 2px; color: var(--ink-2); }
 .me .btn--link { font-size: var(--t-sm); }
 
 /* ═══ List pane: one left edge = --gutter-list ═════════ */
@@ -726,3 +727,7 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 /* Settings → Appearance rows: label left, choices right, all on one baseline */
 .pref-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); }
 .pref-label { color: var(--ink-2); font-weight: 500; }
+
+.nav-more { color: var(--muted); }
+.nav-more svg { transition: transform var(--dur) var(--ease-out); }
+.nav-more svg.flip { transform: rotate(180deg); }
