@@ -33,20 +33,32 @@ async function authorize(user: string, pass: string, scope: string, otp?: string
   const query = new URLSearchParams({ response_type: 'code', client_id: CLIENT_ID, redirect_uri: redirectUri(), scope,
     code_challenge: challenge, code_challenge_method: 'S256', state }).toString();
   const post = async (body: object) => {
-    const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!r.ok) throw new Error(`The mail server couldn’t sign you in right now (${r.status}). Try again in a moment.`);
+    const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .catch(async (e) => { throw new Error((await blockedNetwork()) ?? (e as Error).message); });
+    if (!r.ok) throw new Error((await blockedNetwork()) ?? `The mail server couldn’t sign you in right now (${r.status}). Try again in a moment.`);
     return r.json() as Promise<{ type: string; location?: string; token?: string }>;
   };
   let r = await post({ type: 'authCode', accountName: user, accountSecret: pass, query, ...(otp && { mfaToken: otp.replace(/\s/g, '') }) });
   if (r.type === 'consentRequired' && r.token) r = await post({ type: 'authConsent', token: r.token, query, consent: true });
   if (r.type === 'mfaRequired') return 'code';
-  if (r.type === 'failure') throw new Error(otp ? 'That code didn’t work. Check your authenticator app and try the newest code.' : 'Wrong email or password.');
+  if (r.type === 'failure') throw new Error((await blockedNetwork()) ?? (otp ? 'That code didn’t work. Check your authenticator app and try the newest code.' : 'Wrong email or password.'));
   if (r.type === 'expired') throw new Error('Your password has expired. Ask your administrator to reset it.');
   if (!r.location) throw new Error('The mail server sent an answer this app doesn’t understand.');
   const back = new URL(r.location, location.origin).searchParams;
   if (back.get('error')) throw new Error(back.get('error_description') || 'Sign-in was refused.');
   if (back.get('state') !== state || !back.get('code')) throw new Error('That sign-in didn’t match. Please try again.');
   return tokenRequest({ grant_type: 'authorization_code', code: back.get('code')!, redirect_uri: redirectUri(), code_verifier: verifier });
+}
+
+/**
+ * After a failed sign-in: is this network blocked for too many failed sign-ins? (The mail server answers a blocked
+ * address like a wrong password; the account service can tell, signup/abuse.mjs.) A message saying so, or null.
+ */
+async function blockedNetwork(): Promise<string | null> {
+  const j = await fetch('/api/blocked').then((r) => (r.ok ? r.json() : null), () => null).catch(() => null);
+  if (!j?.blocked) return null;
+  const until = j.until ? new Date(j.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+  return `Too many sign-ins failed from your network, so it’s blocked for a while. This is temporary${until ? `: try again after ${until}` : ', usually about an hour'}. If you’ve forgotten your password, ask your administrator to reset it.`;
 }
 
 /** Everyday sign-in: mail, contacts and calendars, remembered in this tab. */

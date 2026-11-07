@@ -1,4 +1,5 @@
 import { Fragment, Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { SendingBlocked } from './Sending';
 import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
@@ -755,6 +756,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
         if (hasMore && el.scrollTop + el.clientHeight > el.scrollHeight - 600) loadMore();
       }}>
         <div className="list-head">
+        <SendingBlocked client={client} />
         {!online && <p className="banner banner--info offline-banner" role="status">You’re offline. {client.offline ? 'Showing saved mail' : 'Mail you haven’t opened isn’t available'}{outbox ? ` · ${outbox} waiting to send` : ''}.</p>}
         <div className="search">
           <Icon name="search" />

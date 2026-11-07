@@ -20,17 +20,20 @@ export function userView(a, newTier = new Set()) {
     aliases: Object.values(a.aliases ?? {}).filter((x) => x.enable !== false).length,
     enabled: !a.permissions?.disabledPermissions?.authenticate,
     admin: a.roles?.['@type'] !== 'User', newAccount: newTier.has(String(a.emailAddress).toLowerCase()),
+    sending: !a.permissions?.disabledPermissions?.emailSend, // false: suspended (abuse.mjs)
   };
 }
 
-/** The permissions object with sign-in switched on or off, keeping any other custom permissions. */
-export function withSignIn(p = { '@type': 'Inherit' }, enabled) {
+/** The permissions object with some permissions switched on or off, keeping any other custom permissions. */
+export function withPerms(p = { '@type': 'Inherit' }, keys, enabled) {
   const base = p['@type'] === 'Inherit' ? { '@type': 'Merge', enabledPermissions: {}, disabledPermissions: {} } : structuredClone(p);
   base.disabledPermissions = { ...base.disabledPermissions };
-  if (enabled) delete base.disabledPermissions.authenticate; else base.disabledPermissions.authenticate = true;
+  for (const k of keys) if (enabled) delete base.disabledPermissions[k]; else base.disabledPermissions[k] = true;
   const empty = base['@type'] === 'Merge' && !Object.keys(base.disabledPermissions).length && !Object.keys(base.enabledPermissions ?? {}).length;
   return empty ? { '@type': 'Inherit' } : base;
 }
+/** The permissions object with sign-in switched on or off. */
+export const withSignIn = (p, enabled) => withPerms(p, ['authenticate'], enabled);
 
 /** One queued message: who sent it, and per recipient its status, attempts and last error. */
 export function queueView(m) {
@@ -46,7 +49,7 @@ export function queueView(m) {
 
 const password = () => randomBytes(12).toString('base64url'); // 16 characters, about 96 bits
 
-export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf }) {
+export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, abuse }) {
   const admins = new Set(cfg.admins ?? []);
   // Admin rights go by name, so admin names can never be signed up for, and the console can't touch admin accounts.
   cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins];
@@ -77,7 +80,8 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         query('x:BlockedIp', { calculateTotal: true, limit: 0 }),
         newTier(),
       ]);
-      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length };
+      const suspended = Object.values(abuse?.state.suspensions ?? {}).filter((h) => !h.at(-1)?.liftedAt).length;
+      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length, suspended };
     },
 
     'GET users': async (_req, url) => {
@@ -110,9 +114,13 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
 
     'PATCH users/:id': async (req, _url, id, who) => {
       const body = await readJson(req).catch(() => ({}));
-      const a = await account(id);
+      let a = await account(id);
       if (!a) return [404, 'not_found', 'That account no longer exists.'];
       if (isAdmin(a)) return [403, 'protected', 'Administrator accounts are managed in Stalwart’s own admin.'];
+      if (typeof body.sending === 'boolean' && abuse) { // suspend or allow sending, with the reason kept (abuse.mjs)
+        if (body.sending) await abuse.liftAccount(a, who.name); else await abuse.suspendAccount(a, 'An administrator suspended sending.', who.name);
+        a = await account(id);
+      }
       const patch = {};
       if (typeof body.enabled === 'boolean') {
         if (!body.enabled && id === who.id) return [400, 'self', 'You can’t disable your own account.'];
@@ -131,7 +139,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         secret = password();
         if (key) patch[`credentials/${key}/secret`] = secret; else patch.credentials = { 0: { '@type': 'Password', secret } };
       }
-      if (!Object.keys(patch).length) return [400, 'nothing', 'Nothing to change.'];
+      if (!Object.keys(patch).length) return typeof body.sending === 'boolean' && abuse ? { user: userView(a) } : [400, 'nothing', 'Nothing to change.'];
       await set('x:Account', { update: { [id]: patch } });
       return { user: userView(await account(id)), ...(secret && { password: secret }) };
     },
@@ -149,6 +157,23 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     },
 
     'GET domains': async () => ({ domains: await adminDomainList(jmap) }), // users' own domains (domains.mjs)
+    // Accounts whose sending is suspended (automatically or by an admin), with why; lift with PATCH users/:id {sending: true}.
+    'GET suspended': async () => {
+      const open = Object.entries(abuse?.state.suspensions ?? {}).map(([email, h]) => ({ email, h, cur: h.at(-1) })).filter((x) => x.cur && !x.cur.liftedAt);
+      const live = new Map((await get('x:Account', [...new Set(open.map((x) => x.cur.id))], USER_PROPS)).map((a) => [a.id, a]));
+      return { suspended: open.filter((x) => live.get(x.cur.id)?.permissions?.disabledPermissions?.emailSend).map(({ email, h, cur }) => ({
+        id: cur.id, email, reason: cur.reason, at: new Date(cur.at).toISOString(), by: cur.by ?? null,
+        times: h.filter((r) => Date.now() - r.at < 7 * 86400e3).length })) };
+    },
+    // Accounts the daily job has reminded or found past the inactive limit. Nothing is blocked or deleted by itself.
+    'GET inactive': async () => {
+      const st = abuse?.state ?? { inactive: {}, seen: {}, since: Date.now() };
+      const recs = Object.entries(st.inactive);
+      const live = new Map((await get('x:Account', [...new Set(recs.map(([, r]) => r.id))], USER_PROPS)).map((a) => [a.id, a]));
+      return { months: cfg.inactiveMonths ?? 0, since: new Date(st.since).toISOString(), accounts: recs.filter(([, r]) => live.has(r.id)).map(([email, r]) => ({
+        id: r.id, email, lastSeen: st.seen[email] ? new Date(st.seen[email]).toISOString() : null, reminded: r.reminded ?? null,
+        due: !!r.dueAt, enabled: userView(live.get(r.id)).enabled })) };
+    },
 
     'GET blocked': async () => {
       const { ids } = await query('x:BlockedIp', { limit: 500 });
@@ -190,7 +215,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   };
 
   return async function handle(req, res, url) {
-    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains)(?:/(${ID}))?(/retry)?$`));
+    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains|suspended|inactive)(?:/(${ID}))?(/retry)?$`));
     if (!m) return false;
     if (!admins.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS is set
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);

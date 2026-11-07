@@ -93,6 +93,8 @@ export interface CustomDomain {
   records: DnsRecord[]; addresses: { name: string; email: string; enabled: boolean; main: boolean }[]; maxAddresses: number;
 }
 export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
+/** unblock: 'ok' = you may lift it now, 'wait' = once a day (retryAfter seconds), 'admin' = only an admin can. */
+export interface SendingStatus { suspended: boolean; reason?: string; since?: string | null; unblock?: 'ok' | 'wait' | 'admin'; retryAfter?: number }
 async function aliasReply(r: Response) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.ok) throw Object.assign(new JmapError(j.error?.message ?? `The server returned an error (${r.status})`), { code: j.error?.code as string | undefined });
@@ -671,6 +673,17 @@ export class Jmap {
     return aliasReply(r);
   }
 
+  /** Is sending suspended for this account (signup/abuse.mjs)? null = this server doesn't run the account service. */
+  async sendingStatus(): Promise<SendingStatus | null> {
+    const r = await this.fetch(`${this.base}/api/sending`).catch(() => null);
+    if (!r || r.status === 404 || r.status === 502 || r.status === 503) return null;
+    return aliasReply(r);
+  }
+  /** Lift your own suspension (once a day; a second suspension within a week needs an admin). Errors carry `code`. */
+  async unblockSending(): Promise<void> {
+    await aliasReply(await this.fetch(`${this.base}/api/sending/unblock`, { method: 'POST' }));
+  }
+
   /** The identity a draft sends as: its chosen From address if the account still owns it, else the main one. */
   private async identityFor(d: Draft): Promise<Identity> {
     const main = await this.getIdentity();
@@ -877,7 +890,10 @@ export class Jmap {
         onSuccessUpdateEmail: { '#s': { [`mailboxIds/${drafts}`]: null, [`mailboxIds/${sent}`]: true, 'keywords/$draft': null,
           ...(d.followUpDays && { 'keywords/$followup': true, [`keywords/$followup-${Math.floor((+(sendAt ?? new Date()) + d.followUpDays * 86400e3) / 1000)}`]: true }) } },
       }, 's'],
-    ]);
+    ]).catch((e) => {
+      // Sending suspended (signup/abuse.mjs): the server refuses the submission; the message stays in Drafts.
+      throw /^forbidden:/.test((e as Error).message) ? new JmapError('Sending is switched off for your account right now, so this wasn’t sent. It’s saved in Drafts. The notice above your inbox says why and what to do.') : e;
+    });
     return { submissionId: sub.created.s.id, emailId: created.created.d.id };
   }
 
