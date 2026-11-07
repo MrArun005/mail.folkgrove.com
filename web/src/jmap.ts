@@ -4,6 +4,7 @@ import { isOffline, offlineStore } from './offline';
 import type { CalEvent } from './calendar';
 import { buildReply, parseInvite, replyWord, type Invite, type PartStat } from './ics';
 import { buildMdn } from './mailutil';
+import { autocryptHeader, myKey, peerKey, unlockedKey } from './keys';
 
 
 const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve'];
@@ -35,6 +36,8 @@ export interface EmailFull extends EmailSummary {
   receiptTo: Address[] | null;
   /** RFC 2369/8058 List-Unsubscribe: where to unsubscribe, and whether a one-click POST is allowed. */
   unsubscribe: { urls: string[]; oneClick: boolean } | null;
+  /** Autocrypt header: the sender's public key, offered for encrypted replies. */
+  autocrypt?: string | null;
 }
 export interface Identity { id: string; name: string; email: string; textSignature: string; htmlSignature: string }
 export interface Vacation { isEnabled: boolean; fromDate: string | null; toDate: string | null; subject: string | null; textBody: string | null }
@@ -52,6 +55,8 @@ export interface Draft {
   receipt?: boolean;
   /** Bring it back to the Inbox if nobody replies within this many days. */
   followUpDays?: number;
+  /** Send end-to-end encrypted and signed (PGP/MIME). Every recipient needs a known key (keys.ts). */
+  encrypt?: boolean;
 }
 /** An Email/query filter: { inMailbox }, { text }, { hasKeyword }, … */
 export type Filter = Record<string, unknown>;
@@ -84,7 +89,7 @@ const pathOnly = (url: string) => url.replace(/^https?:\/\/[^/]+/, ''); // keep 
 
 const SUMMARY = ['threadId', 'subject', 'from', 'to', 'preview', 'receivedAt', 'keywords', 'hasAttachment', 'mailboxIds'];
 const FULL = [...SUMMARY, 'blobId', 'cc', 'bcc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
-  'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses'];
+  'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses', 'header:Autocrypt:asText'];
 
 export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
 async function aliasReply(r: Response) {
@@ -337,7 +342,7 @@ export class Jmap {
       const urls: string[] = e['header:List-Unsubscribe:asURLs'] ?? [];
       const unsubscribe = urls.length ? { urls, oneClick: /One-Click/i.test(e['header:List-Unsubscribe-Post:asText'] ?? '') } : null;
       return { ...e, attachments: e.attachments ?? [], html: join(e.htmlBody, 'text/html'), text: join(e.textBody, 'text/plain'), unsubscribe,
-        receiptTo: e['header:Disposition-Notification-To:asAddresses'] ?? null };
+        receiptTo: e['header:Disposition-Notification-To:asAddresses'] ?? null, autocrypt: e['header:Autocrypt:asText'] ?? null };
     }).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
   }
 
@@ -851,8 +856,14 @@ export class Jmap {
   async send(d: Draft, boxes: Mailbox[], sendAt?: Date): Promise<{ submissionId: string; emailId: string }> {
     const me = await this.identityFor(d);
     const drafts = this.box(boxes, 'drafts'), sent = this.box(boxes, 'sent');
+    // Your public key travels with every message (Autocrypt), so people can write back encrypted.
+    const mine = await myKey(this.username).catch(() => undefined);
     const [created, sub] = await this.call([
-      ['Email/set', { accountId: this.accountId, create: { d: await this.compose(d, drafts) }, destroy: d.id ? [d.id] : [] }, 'e'],
+      d.encrypt
+        ? ['Email/import', { accountId: this.accountId, emails: { d: { blobId: (await this.upload(new Blob([await this.encrypted(d, me, mine?.keydata)], { type: 'message/rfc822' }))).blobId,
+            mailboxIds: { [drafts]: true }, keywords: { $draft: true, $seen: true } } } }, 'e']
+        : ['Email/set', { accountId: this.accountId, create: { d: { ...await this.compose(d, drafts),
+            ...(mine && { 'header:Autocrypt:asText': autocryptHeader(me.email, mine.keydata) }) } }, destroy: d.id ? [d.id] : [] }, 'e'],
       ['EmailSubmission/set', {
         accountId: this.accountId,
         create: { s: { identityId: me.id, emailId: '#d', envelope: {
@@ -863,8 +874,25 @@ export class Jmap {
         onSuccessUpdateEmail: { '#s': { [`mailboxIds/${drafts}`]: null, [`mailboxIds/${sent}`]: true, 'keywords/$draft': null,
           ...(d.followUpDays && { 'keywords/$followup': true, [`keywords/$followup-${Math.floor((+(sendAt ?? new Date()) + d.followUpDays * 86400e3) / 1000)}`]: true }) } },
       }, 's'],
+      ...(d.encrypt && d.id ? [['Email/set', { accountId: this.accountId, destroy: [d.id] }, 'x'] as [string, object, string]] : []), // the unencrypted autosaved draft
     ]);
     return { submissionId: sub.created.s.id, emailId: created.created.d.id };
+  }
+
+  /** The raw encrypted + signed message for a draft (pgp.ts loads only now). Encrypted to you too, so Sent stays readable. */
+  private async encrypted(d: Draft, me: Identity, keydata?: string): Promise<string> {
+    const privateKey = unlockedKey(this.username);
+    if (!privateKey) throw new JmapError('Unlock your encryption key to send encrypted mail.');
+    const people = [...d.to, ...d.cc, ...(d.bcc ?? [])];
+    const keys = await Promise.all(people.map(async (a) => (await peerKey(a.email))?.publicKey));
+    const missing = people.filter((_, i) => !keys[i]);
+    if (missing.length) throw new JmapError(`There’s no encryption key for ${missing.map((a) => a.email).join(', ')}.`);
+    const own = await myKey(this.username);
+    const pgp = await import('./pgp');
+    const files = await Promise.all(d.attachments.map(async (a) => ({ name: a.name ?? 'attachment', type: a.type, cid: a.cid ?? null, data: new Uint8Array(await (await this.download(a)).arrayBuffer()) })));
+    return pgp.encryptedMessage({ from: { name: me.name && me.name !== me.email ? me.name : null, email: me.email }, to: d.to, cc: d.cc, subject: d.subject,
+      html: d.html, text: d.text, files, inReplyTo: d.inReplyTo, references: d.references, autocrypt: keydata && autocryptHeader(me.email, keydata) },
+      privateKey, [...(keys as string[]), ...(own ? [own.publicKey] : [])]);
   }
 
   /** Messages waiting to go out later (excludes the few seconds of the normal undo window). */
@@ -984,6 +1012,28 @@ export class Jmap {
     const permissions = Object.fromEntries(APP_PASSWORD_PERMISSIONS.map((p) => [p, true]));
     const [r] = await this.call([['x:AppPassword/set', { accountId: this.accountId, create: { p: { description, permissions: { '@type': 'Replace', permissions } } } }, 'c']], [STALWART]);
     return r.created.p.secret;
+  }
+
+  // ── Encryption at rest and your public key (Stalwart x:PublicKey, x:AccountSettings; needs the step-up client
+  //    with the settings scope, so a stolen everyday token can't swap the key your mail is encrypted to) ──
+
+  async encryptionState(): Promise<{ keys: { id: string; kind: string | null; fingerprints: string[]; description: string }[]; atRest: string | null }> {
+    const [k, s] = await this.call([
+      ['x:PublicKey/get', { accountId: this.accountId, ids: null, properties: ['kind', 'fingerprints', 'description'] }, 'k'],
+      ['x:AccountSettings/get', { accountId: this.accountId, ids: ['singleton'] }, 's'],
+    ], [STALWART]);
+    const ear = s.list[0]?.encryptionAtRest;
+    return { keys: k.list, atRest: ear?.['@type'] === 'Enabled' ? ear.publicKey : null };
+  }
+  /** Upload a public key (OpenPGP, or an S/MIME certificate). Returns its id. */
+  async addPublicKey(key: string, description: string): Promise<string> {
+    const [r] = await this.call([['x:PublicKey/set', { accountId: this.accountId, create: { k: { key, description } } }, 'k']], [STALWART]);
+    return r.created.k.id;
+  }
+  /** Turn encryption at rest on (to this key) or off (null). New mail only: what's stored stays as it is. */
+  async setEncryptionAtRest(publicKeyId: string | null) {
+    await this.call([['x:AccountSettings/set', { accountId: this.accountId, update: { singleton: {
+      encryptionAtRest: publicKeyId ? { '@type': 'Enabled', publicKey: publicKeyId } : { '@type': 'Disabled' } } } }, 's']], [STALWART]);
   }
 
   async deleteAppPassword(id: string) { await this.call([['x:AppPassword/set', { accountId: this.accountId, destroy: [id] }, 'd']], [STALWART]); }

@@ -35,7 +35,7 @@
 	# and the web client simply hides its "Create an account" link.
 	# X-Real-IP is always overwritten with the real client address (clients can't spoof it), so per-IP rate
 	# limits work. Run the signup container with CLIENT_IP_HEADER=x-real-ip.
-	@signup path /api/signup /api/username-available /api/aliases /api/aliases/* /api/session/* /api/account /api/admin/*
+	@signup path /api/signup /api/username-available /api/aliases /api/aliases/* /api/session/* /api/account /api/admin/* /.well-known/openpgpkey/*
 	handle @signup {
 		reverse_proxy signup:3000 {
 			header_up X-Real-IP {remote_host}
@@ -46,6 +46,16 @@
 	handle {
 		reverse_proxy stalwart:8080
 	}
+}
+
+# Web Key Directory (advanced method): other mail apps find our users' OpenPGP keys here. DNS: CNAME openpgpkey → mail host.
+openpgpkey.{$MAIL_DOMAIN} {
+	handle /.well-known/openpgpkey/* {
+		reverse_proxy signup:3000 {
+			header_up X-Real-IP {remote_host}
+		}
+	}
+	respond 404
 }
 
 # Discovery hosts from Stalwart's suggested DNS zone (all CNAMEs to the mail host).

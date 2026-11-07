@@ -9,6 +9,7 @@ import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
 import { accountRoutes } from './account.mjs';
 import { adminRoutes } from './admin.mjs';
+import { wkdRoutes } from './wkd.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
@@ -266,6 +267,7 @@ export function createApp(cfg) {
   }
   const account = accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
   const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const wkd = wkdRoutes({ cfg, jmap, getDomainId, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
   return createServer(async (req, res) => {
@@ -275,6 +277,7 @@ export function createApp(cfg) {
       if (url.pathname === '/api/account' && await account(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
       if (url.pathname.startsWith('/api/admin/') && await admin(req, res, url)) return;
+      if (url.pathname.startsWith('/.well-known/openpgpkey/') && await wkd(req, res, url)) return;
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);

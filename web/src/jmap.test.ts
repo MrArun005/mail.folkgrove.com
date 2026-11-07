@@ -521,7 +521,7 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
   }, 45_000);
 
   it('account security: app passwords, password change and two-factor (on a throwaway account)', async () => {
-    const admin = JSON.parse((await import('node:fs')).readFileSync(new URL('../../deploy/.dev-admin.json', import.meta.url), 'utf8'));
+    const admin = JSON.parse((await import('node:fs')).readFileSync(process.env.ADMIN_FILE ?? new URL('../../deploy/.dev-admin.json', import.meta.url), 'utf8'));
     const adminAuth = 'Basic ' + Buffer.from(`${admin.user}:${admin.pass}`).toString('base64');
     const adm = async (calls: unknown[]) => (await (await fetch(`${BASE}/jmap/`, { method: 'POST', headers: { Authorization: adminAuth, 'Content-Type': 'application/json' },
       body: JSON.stringify({ using: ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap'], methodCalls: calls }) })).json()).methodResponses;

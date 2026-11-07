@@ -10,6 +10,7 @@ export default defineConfig({
   server: {
     proxy: {
       // Public sign-up service (signup/), only when it's running.
+      '/.well-known/openpgpkey': signup, // our WKD (before Stalwart's /.well-known below: first match wins)
       '/api/signup': signup, '/api/username-available': signup, '/api/aliases': signup, '/api/session': signup, '/api/account': signup, '/api/admin': signup,
       ...Object.fromEntries(['/jmap', '/.well-known', '/login', '/api/auth', '/auth', '/ui-', '/logo', '/dav'].map((p) => [p, stalwart])),
     },

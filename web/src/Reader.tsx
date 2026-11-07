@@ -10,6 +10,7 @@ import { buildSrcdoc } from './safeHtml';
 import { span, type CalEvent } from './calendar';
 import type { PartStat } from './ics';
 import { Menu, TimeChoices } from './Menu';
+import { isCryptoPart, SecureBanner, useSecureMail } from './Encryption';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
 export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task';
@@ -123,8 +124,11 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
   const [preview, setPreview] = useState<Attachment | null>(null);
   const [assist, setAssist] = useState<{ kind: 'translation' | 'summary'; text: string; note: string } | null>(null);
   const [assisting, setAssisting] = useState('');
+  // Encrypted mail is opened here, on this device; what's shown is the decrypted message.
+  const secure = useSecureMail(client, m, me);
+  const shown = secure.state?.encrypted && secure.state.mail ? { html: secure.state.mail.html, text: secure.state.mail.text } : m;
   // Prefer the sender's plain-text part; from HTML, only what a reader can actually see (see visibleText).
-  const plain = (m.text || (m.html ? visibleText(m.html) : '')).trim();
+  const plain = (shown.text || (shown.html ? visibleText(shown.html) : '')).trim();
   async function help(kind: 'translation' | 'summary') {
     setAssisting(kind === 'translation' ? 'Translating on this device…' : 'Summarising on this device…');
     try {
@@ -144,8 +148,8 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
       .then((pairs) => live && setInline(Object.fromEntries(pairs)), () => {});
     return () => { live = false; };
   }, [embedded]);
-  const html = useMemo(() => (m.html ? buildSrcdoc(m.html, showImages, inline) : null), [m, showImages, inline]);
-  const files = m.attachments.filter((a) => !embedded.includes(a));
+  const html = useMemo(() => (shown.html ? buildSrcdoc(shown.html, showImages, { ...inline, ...secure.state?.inline }) : null), [shown.html, showImages, inline, secure.state]);
+  const files = m.attachments.filter((a) => !embedded.includes(a) && !(secure.kind && isCryptoPart(a)));
   const sender = m.from?.[0];
   return (
     <section className="message">
@@ -176,6 +180,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
         </div>
       )}
       <Invitation client={client} m={m} onRsvp={onRsvp} />
+      <SecureBanner me={me} m={m} {...secure} />
       {m.receiptTo?.length && !m.keywords.$mdnsent && m.from?.[0]?.email.toLowerCase() !== me.toLowerCase() ? (
         <p className="banner banner--info">
           <Icon name="receipt" size={16} />
@@ -202,7 +207,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
         </>
       ) : html
         ? <MessageFrame title={`Message from ${displayName(sender)}`} srcdoc={html.srcdoc} />
-        : <div className="letter">{m.text}</div>}
+        : <div className="letter">{shown.text}</div>}
       {files.length > 0 && (
         <ul className="chips" aria-label="Attachments">
           {files.map((a) => (

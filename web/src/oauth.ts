@@ -201,7 +201,12 @@ export class Session {
 const SECURITY_SCOPE = 'openid urn:ietf:params:oauth:scope:mail urn:ietf:params:oauth:scope:contacts urn:ietf:params:oauth:scope:calendars urn:stalwart:oauth:scope:security';
 
 /** Re-enter the password (and code) for a short-lived security token, kept only by the caller in memory. */
+// The settings scope covers your public key and encryption at rest (x:PublicKey, x:AccountSettings). Servers whose
+// webmail client predates it refuse the scope: then security works without it and encryption says what's missing.
+// ponytail: that retry re-sends the same two-factor code; if the server rejects the replay, the user enters a new one.
+const SETTINGS_SCOPE = ' urn:stalwart:oauth:scope:settings';
 export async function stepUp(user: string, pass: string, otp?: string): Promise<string | 'code'> {
-  const t = await authorize(user, pass, SECURITY_SCOPE, otp);
+  const t = await authorize(user, pass, SECURITY_SCOPE + SETTINGS_SCOPE, otp)
+    .catch((e: Error) => (/scope/i.test(e.message) ? authorize(user, pass, SECURITY_SCOPE, otp) : Promise.reject(e)));
   return t === 'code' ? t : t.access;
 }
