@@ -144,6 +144,8 @@ A brand-new domain and IP have no sending reputation. Big providers may send you
 
 OpenMail's own admin console is at `https://mx.example.com/admin`: users (create, disable, reset password, storage limits), blocked IP addresses, new-account sending limits and the outgoing queue. Set `ADMINS=you` (usernames, comma-separated) for the account service, then sign in to the web app as one of them.
 
+**Outgoing spam is held for review.** Every message your users send passes a spam check first (Stalwart's spam filter, called by the account service). Likely spam isn't sent: the sender sees "This message looks like spam, so it is held for review", and it waits under **Held mail** in the console, where you send it on or delete it. When one person has 3 messages waiting, their sending is paused (they can still read mail) until you click **Let them send** on the Users tab. `install.sh` sets this up (an MTA hook to the account service, secret in `.hold.env`, held mail in `signup-data/held/`, included in backups). While the account service is down, sending waits and mail apps retry. Tuning (`HOLD_SCORE`, `HOLD_SUSPEND_AFTER`) and how it works: [signup/README.md](../signup/README.md#outgoing-spam-held-for-review).
+
 Stalwart's full admin interface is at `https://mx.example.com/admin/` (note the slash at the end). Sign in with the details in `.admin-credentials`. From there you can manage everything else: settings, spam filter, logs.
 
 Logs:

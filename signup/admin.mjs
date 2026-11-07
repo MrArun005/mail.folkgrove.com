@@ -18,15 +18,21 @@ export function userView(a, newTier = new Set()) {
     used: a.usedDiskQuota ?? 0, quota: a.quotas?.maxDiskQuota ?? null,
     aliases: Object.values(a.aliases ?? {}).filter((x) => x.enable !== false).length,
     enabled: !a.permissions?.disabledPermissions?.authenticate,
+    sending: !SEND_PERMISSIONS.some((n) => a.permissions?.disabledPermissions?.[n]),
     admin: a.roles?.['@type'] !== 'User', newAccount: newTier.has(String(a.emailAddress).toLowerCase()),
   };
 }
 
 /** The permissions object with sign-in switched on or off, keeping any other custom permissions. */
-export function withSignIn(p = { '@type': 'Inherit' }, enabled) {
+export const withSignIn = (p, enabled) => withPermissions(p, ['authenticate'], enabled);
+/** Sending, by SMTP (emailSend) and by the web app (JMAP submission). Taking both away pauses sending; sign-in stays. */
+export const SEND_PERMISSIONS = ['emailSend', 'jmapEmailSubmissionCreate'];
+
+/** The permissions object with these permissions switched on (back to inherited) or off, keeping any others. */
+export function withPermissions(p = { '@type': 'Inherit' }, names, enabled) {
   const base = p['@type'] === 'Inherit' ? { '@type': 'Merge', enabledPermissions: {}, disabledPermissions: {} } : structuredClone(p);
   base.disabledPermissions = { ...base.disabledPermissions };
-  if (enabled) delete base.disabledPermissions.authenticate; else base.disabledPermissions.authenticate = true;
+  for (const n of names) if (enabled) delete base.disabledPermissions[n]; else base.disabledPermissions[n] = true;
   const empty = base['@type'] === 'Merge' && !Object.keys(base.disabledPermissions).length && !Object.keys(base.enabledPermissions ?? {}).length;
   return empty ? { '@type': 'Inherit' } : base;
 }
@@ -45,7 +51,7 @@ export function queueView(m) {
 
 const password = () => randomBytes(12).toString('base64url'); // 16 characters, about 96 bits
 
-export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf }) {
+export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, hold = null }) {
   const admins = new Set(cfg.admins ?? []);
   // Admin rights go by name, so admin names can never be signed up for, and the console can't touch admin accounts.
   cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins];
@@ -76,7 +82,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         query('x:BlockedIp', { calculateTotal: true, limit: 0 }),
         newTier(),
       ]);
-      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length };
+      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length, held: hold ? hold.list().length : null };
     },
 
     'GET users': async (_req, url) => {
@@ -117,6 +123,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         if (!body.enabled && id === who.id) return [400, 'self', 'You can’t disable your own account.'];
         patch.permissions = withSignIn(a.permissions, body.enabled);
       }
+      if (typeof body.sending === 'boolean') patch.permissions = withPermissions(patch.permissions ?? a.permissions, SEND_PERMISSIONS, body.sending);
       if ('quotaBytes' in body) {
         const q = body.quotaBytes === null ? null : Number(body.quotaBytes);
         if (q !== null && !(Number.isSafeInteger(q) && q > 0)) return [400, 'bad_quota', 'Enter the storage limit as a whole number.'];
@@ -184,10 +191,15 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     // Retry now: what Stalwart's own admin does (next attempt due in the past).
     'POST queue/:id/retry': async (_req, _url, id) => { await set('x:QueuedMessage', { update: { [id]: { nextRetry: '2000-01-01T00:00:00Z' } } }); return {}; },
     'DELETE queue/:id': async (_req, _url, id) => { await set('x:QueuedMessage', { destroy: [id] }); return {}; },
+
+    // Outgoing mail held as likely spam (hold.mjs). Off (404) unless HOLD_HOOK_SECRET is set.
+    'GET held': async () => (hold ? { held: hold.list() } : [404, 'not_found', 'Holding outgoing spam is off on this server.']),
+    'POST held/:id/release': async (_req, _url, id) => (await hold?.release(id)) ? {} : [404, 'not_found', 'That message is no longer held.'],
+    'DELETE held/:id': async (_req, _url, id) => hold?.remove(id) ? {} : [404, 'not_found', 'That message is no longer held.'],
   };
 
   return async function handle(req, res, url) {
-    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue)(?:/(${ID}))?(/retry)?$`));
+    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|held)(?:/(${ID}))?(/retry|/release)?$`));
     if (!m) return false;
     if (!admins.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS is set
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);

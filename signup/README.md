@@ -27,6 +27,11 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `CLIENT_IP_HEADER` | | Header that carries the real client IP when the service runs behind a proxy, for example `cf-connecting-ip` or `x-real-ip`. Set this **only** if the proxy overwrites that header, because otherwise clients can spoof it. If unset, the socket address is used. |
 | `ADMINS` | | Usernames on `DOMAIN` (comma-separated, e.g. `ann,raj`) who may use the admin console at `/admin`. Empty: the console is off and `/api/admin/*` answers 404. See [Admin console](#admin-console-apiadmin). |
 | `RESERVED_NAMES` | | Extra reserved usernames, comma-separated. They are added to the built-in list in `lib.mjs`. |
+| `HOLD_HOOK_SECRET` | | Turns on [holding outgoing spam](#outgoing-spam-held-for-review). Stalwart's hook must send it as `Authorization: Bearer …`. `install.sh` creates it (`.hold.env`). |
+| `HOLD_DIR` | | Where held messages are kept (one `.json` + `.eml` pair each). Without it they live in memory until restart. `/data/held` in `docker-compose.yml`. |
+| `HOLD_SCORE` | `5` | Hold a message whose content scores this much or more (Stalwart's spam scores; see below). |
+| `HOLD_SUSPEND_AFTER` | `3` | Pause a sender's sending once this many of their messages are waiting for review. |
+| `SYSTEM_SMTP_HOST`, `SYSTEM_SMTP_PORT`, `SYSTEM_SMTP_TLS_NAME`, `SYSTEM_SMTP_INSECURE` | `stalwart`, `465` | Where released mail is submitted (and system mail is sent). |
 | `RETIRED_FILE` | | File (one name per line) where the names of deleted accounts and their aliases are kept, so they are never given out again. Stalwart itself frees them on delete. Set it in production (`docker-compose.yml` does); without it the list lasts until restart. |
 
 Docker:
@@ -105,17 +110,38 @@ The web app's `/admin` screen calls these. Each request must carry the admin's o
 
 | Request | What it does (Stalwart object) |
 |---|---|
-| `GET overview` | Counts: user accounts, messages waiting in the queue, blocked IPs, accounts on new-account limits |
+| `GET overview` | Counts: user accounts, messages waiting in the queue, blocked IPs, accounts on new-account limits, messages held as spam (`null` when holding is off) |
 | `GET users?q=` | Up to 200 user accounts by name; `q` matches whole words (Stalwart's text search). Each: email, created, storage used and limit, live alias count, enabled, server admin, on new-account limits (`x:Account`) |
 | `POST users` `{name, quotaBytes?, description?}` | Creates `name@DOMAIN` with a generated password, returned once. `quotaBytes` 0 = no limit; omitted = `QUOTA_BYTES` |
-| `PATCH users/:id` `{enabled?, quotaBytes?, resetPassword?}` | Disable/enable sign-in (removes the `authenticate` permission: sign-in, sending and existing sessions stop; mail still arrives), set the storage limit (`null` = none), or replace the main password with a generated one (returned once; signs them out everywhere; app passwords stay) |
+| `PATCH users/:id` `{enabled?, sending?, quotaBytes?, resetPassword?}` | `sending: false` pauses sending only (permissions `emailSend` and `jmapEmailSubmissionCreate` taken away: SMTP sign-in and web-app sending are refused, reading mail works); `true` lets them send again. Disable/enable sign-in (removes the `authenticate` permission: sign-in, sending and existing sessions stop; mail still arrives), set the storage limit (`null` = none), or replace the main password with a generated one (returned once; signs them out everywhere; app passwords stay) |
 | `DELETE users/:id` | Deletes the account and its mail. Its username and aliases are retired (`RETIRED_FILE`), never given out again |
 | `GET blocked`, `DELETE blocked/:id` | IPs Stalwart blocked (reason, when, until) and unblock (`x:BlockedIp`) |
 | `GET new-accounts`, `POST new-accounts {address}`, `DELETE new-accounts/:id` | The stricter new-account sending tier: `x:MemoryLookupKey` entries in namespace `new-accounts`, key = full address |
+| `GET held`, `POST held/:id/release`, `DELETE held/:id` | Outgoing mail [held as likely spam](#outgoing-spam-held-for-review): who sent it (sign-in and envelope sender), recipients, subject, score and the spam rules that matched. Release sends it as written; delete drops it (the sender isn't told). `404` when holding is off |
 | `GET queue?q=` | Outgoing queue (`x:QueuedMessage`), up to 200, by sender or recipient (substring): per recipient status, attempts, next try, last error |
 | `POST queue/:id/retry`, `DELETE queue/:id` | Retry now (next attempt due immediately) or cancel delivery |
 
 Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) and the caller's own account can't be changed or deleted here; names in `ADMINS` are also reserved at sign-up. Delivered or bounced mail leaves the queue; Stalwart's delivery history (`x:Trace`) needs its Enterprise edition, so it isn't shown.
+
+### Outgoing spam held for review
+
+Stalwart calls `POST /internal/outbound-hook` (an MTA hook, `x:MtaHook`, at the DATA stage) for every message a signed-in user sends, by mail app (SMTP) or web app (JMAP). The path isn't under `/api/`, so Caddy never forwards it; the hook also sends `HOLD_HOOK_SECRET`.
+
+1. The service asks Stalwart to score the message (`x:Action` `ClassifySpam`) and adds up only the tags about the message itself. Tags about the connection (`AUTH_*`, `DMARC_*`, `SPF_*`, `HELO_*`, `RCVD_*`, `SOURCE_*`, `FROM_INVALID`…) are dropped: ClassifySpam scores a message as if it came from outside, which says nothing about mail a signed-in user submits. Messages containing the GTUBE test string are always held.
+2. At `HOLD_SCORE` or more, the hook answers `reject` with `550 5.7.1 This message looks like spam, so it is held for review…`. The sender sees that as an error in the web app or a bounce in their mail app. The message is kept in `HOLD_DIR`; sending it again (same Message-ID) doesn't hold it twice.
+3. An admin releases it from the console: the service submits it as written (SMTP, port 465) as the admin login, which `install.sh` allows to send from any address (`x:MtaStageAuth.mustMatchSender`), and which the hook lets through. Or deletes it.
+4. When `HOLD_SUSPEND_AFTER` of one sender's messages are waiting, their sending is paused (as `PATCH users/:id {sending: false}`). Never for admins.
+
+Why this design (tested on Stalwart 1.0.3): its spam filter runs after MTA hooks and its verdict header never reaches a hook; a DATA-stage system Sieve script didn't run; queue routing expressions can't pick out one message. Limits: if the spam check itself fails, the message goes out (logged); messages over 50 MB aren't scanned; released mail counts against the admin login's sending limits, not the sender's.
+
+Dev: `node deploy/dev-setup.mjs` points the hook at `http://host.docker.internal:3000` with the secret `dev-hold-secret` and does not delay mail when nothing answers. To try it:
+
+```sh
+DOMAIN=openmail.test ADMIN_FILE=../deploy/.dev-admin.json SIGNUP=off ADMINS=alice HOLD_HOOK_SECRET=dev-hold-secret \
+  SYSTEM_SMTP_HOST=localhost SYSTEM_SMTP_PORT=1465 SYSTEM_SMTP_INSECURE=true node server.mjs
+```
+
+The test `test/hold.test.mjs` sets up its own hook (for its throwaway sender only) and removes it afterwards.
 
 ### `GET /healthz`
 

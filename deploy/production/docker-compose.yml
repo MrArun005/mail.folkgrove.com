@@ -74,8 +74,11 @@ services:
       ADMINS: ${ADMINS:-}   # who may use the admin console at /admin (usernames, comma-separated)
       CLIENT_IP_HEADER: x-real-ip
       RETIRED_FILE: /data/retired-names.txt  # names of deleted accounts: never given out again (backup.sh copies it)
+      HOLD_DIR: /data/held   # outgoing mail held as likely spam, waiting for an admin (signup/hold.mjs)
     env_file:
       - path: ./.system-mail.env   # system sender for sign-up codes (install.sh creates it)
+        required: false
+      - path: ./.hold.env          # HOLD_HOOK_SECRET: Stalwart's outgoing-spam hook (install.sh creates it)
         required: false
     volumes:
       - ./.admin-credentials:/run/secrets/admin:ro

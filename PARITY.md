@@ -93,9 +93,9 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Installable app / offline | 🟡 | 🟡 | Installable (PWA), shell works offline; mail offline in Phase 2.5 |
 | Native mobile apps | ✅ | ⬜ | PWA first; native in Phase 5 |
 | Custom domains | ✅ | 🟡 | Self-hosting: yes. Hosted: Phase 2.5 |
-| Admin console (users, groups, aliases, policies) | ✅ | 🟡 | Ours at `/admin` (`ADMINS`): users, blocked IPs, new-account limits, outgoing queue. Groups, policies, audit log: Stalwart's admin UI (`/admin/`) |
+| Admin console (users, groups, aliases, policies) | ✅ | 🟡 | Ours at `/admin` (`ADMINS`): users, blocked IPs, new-account limits, outgoing queue, outgoing mail held as spam (send/delete; pause a user's sending). Groups, policies, audit log: Stalwart's admin UI (`/admin/`) |
 | SSO / SAML, eDiscovery, retention | ✅ | ⬜ | Phase 5 (business tier) |
-| Public sign-up with abuse controls | n/a | ✅ | Invites, rate limits, quotas (signup/) |
+| Public sign-up with abuse controls | n/a | ✅ | Invites, rate limits, quotas (signup/); outgoing spam held for admin review, repeat senders paused |
 
 ## Toward Gmail (and past it)
 

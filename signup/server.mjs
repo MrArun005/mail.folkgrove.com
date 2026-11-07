@@ -9,6 +9,7 @@ import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
 import { accountRoutes } from './account.mjs';
 import { adminRoutes } from './admin.mjs';
+import { holdRoutes } from './hold.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
@@ -56,6 +57,12 @@ export function configFromEnv(env = process.env) {
     // Admin console (/admin): usernames on DOMAIN allowed to use it. Empty = console off.
     admins: (env.ADMINS || '').split(',').map((s) => s.trim().toLowerCase().replace(/@.*$/, '')).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+    // Outgoing spam held for review (hold.mjs): on when HOLD_HOOK_SECRET is set (install.sh sets it and the hook).
+    hold: env.HOLD_HOOK_SECRET ? {
+      secret: env.HOLD_HOOK_SECRET, dir: env.HOLD_DIR || null, score: Number(env.HOLD_SCORE || 5), suspendAfter: Number(env.HOLD_SUSPEND_AFTER || 3),
+      // Released mail goes back in by SMTP submission as the admin login, like system mail.
+      smtp: { host: env.SYSTEM_SMTP_HOST || 'stalwart', port: Number(env.SYSTEM_SMTP_PORT || 465), servername: env.SYSTEM_SMTP_TLS_NAME || undefined, insecure: env.SYSTEM_SMTP_INSECURE === 'true' },
+    } : null,
   };
 }
 
@@ -265,7 +272,8 @@ export function createApp(cfg) {
     setTimeout(run, 60_000).unref(); setInterval(run, 3600e3).unref();
   }
   const account = accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
-  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const hold = holdRoutes({ cfg, jmap, getDomainId, send, fail, readJson });
+  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)), hold });
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
   return createServer(async (req, res) => {
@@ -275,6 +283,8 @@ export function createApp(cfg) {
       if (url.pathname === '/api/account' && await account(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
       if (url.pathname.startsWith('/api/admin/') && await admin(req, res, url)) return;
+      // Called by Stalwart only (not under /api/, so the proxy never forwards it), with the hook secret.
+      if (url.pathname === '/internal/outbound-hook' && req.method === 'POST' && hold) return await hold.hook(req, res);
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);
