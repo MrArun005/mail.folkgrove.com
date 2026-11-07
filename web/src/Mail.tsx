@@ -481,6 +481,9 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
   useEffect(() => {
     takeLaunch().then(async (l) => {
       if (!l) return;
+      // Shared files come from outside (any site can post to /share): attach them only when the person says so.
+      if (l.files.length && !(await confirmIt({ title: `Attach ${l.files.length === 1 ? 'this file' : `these ${l.files.length} files`}?`,
+        body: `${l.files.map((f) => f.name).join(', ')}. They were shared to OpenMail. Only attach files you just shared.`, confirm: 'Attach' }))) l.files = [];
       const attachments = await Promise.all(l.files.map((f) => client.upload(f))).catch((e) => { fail(e); return []; });
       setCompose(withSignature({ ...EMPTY_DRAFT, to: l.to, cc: l.cc, bcc: l.bcc, subject: l.subject, html: l.body ? textToHtml(l.body) : '', text: l.body, attachments }));
     });

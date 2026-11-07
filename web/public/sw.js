@@ -12,9 +12,8 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   // "Share to OpenMail" (manifest share_target): keep the shared files for the page, then open Compose with them.
   if (e.request.method === 'POST' && url.origin === location.origin && url.pathname === '/share') {
-    // Only the system share sheet ("none") or our own pages: another website must not post files into a draft.
-    const site = e.request.headers.get('Sec-Fetch-Site');
-    if (site === 'cross-site' || site === 'same-site') { e.respondWith(Response.redirect('/', 303)); return; }
+    // Any website can post here too (a form can't be told apart from the share sheet in a service worker), so the
+    // page asks before uploading shared files (Mail.tsx), and nothing is ever sent without the person pressing Send.
     e.respondWith(share(e.request)); return;
   }
   if (PUSH_ONLY) return;
