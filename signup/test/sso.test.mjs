@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../server.mjs';
 import { Invites } from '../lib.mjs';
-import { verifyIdToken } from '../sso.mjs';
+import { ssoIdentity, verifyIdToken } from '../sso.mjs';
 import { cookieName } from '../session.mjs';
 
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -84,13 +84,14 @@ test('verifyIdToken checks signature, algorithm, issuer, audience, expiry and no
 });
 
 /** The account service with SSO on, plus a fake Stalwart session endpoint that trusts tokens the provider signed. */
-async function harness(t, idp, { stalwartUrl, stalwartSays } = {}) {
+async function harness(t, idp, { stalwartUrl, stalwartSays, seen = [], cfg = {}, oidc = {} } = {}) {
   let fake;
   if (!stalwartUrl) {
     fake = createServer((req, res) => {
       const token = (req.headers.authorization || '').replace(/^Bearer /, '');
       let email = null;
       try { email = verifyIdToken(token, { keys: KEYS, issuer: idp.issuer, clientId: idp.clientId }).email; } catch { /* refused */ }
+      if (email) seen.push(email);
       if (!email || stalwartSays?.(email) === false) { res.writeHead(401); return res.end(); }
       res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ username: email }));
     });
@@ -99,8 +100,8 @@ async function harness(t, idp, { stalwartUrl, stalwartSays } = {}) {
   }
   const admin = existsSync(ADMIN_FILE) ? JSON.parse(readFileSync(ADMIN_FILE, 'utf8')) : { user: 'x', pass: 'y' };
   const app = createApp({ stalwartUrl, admin, domain: 'openmail.test', signupEnabled: false, inviteRequired: false, invites: new Invites({ text: '' }),
-    turnstileSecret: null, quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], secureCookies: false, retentionJob: false,
-    oidc: { issuer: idp.issuer, clientId: idp.clientId, secret: idp.secret, name: 'Example SSO', publicUrl: 'http://127.0.0.1:0' } });
+    turnstileSecret: null, quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], secureCookies: false, retentionJob: false, ...cfg,
+    oidc: { issuer: idp.issuer, clientId: idp.clientId, secret: idp.secret, name: 'Example SSO', publicUrl: 'http://127.0.0.1:0', ...oidc } });
   await new Promise((r) => app.listen(0, '127.0.0.1', r));
   t.after(() => { app.close(); fake?.close(); });
   const base = `http://127.0.0.1:${app.address().port}`;
@@ -173,6 +174,59 @@ test('SSO relying party refuses a token with the wrong nonce, audience or issuer
     assert.equal(r.location, '/?sso_error=refused', what);
     assert.ok(!r.cookies.some((c) => c.startsWith('om_rt_')), `${what}: no session cookie`);
   }
+});
+
+test('ssoIdentity: verified address only, tenant, never admin, reserved or retired names', () => {
+  const ok = { email: 'Ann@openmail.test', email_verified: true, hd: 'openmail.test', tid: 'T1' };
+  assert.deepEqual(ssoIdentity(ok), { address: 'ann@openmail.test' });
+  assert.match(ssoIdentity({ ...ok, email_verified: false }).error, /not verified/);
+  assert.match(ssoIdentity({ ...ok, email_verified: 'true' }).error, /not verified/); // the boolean, not a string
+  assert.deepEqual(ssoIdentity({ email: 'ann@openmail.test', xms_edov: true }), { address: 'ann@openmail.test' }); // Entra
+  assert.match(ssoIdentity({ preferred_username: 'ann@openmail.test', tid: 'T1' }).error, /no address/); // Entra UPN alone: no
+  assert.deepEqual(ssoIdentity(ok, { tenant: 'openmail.test' }), { address: 'ann@openmail.test' });
+  assert.deepEqual(ssoIdentity(ok, { tenant: 'T1' }), { address: 'ann@openmail.test' });
+  assert.match(ssoIdentity(ok, { tenant: 'other.test' }).error, /tenant/);
+  assert.match(ssoIdentity(ok, { admins: ['ann'] }).error, /admin/);
+  assert.match(ssoIdentity({ ...ok, email: 'post.master@openmail.test' }).error, /reserved/);
+  assert.match(ssoIdentity(ok, { extraReserved: ['ann'] }).error, /reserved or retired/);
+  assert.deepEqual(ssoIdentity({ uid: 'kc@openmail.test' }, { claim: 'uid' }), { address: 'kc@openmail.test' }); // other claims: as configured
+});
+
+test('SSO relying party refuses unverified addresses, other tenants, admin/reserved/retired names before Stalwart sees the token', async (t) => {
+  const cases = [
+    ['unverified', { tweak: (c) => ({ ...c, email_verified: false }) }, {}, 'ann@openmail.test'],
+    ['tenant', { tweak: (c) => ({ ...c, hd: 'evil.test' }) }, { oidc: { tenant: 'openmail.test' } }, 'ann@openmail.test'],
+    ['admin', {}, { cfg: { admins: ['boss'] } }, 'boss@openmail.test'],
+    ['reserved', {}, {}, 'postmaster@openmail.test'],
+    ['retired', {}, { cfg: { extraReserved: ['gone.person'] } }, 'gone.person@openmail.test'],
+  ];
+  for (const [what, p, h, email] of cases) {
+    const idp = await mockProvider(p);
+    t.after(() => idp.srv.close());
+    const seen = [];
+    const hh = await harness(t, idp, { ...h, seen });
+    const r = await hh.signIn(email);
+    assert.equal(r.location, '/?sso_error=no_account', what);
+    assert.ok(!r.cookies.some((c) => c.startsWith('om_rt_')), `${what}: no session`);
+    assert.deepEqual(seen, [], `${what}: Stalwart never saw the token (no account created)`);
+  }
+  // Right tenant passes.
+  const idp = await mockProvider({ tweak: (c) => ({ ...c, hd: 'openmail.test' }) });
+  t.after(() => idp.srv.close());
+  assert.equal((await (await harness(t, idp, { oidc: { tenant: 'openmail.test' } })).signIn('ann@openmail.test')).location, '/?sso=ann%40openmail.test');
+});
+
+test('SSO refresh: a token whose address changed at the provider ends the session', async (t) => {
+  let renamed = false;
+  const idp = await mockProvider({ tweak: (c) => (renamed && !c.nonce ? { ...c, email: 'someone.else@openmail.test' } : c) });
+  t.after(() => idp.srv.close());
+  const h = await harness(t, idp);
+  const user = 'ann@openmail.test';
+  const jar = (await h.signIn(user)).cookies.find((c) => c.startsWith(cookieName(user))).split(';')[0];
+  assert.equal((await h.session('refresh', user, jar)).status, 200);
+  renamed = true;
+  await new Promise((r) => setTimeout(r, 5100)); // past the session service's 5-second reuse window
+  assert.equal((await h.session('refresh', user, jar)).status, 401);
 });
 
 // Live: the real Stalwart OIDC directory pointed at the mock provider (reachable from the container as host.docker.internal).

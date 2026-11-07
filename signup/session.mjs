@@ -36,12 +36,12 @@ export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf, ss
   // The reuse window is a few seconds (tabs opening together), not longer: a replayed old cookie after that gets nothing.
   const REUSE_MS = 5_000;
   const recent = new Map(); // old refresh token → { at, promise }
-  const refreshOnce = (token) => {
+  const refreshOnce = (token, username) => {
     const now = Date.now();
     for (const [k, v] of recent) if (now - v.at > REUSE_MS) recent.delete(k);
     if (!recent.has(token)) {
       // Single sign-on sessions (sso.mjs) refresh with the outside provider instead.
-      const promise = (token.startsWith('sso:') ? (sso ? sso.refresh(token) : Promise.resolve({ ok: false, body: {} })) : stalwart('/auth/token', { grant_type: 'refresh_token', refresh_token: token }))
+      const promise = (token.startsWith('sso:') ? (sso ? sso.refresh(token, username) : Promise.resolve({ ok: false, body: {} })) : stalwart('/auth/token', { grant_type: 'refresh_token', refresh_token: token }))
         .then((r) => { if (!r.ok) recent.delete(token); return r; }, (e) => { recent.delete(token); throw e; });
       recent.set(token, { at: now, promise });
     }
@@ -85,7 +85,7 @@ export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf, ss
 
     // refresh
     if (!token) return fail(res, 401, 'unauthorized', 'Not remembered on this device.'), true;
-    const r = await refreshOnce(token);
+    const r = await refreshOnce(token, body.username);
     if (!r.ok || !r.body.access_token) {
       res.setHeader('Set-Cookie', setCookie(name, '', 0, secure)); // dead token: forget it
       return fail(res, 401, 'unauthorized', 'Your session has ended. Please sign in again.'), true;

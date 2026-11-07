@@ -55,7 +55,8 @@ Usage: ./install.sh [options]
   --oidc-client-id ID   the client (application) id you registered at the provider
   --oidc-secret S       its client secret
   --oidc-name NAME      button label: "Sign in with NAME" (default: Google / Microsoft / your organisation)
-  --oidc-claim C        token claim holding the address (default email; preferred_username for Microsoft)
+  --oidc-claim C        token claim holding the address (default email, which must be verified by the provider)
+  --oidc-tenant T       only this Google Workspace domain (hd) or Microsoft Entra tenant id (tid) may sign in
 EOF
 }
 
@@ -90,6 +91,7 @@ while [ $# -gt 0 ]; do
     --oidc-secret) OIDC_SECRET=$2; shift ;;
     --oidc-name) OIDC_NAME=$2; shift ;;
     --oidc-claim) OIDC_CLAIM=$2; shift ;;
+    --oidc-tenant) OIDC_TENANT=$2; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage; die "unknown option $1" ;;
   esac
@@ -312,7 +314,9 @@ if [ -n "${OIDC_ISSUER:-}" ]; then
   [[ "$OIDC_SECRET$OIDC_ISSUER$OIDC_CLIENT_ID${OIDC_NAME:-}" != *"'"* ]] || die "Single sign-on settings can't contain a single quote (')"
   case $OIDC_ISSUER in
     https://accounts.google.com) OIDC_NAME=${OIDC_NAME:-Google} ;;
-    https://login.microsoftonline.com/*) OIDC_NAME=${OIDC_NAME:-Microsoft}; OIDC_CLAIM=${OIDC_CLAIM:-preferred_username} ;;
+    https://login.microsoftonline.com/*) OIDC_NAME=${OIDC_NAME:-Microsoft}
+      # preferred_username can be changed by users in some tenants: the verified email (xms_edov) only.
+      [ "${OIDC_CLAIM:-email}" = email ] || die "For Microsoft, single sign-on uses the verified email claim only (no --oidc-claim)" ;;
   esac
   OIDC_NAME=${OIDC_NAME:-your organisation} OIDC_CLAIM=${OIDC_CLAIM:-email}
   RECOVERY_ADMIN=${RECOVERY_ADMIN:-admin:$(python3 -c 'import secrets; print(secrets.token_hex(24))')}
@@ -324,7 +328,7 @@ umask 077
            RELAY_HOST RELAY_PORT RELAY_USER RELAY_PASSWORD RELAY_SPF SERVER_IP CADDY_CERT_ISSUER \
            ADMIN_PORT HTTP_PORT HTTPS_PORT SMTP_PORT SUBMISSIONS_PORT SUBMISSION_PORT IMAPS_PORT \
            MONITORING ALERT_EMAIL HOSTED COMPOSE_FILE PG_PASSWORD S3_SECRET \
-           OIDC_ISSUER OIDC_CLIENT_ID OIDC_SECRET OIDC_NAME OIDC_CLAIM RECOVERY_ADMIN; do
+           OIDC_ISSUER OIDC_CLIENT_ID OIDC_SECRET OIDC_NAME OIDC_CLAIM OIDC_TENANT RECOVERY_ADMIN; do
     [ -n "${!v:-}" ] && printf "%s='%s'\n" "$v" "${!v}"
   done
 } > .env

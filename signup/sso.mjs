@@ -15,6 +15,27 @@
 // doesn't allow either. Webmail only, until Stalwart's OAUTHBEARER for IMAP/SMTP is wired up.
 import { createHash, createPublicKey, randomBytes, verify } from 'node:crypto';
 import { cookieName, readCookies, setCookie } from './session.mjs';
+import { checkUsername } from './lib.mjs';
+
+/**
+ * Which address a verified ID token may sign in as, or { error } saying why not. Must agree with Stalwart's
+ * claimUsername (install.sh sets both from OIDC_CLAIM). Rules:
+ * - an `email` claim counts only when the provider says it's verified: `email_verified: true`, or Microsoft Entra's
+ *   `xms_edov: true` (email domain owner verified; add it as an optional claim). Entra's `preferred_username` is
+ *   editable by users in some tenants, so install.sh never uses it for Microsoft.
+ * - with OIDC_TENANT set, the token's Google Workspace domain (`hd`) or Entra tenant id (`tid`) must match.
+ * - never an admin name (ADMINS), a reserved name, or a retired one (cfg.extraReserved holds all three).
+ */
+export function ssoIdentity(claims, { claim = 'email', tenant = null, admins = [], extraReserved = [] } = {}) {
+  if (tenant && claims.hd !== tenant && claims.tid !== tenant) return { error: 'wrong tenant' };
+  const value = claims[claim];
+  if (typeof value !== 'string' || !/^[^\s@]{1,64}@[^\s@]{1,253}$/.test(value)) return { error: `no address in the ${claim} claim` };
+  if (claim === 'email' && claims.email_verified !== true && claims.xms_edov !== true) return { error: 'email not verified' };
+  const address = value.toLowerCase(), name = address.split('@')[0];
+  if (admins.includes(name)) return { error: 'admin name' };
+  if (checkUsername(name, extraReserved)?.code === 'username_reserved') return { error: 'reserved or retired name' };
+  return { address };
+}
 
 const SKEW = 60; // seconds of clock difference we tolerate
 const ALGS = { RS256: ['sha256', {}], RS384: ['sha384', {}], RS512: ['sha512', {}], PS256: ['sha256', { padding: 6, saltLength: 32 }],
@@ -130,7 +151,14 @@ export function ssoRoutes({ cfg, send, fail, RateLimiter, ipOf }) {
       if (!t.ok || !t.body.id_token) { console.error('sso: code exchange refused:', t.status, t.body.error, t.body.error_description ?? ''); return back(res, { sso_error: 'refused' }), true; }
       try { claims = await check(t.body.id_token, p.nonce); }
       catch (e) { console.error('sso: ID token rejected:', e.message); return back(res, { sso_error: 'refused' }), true; }
+      const id = ssoIdentity(claims, { claim: o.claim, tenant: o.tenant, admins: cfg.admins, extraReserved: cfg.extraReserved });
+      // Refused before Stalwart sees the token, so no account gets created for it.
+      if (id.error) { console.log(`sso: refused ${claims.email ?? claims.sub}: ${id.error}`); return back(res, { sso_error: 'no_account' }), true; }
       username = await stalwartUser(t.body.id_token);
+      // Stalwart must have opened the same account (and it must pass the same checks).
+      if (username && username.toLowerCase() !== id.address) {
+        console.error(`sso: Stalwart mapped ${id.address} to ${username}; refused`); return back(res, { sso_error: 'no_account' }), true;
+      }
     } catch (e) { console.error('sso: provider or Stalwart unreachable:', e.message); return back(res, { sso_error: 'unavailable' }), true; }
     if (!username) {
       // Usually: the address isn't in one of this server's domains, or Stalwart's directory isn't set up for this provider.
@@ -143,16 +171,20 @@ export function ssoRoutes({ cfg, send, fail, RateLimiter, ipOf }) {
   }
 
   /** session.mjs refresh for an "sso:" cookie. Same shape as a Stalwart /auth/token answer. */
-  async function refresh(cookie) {
+  async function refresh(cookie, username) {
+    // A refreshed token must still pass every check and name the same account (an address changed at the provider
+    // must not open someone else's mailbox).
+    const same = (claims) => ssoIdentity(claims, { claim: o.claim, tenant: o.tenant, admins: cfg.admins, extraReserved: cfg.extraReserved }).address === String(username).toLowerCase();
     const kind = cookie.slice(4, 5), value = cookie.slice(6);
     try {
       if (kind === 'i') { // no refresh token: the ID token itself, until it expires
         const claims = await check(value, undefined);
-        return { ok: expiresIn(claims) > SKEW, body: { access_token: value, refresh_token: cookie, expires_in: expiresIn(claims) } };
+        return { ok: same(claims) && expiresIn(claims) > SKEW, body: { access_token: value, refresh_token: cookie, expires_in: expiresIn(claims) } };
       }
       const t = await tokenCall({ grant_type: 'refresh_token', refresh_token: value });
       if (!t.ok || !t.body.id_token) return { ok: false, body: {} };
       const claims = await check(t.body.id_token, undefined);
+      if (!same(claims)) { console.error(`sso: refreshed token no longer matches ${username}`); return { ok: false, body: {} }; }
       return { ok: true, body: { access_token: t.body.id_token, refresh_token: t.body.refresh_token ? `sso:r:${t.body.refresh_token}` : cookie, expires_in: expiresIn(claims) } };
     } catch (e) { console.error('sso: refresh failed:', e.message); return { ok: false, body: {} }; }
   }

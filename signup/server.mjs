@@ -80,7 +80,8 @@ export function configFromEnv(env = process.env) {
     retentionFile: env.RETENTION_FILE || null, // retention rules (retention.mjs)
     // Single sign-on (sso.mjs): an outside OpenID Connect provider. PUBLIC_URL is the webmail address (callback).
     oidc: env.OIDC_ISSUER ? { issuer: env.OIDC_ISSUER, clientId: env.OIDC_CLIENT_ID, name: env.OIDC_NAME || 'your organisation',
-      secret: env.OIDC_SECRET_FILE ? readFileSync(env.OIDC_SECRET_FILE, 'utf8').trim() : env.OIDC_SECRET, publicUrl: (env.PUBLIC_URL || '').replace(/\/$/, '') } : null,
+      secret: env.OIDC_SECRET_FILE ? readFileSync(env.OIDC_SECRET_FILE, 'utf8').trim() : env.OIDC_SECRET, publicUrl: (env.PUBLIC_URL || '').replace(/\/$/, ''),
+      claim: env.OIDC_CLAIM || 'email', tenant: env.OIDC_TENANT || null } : null, // tenant: Google hd / Entra tid that must match
     // Abuse and inactive accounts (abuse.mjs): Stalwart posts events to EVENTS_URL; state survives restarts in STATE_FILE.
     eventsUrl: env.EVENTS_URL || null,
     stateFile: env.STATE_FILE || null,

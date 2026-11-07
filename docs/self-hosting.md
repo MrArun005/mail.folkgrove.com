@@ -163,8 +163,15 @@ sudo ./install.sh --oidc-issuer https://accounts.google.com --oidc-client-id <id
 ```
 
 Register a **web application** client at your provider with the redirect URI `https://mx.example.com/api/sso/callback`.
-For Google, set the consent screen to **Internal** (only your Workspace users); for Microsoft, use your tenant's issuer
-(`https://login.microsoftonline.com/<tenant-id>/v2.0`; the installer then reads the address from `preferred_username`).
+For Google, set the consent screen to **Internal** (only your Workspace users) and pass `--oidc-tenant yourcompany.com`
+(checked against the token's `hd`). For Microsoft, use your tenant's issuer
+(`https://login.microsoftonline.com/<tenant-id>/v2.0`), pass `--oidc-tenant <tenant-id>` (checked against `tid`), and
+add the optional ID-token claims `email` and `xms_edov`: an address counts only when the provider vouches for it
+(`email_verified`, or `xms_edov` for Entra). `preferred_username` is never used for Microsoft (users can change it in
+some tenants). At every provider, leave implicit / ID-token grants **off** for this client: then only the account service
+(which holds the secret) can obtain tokens Stalwart accepts. The account service also refuses names in `ADMINS`,
+reserved names and retired names, so with SSO on the OpenMail console (`/admin`) can't be used; manage the server
+in Stalwart's admin with the recovery admin login.
 
 What happens: Stalwart's OIDC directory (open-source edition) checks the provider's signed ID tokens and creates a
 mailbox the first time someone signs in; existing mailboxes with the same address keep their mail. Only addresses in

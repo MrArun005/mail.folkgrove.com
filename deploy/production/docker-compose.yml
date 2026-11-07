@@ -89,6 +89,8 @@ services:
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_SECRET: ${OIDC_SECRET:-}
       OIDC_NAME: ${OIDC_NAME:-}
+      OIDC_CLAIM: ${OIDC_CLAIM:-}
+      OIDC_TENANT: ${OIDC_TENANT:-}
       PUBLIC_URL: ${PUBLIC_URL}
     env_file:
       - path: ./.system-mail.env   # system sender for sign-up codes (install.sh creates it)
