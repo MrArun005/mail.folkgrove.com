@@ -18,8 +18,8 @@ Signup service ──► Stalwart management API   (hosted instance only)
 - [x] Repo, AGPL-3.0 license
 - [x] Local Stalwart via docker-compose + one-command bootstrap (`deploy/dev-setup.mjs`)
 - [x] Web client scaffold: login, folders, message list, safe reader, read state, local cache
-- [ ] CI (GitHub Actions): type-check, build, integration tests against Stalwart in a service container
-- [ ] CONTRIBUTING.md, SECURITY.md, issue templates
+- [x] CI (GitHub Actions): type-check, tests against a real Stalwart, build, signup tests
+- [x] CONTRIBUTING.md, SECURITY.md, issue and PR templates
 
 ## Phase 1: Real mail on a real domain
 - [ ] VPS with outbound port 25 open; domain; reverse DNS (PTR)
@@ -71,13 +71,14 @@ Signup service ──► Stalwart management API   (hosted instance only)
 - [ ] Optional AI (summaries, smart reply): bring your own provider or a local model, off by default
 
 ## Phase 3: One-command self-hosting
-- [ ] `install.sh`: asks for a domain, writes compose files, starts the stack, prints DNS records, checks until they resolve
-- [ ] Production compose: HTTPS, the web client served by Stalwart or a reverse proxy on the same origin
-- [ ] Backups (encrypted, restore tested) and upgrade guide
-- [ ] Docs site
+- [x] `install.sh`: asks for a domain, starts the stack, bootstraps, prints DNS records; `check-dns.sh` verifies them ([docs/self-hosting.md](docs/self-hosting.md))
+- [x] Production compose: Caddy HTTPS + same-origin web client, TLS on all mail ports, optional outbound relay
+- [x] Backups (encrypted with age, restore tested) and upgrade guide
+- [x] Self-hosting guide (docs/self-hosting.md); full docs site later
 
 ## Phase 4: Public hosted instance
-- [ ] Signup service: captcha, verification, invite codes at first
+- [x] Signup service: invite codes, per-IP limits, reserved names, quotas, optional Turnstile ([signup/README.md](signup/README.md))
+- [ ] Email verification step; signup form in the web client
 - [ ] Abuse controls: new-account sending limits, outbound spam scanning, abuse@ mailbox, blocklist monitoring, fast suspension
 - [ ] Quotas; paid tier to fund storage
 - [ ] Terms of service, privacy policy, GDPR export/delete, law-enforcement request process

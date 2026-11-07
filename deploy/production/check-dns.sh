@@ -18,7 +18,7 @@ fails=0
 pass() { printf '\033[32mPASS\033[0m  %s\n' "$1"; }
 fail() { printf '\033[31mFAIL\033[0m  %s\n        want: %s\n        got:  %s\n' "$1" "$2" "${3:-(nothing)}"; fails=$((fails + 1)); }
 
-# dig answers, one per line, lowercased for names; TXT strings joined ("a" "b" -> ab) and unquoted.
+# dig answers, one per line; TXT strings joined ("a" "b" -> ab) and unquoted.
 lookup() { dig +short +time=3 +tries=2 "@$RESOLVER" "$2" "$1" | sed -e 's/" "//g' -e 's/^"//' -e 's/"$//'; }
 
 while IFS=$'\t' read -r name type want; do

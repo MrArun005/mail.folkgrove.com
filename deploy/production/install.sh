@@ -342,13 +342,14 @@ if [ -n "$USER_NAME" ]; then
   fi
   domains=$(api '[["x:Domain/get",{"ids":null,"properties":["name"]},"d"]]')
   domain_id=$(jget "next(d['id'] for d in r[0][1]['list'] if d['name'] == '$MAIL_DOMAIN')" <<<"$domains")
-  accounts=$(api '[["x:Account/get",{"ids":null,"properties":["name","emailAddress"]},"a"]]')
+  accounts=$(api '[["x:Account/get",{"ids":null,"properties":["name","emailAddress","aliases"]},"a"]]')
   if [ "$(jget "any(a.get('emailAddress') == '$USER_NAME@$MAIL_DOMAIN' for a in r[0][1]['list'])" <<<"$accounts")" = True ]; then
     say "$USER_NAME@$MAIL_DOMAIN already exists (password unchanged)"
   else
     # postmaster@ is where DMARC and TLS reports go, so it lands in this first mailbox.
     alias=""
-    [ "$(jget "any(a.get('emailAddress') == 'postmaster@$MAIL_DOMAIN' for a in r[0][1]['list'])" <<<"$accounts")" = False ] \
+    [ "$(jget "any(a.get('emailAddress') == 'postmaster@$MAIL_DOMAIN' or any(x['name'] == 'postmaster' and x['domainId'] == '$domain_id'
+      for x in (a.get('aliases') or {}).values()) for a in r[0][1]['list'])" <<<"$accounts")" = False ] \
       && [ "$USER_NAME" != postmaster ] \
       && alias=",\"aliases\":{\"0\":{\"name\":\"postmaster\",\"domainId\":$(jstr "$domain_id")}}"
     api "[[\"x:Account/set\",{\"create\":{\"u\":{\"@type\":\"User\",\"name\":$(jstr "$USER_NAME"),

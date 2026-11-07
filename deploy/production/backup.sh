@@ -30,11 +30,11 @@ case ${1:-} in
   --restore)
     file=${2:-}; [ "${3:-}" = --identity ] && key=${4:-} || key=""
     [ -f "$file" ] && [ -f "$key" ] || die "Usage: ./backup.sh --restore FILE --identity KEYFILE"
+    read -r -p "This REPLACES all mail and settings on this server with the backup. Type yes: " ok
+    [ "$ok" = yes ] || exit 1
     tmp=$(mktemp -d "$PWD/.restore.XXXXXX"); trap 'rm -rf "$tmp"' EXIT
     age -d -i "$key" "$file" | tar -xf - -C "$tmp"
     [ -f "$tmp/volumes.tar.gz" ] || die "Not a postwren backup"
-    read -r -p "This REPLACES all mail and settings on this server with the backup. Type yes: " ok
-    [ "$ok" = yes ] || exit 1
     for f in .env .admin-credentials; do [ -f "$f" ] && cp -p "$f" "$f.before-restore"; cp -p "$tmp/$f" "$f"; done
     dc stop stalwart 2>/dev/null || true
     in_volumes 'find /etc/stalwart /var/lib/stalwart -mindepth 1 -delete && tar -xzf - --numeric-owner -C /' < "$tmp/volumes.tar.gz"

@@ -6,7 +6,7 @@ An open-source email platform you can self-host or sign up for. The goal is ever
 - **Web client (this repo, `web/`):** a JMAP-native, local-first web app. It talks to Stalwart directly, so there's no backend of our own.
 - **License:** AGPL-3.0
 
-Status: **early scaffold.** You can sign in, browse folders, read mail (safely rendered) and mark mail as read. See [PLAN.md](PLAN.md) for the roadmap.
+Status: **pre-release.** Reading, writing, search, filters, snooze, scheduled send, privacy protections and self-hosting work; OAuth sign-in, calendar and contacts are next. See [PARITY.md](PARITY.md) and [PLAN.md](PLAN.md).
 
 ## Run it locally (about 2 minutes)
 
@@ -26,11 +26,15 @@ Open http://localhost:5173 and sign in as `alice@openmail.test` / `alice-dev-pas
 ## Layout
 
 ```
-deploy/   docker-compose + dev bootstrap script (dev only, not production)
-web/      React + TypeScript + Vite client
-  src/jmap.ts      tiny JMAP client
-  src/safeHtml.ts  hostile-HTML rendering (sandboxed iframe + CSP)
-  src/App.tsx      UI
+web/                 React + TypeScript + Vite client (design rules: web/DESIGN.md)
+  src/jmap.ts        JMAP client: mail, submission, push, Sieve filters
+  src/safeHtml.ts    hostile-HTML rendering (sandboxed iframe + CSP, tracker removal)
+  src/Mail.tsx       the mailbox screen
+deploy/              local dev mail server (docker-compose + dev-setup.mjs)
+deploy/production/   self-hosting kit: install.sh, check-dns.sh, backup.sh, Caddy
+signup/              public sign-up API for a hosted instance
+docs/                self-hosting guide
+PLAN.md, PARITY.md   roadmap; feature-by-feature plan to beat Zoho Mail and Gmail
 ```
 
 ## Security model for displaying email
@@ -40,3 +44,14 @@ Email HTML is untrusted. Each message renders in a sandboxed `<iframe>` with no 
 ## Contributing
 
 Pick an unchecked item in [PLAN.md](PLAN.md), open an issue saying you're on it, and send a PR. Keep changes small; prefer platform features over new dependencies.
+
+## Self-hosting
+
+To run your own mail server with this webmail on a fresh Ubuntu 24.04 VPS with a domain:
+
+```sh
+git clone <this repo> && cd openmail/deploy/production
+sudo ./install.sh
+```
+
+It sets up Stalwart with Caddy for HTTPS, creates your first mailbox, and prints the exact DNS records to add. `./check-dns.sh` then verifies them, and `./backup.sh` makes encrypted backups. Many clouds block outgoing port 25; the installer can send through a relay such as Brevo or SMTP2GO instead. Read [docs/self-hosting.md](docs/self-hosting.md) first: it covers requirements (port 25, reverse DNS), testing with mail-tester.com, upgrades, restore and troubleshooting.
