@@ -3,3 +3,6 @@ dist/
 deploy/.dev-admin.json
 .playwright-mcp/
 .DS_Store
+deploy/production/.env
+deploy/production/.admin-credentials
+*.age
