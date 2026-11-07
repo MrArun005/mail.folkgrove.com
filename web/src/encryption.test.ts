@@ -18,6 +18,7 @@ vi.mock('./keys', async (orig) => ({
 }));
 const { Jmap } = await import('./jmap');
 const { createKey, describeKey, openMessage, autocryptKey } = await import('./pgp');
+const { senderAuthenticated } = await import('./keys');
 
 const BASE = 'http://localhost:8080';
 const ADMIN_FILE = process.env.ADMIN_FILE ?? new URL('../../deploy/.dev-admin.json', import.meta.url).pathname;
@@ -77,6 +78,9 @@ describe.skipIf(!up)('encryption on the real server', () => {
     // What the reader sees before decrypting: no body, the encrypted part as an attachment (how Reader detects it).
     expect(m.text ?? '').not.toContain('4417');
     expect(m.attachments.some((x) => x.type === 'application/pgp-encrypted' || x.name === 'encrypted.asc')).toBe(true);
+    // A forged outside sender (no SPF/DKIM for example.org): the server's own header says so, and no key would be learned.
+    expect(m.authResults?.[0]).toMatch(/dmarc=fail/);
+    expect(senderAuthenticated('sender@example.org', m.authResults?.[0], 'openmail.test')).toBe(false);
 
     const opened = await openMessage(raw, a.key, []);
     expect(opened).toMatchObject({ encrypted: true, signature: null });
@@ -90,7 +94,7 @@ describe.skipIf(!up)('encryption on the real server', () => {
     const [a, b] = [await throwaway(), await throwaway()];
     store.me.set(a.email, { fingerprint: a.fingerprint, publicKey: a.publicKey, keydata: a.keydata });
     store.unlocked.set(a.email, a.key);
-    store.peers.set(b.email, { email: b.email, publicKey: b.publicKey, source: 'wkd', added: '' });
+    store.peers.set(b.email, { email: b.email, publicKey: b.publicKey, fingerprint: b.fingerprint, source: 'wkd', added: '' });
     const boxes = await a.c.mailboxes();
     const subject = `e2e-${Date.now()}`;
     const att = await a.c.upload(Object.assign(new Blob(['plan B'], { type: 'text/plain' }), { name: 'plan.txt' }));
@@ -118,6 +122,8 @@ describe.skipIf(!up)('encryption on the real server', () => {
     const subject = `autocrypt-${Date.now()}`;
     await a.c.send({ to: [{ name: null, email: b.email }], cc: [], subject, html: '<p>hi</p>', text: 'hi', attachments: [] }, await a.c.mailboxes());
     const m = await arrived(b.c, subject);
+    expect(m.authResults, 'mail between accounts here has no Authentication-Results').toEqual([]);
+    expect(senderAuthenticated(a.email, m.authResults?.[0], 'openmail.test')).toBe(true);
     const key = await autocryptKey(a.email, m.autocrypt!);
     expect((await describeKey(key!)).fingerprint).toBe(a.fingerprint);
   }, 40_000);

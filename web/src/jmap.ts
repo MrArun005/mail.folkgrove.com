@@ -38,6 +38,8 @@ export interface EmailFull extends EmailSummary {
   unsubscribe: { urls: string[]; oneClick: boolean } | null;
   /** Autocrypt header: the sender's public key, offered for encrypted replies. */
   autocrypt?: string | null;
+  /** Authentication-Results headers, topmost (added by our server on delivery) first. */
+  authResults?: string[];
 }
 export interface Identity { id: string; name: string; email: string; textSignature: string; htmlSignature: string }
 export interface Vacation { isEnabled: boolean; fromDate: string | null; toDate: string | null; subject: string | null; textBody: string | null }
@@ -89,7 +91,7 @@ const pathOnly = (url: string) => url.replace(/^https?:\/\/[^/]+/, ''); // keep 
 
 const SUMMARY = ['threadId', 'subject', 'from', 'to', 'preview', 'receivedAt', 'keywords', 'hasAttachment', 'mailboxIds'];
 const FULL = [...SUMMARY, 'blobId', 'cc', 'bcc', 'replyTo', 'messageId', 'inReplyTo', 'references', 'mailboxIds', 'htmlBody', 'textBody', 'bodyValues', 'attachments',
-  'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses', 'header:Autocrypt:asText'];
+  'header:List-Unsubscribe:asURLs', 'header:List-Unsubscribe-Post:asText', 'header:Disposition-Notification-To:asAddresses', 'header:Autocrypt:asText', 'header:Authentication-Results:asText:all'];
 
 export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
 async function aliasReply(r: Response) {
@@ -342,7 +344,8 @@ export class Jmap {
       const urls: string[] = e['header:List-Unsubscribe:asURLs'] ?? [];
       const unsubscribe = urls.length ? { urls, oneClick: /One-Click/i.test(e['header:List-Unsubscribe-Post:asText'] ?? '') } : null;
       return { ...e, attachments: e.attachments ?? [], html: join(e.htmlBody, 'text/html'), text: join(e.textBody, 'text/plain'), unsubscribe,
-        receiptTo: e['header:Disposition-Notification-To:asAddresses'] ?? null, autocrypt: e['header:Autocrypt:asText'] ?? null };
+        receiptTo: e['header:Disposition-Notification-To:asAddresses'] ?? null, autocrypt: e['header:Autocrypt:asText'] ?? null,
+        authResults: e['header:Authentication-Results:asText:all'] ?? [] };
     }).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
   }
 
@@ -884,7 +887,8 @@ export class Jmap {
     const privateKey = unlockedKey(this.username);
     if (!privateKey) throw new JmapError('Unlock your encryption key to send encrypted mail.');
     const people = [...d.to, ...d.cc, ...(d.bcc ?? [])];
-    const keys = await Promise.all(people.map(async (a) => (await peerKey(a.email))?.publicKey));
+    // A key under dispute (a different one turned up) isn't used until you choose one in Settings.
+    const keys = await Promise.all(people.map(async (a) => { const k = await peerKey(a.email); return k?.conflict ? undefined : k?.publicKey; }));
     const missing = people.filter((_, i) => !keys[i]);
     if (missing.length) throw new JmapError(`There’s no encryption key for ${missing.map((a) => a.email).join(', ')}.`);
     const own = await myKey(this.username);

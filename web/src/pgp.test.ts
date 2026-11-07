@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as openpgp from 'openpgp';
-import { autocryptHeader, unwrap, wkdHash, wkdUrls, wrap } from './keys';
+import { autocryptHeader, mergePeerKey, senderAuthenticated, unwrap, wkdHash, wkdUrls, wrap, type PeerKey } from './keys';
+import { securityLabel } from './Encryption';
 import { autocryptKey, backupKey, bytes, createKey, describeKey, encryptedMessage, openMessage, parseMime, restoreKey } from './pgp';
 
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -58,6 +59,11 @@ describe('PGP/MIME', () => {
     expect(await openMessage(mail(part), undefined, [publicKey])).toMatchObject({ encrypted: false, signature: 'verified', mail: { text: 'Signed words.' } });
     expect((await openMessage(mail(part.replace('Signed', 'Forged')), undefined, [publicKey])).signature).toBe('bad');
     expect((await openMessage(mail(part), undefined, [])).signature).toBe('unknown');
+    // An extra, unsigned part slipped into multipart/signed: flagged, and only the signed part is shown.
+    const extra = bytes(new TextDecoder().decode(mail(part)).replace('--b--', '--b\r\nContent-Type: text/plain\r\n\r\nWire the money today.\r\n--b--'));
+    const sneaky = await openMessage(extra, undefined, [publicKey]);
+    expect(sneaky.signature).toBe('bad');
+    expect(sneaky.mail!.text).toBe('Signed words.');
   }, 30_000);
 
   it('backup file is a passphrase-locked OpenPGP key that restores to the same key', async () => {
@@ -68,4 +74,36 @@ describe('PGP/MIME', () => {
     await expect(restoreKey(backup, 'nope')).rejects.toThrow('passphrase');
     expect((await describeKey(await restoreKey(backup, 'long enough passphrase'))).fingerprint).toBe((await describeKey(key)).fingerprint);
   }, 30_000);
+});
+
+describe('learning keys safely', () => {
+  const k = (fingerprint: string, source: PeerKey['source'] = 'autocrypt'): PeerKey => ({ email: 'Ann@Example.org', publicKey: `key ${fingerprint}`, fingerprint, source, added: '' });
+  it('keeps the first key; a different one is held as a conflict, never swapped in silently', () => {
+    const first = mergePeerKey(undefined, k('AAA'));
+    expect(first).toMatchObject({ email: 'ann@example.org', fingerprint: 'AAA' });
+    expect(mergePeerKey(first, k('AAA'))).toBe(first);
+    const clash = mergePeerKey(first, k('BBB', 'wkd'));
+    expect(clash).toMatchObject({ fingerprint: 'AAA', conflict: { fingerprint: 'BBB', source: 'wkd' } });
+    expect(mergePeerKey(clash, k('CCC', 'imported'))).toEqual({ ...k('CCC', 'imported'), email: 'ann@example.org' }); // your own choice wins
+  });
+
+  it('learns only from mail the server authenticated for the From domain', () => {
+    const ar = (s: string) => `mx.ours.test; spf=pass smtp.mailfrom=x@evil.test; ${s}`;
+    expect(senderAuthenticated('ann@example.org', ar('dmarc=pass (p=reject) header.from=example.org'), 'ours.test')).toBe(true);
+    expect(senderAuthenticated('ann@example.org', ar('dkim=pass header.d=example.org header.s=s1'), 'ours.test')).toBe(true);
+    expect(senderAuthenticated('ann@mail.example.org', ar('dkim=pass header.d=example.org'), 'ours.test')).toBe(true); // relaxed alignment
+    expect(senderAuthenticated('ann@example.org', ar('dkim=pass header.d=evil.test; dmarc=fail header.from=example.org'), 'ours.test')).toBe(false);
+    expect(senderAuthenticated('ann@example.org', ar('dmarc=pass header.from=evil.test'), 'ours.test')).toBe(false);
+    expect(senderAuthenticated('ann@example.org', 'mx.ours.test; dkim=fail (dkim=pass header.d=example.org) header.d=example.org', 'ours.test')).toBe(false); // comments don't count
+    expect(senderAuthenticated('ann@example.org', null, 'ours.test')).toBe(false); // outside mail always has the server's header
+    expect(senderAuthenticated('bo@ours.test', null, 'ours.test')).toBe(true); // between accounts here: authenticated at submission
+  });
+
+  it('green only for a verified signature; unverified is neutral, a bad one red', () => {
+    expect(securityLabel(false, 'verified', 'Ann').tone).toBe('safe');
+    expect(securityLabel(false, 'unknown', 'Ann')).toMatchObject({ tone: 'info', text: expect.stringContaining('unverified') });
+    expect(securityLabel(true, 'unknown', 'Ann').tone).toBe('info');
+    expect(securityLabel(false, 'bad', 'Ann').tone).toBe('danger');
+    expect(securityLabel(true, null, 'Ann')).toMatchObject({ tone: 'safe', text: expect.stringContaining('not signed') });
+  });
 });

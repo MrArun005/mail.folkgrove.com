@@ -5,7 +5,7 @@ import { Button } from './Button';
 import { confirmIt, notify, promptIt } from './Dialog';
 import { Icon } from './icons';
 import type { Attachment, EmailFull, Jmap } from './jmap';
-import { forgetMyKey, keepUnlocked, myKey, peerKey, saveMyKey, savePeerKey, unlock, unlockedKey, wrap, type MyKey } from './keys';
+import { forgetMyKey, keepUnlocked, myKey, peerKey, peerKeys, removePeerKey, saveMyKey, savePeerKey, senderAuthenticated, unlock, unlockedKey, wrap, type KeySource, type MyKey, type PeerKey } from './keys';
 import { displayName, fileSize, parseAddresses } from './mailutil';
 import type { MailFile, Opened } from './pgp';
 
@@ -144,20 +144,41 @@ export function EncryptionSection({ sec, username }: { sec: Jmap; username: stri
   );
 }
 
-/** Add someone's public key by hand (when they don't publish one). */
+const fp = (f?: string) => f?.match(/.{1,4}/g)?.join(' ') ?? 'unknown fingerprint';
+const SOURCE: Record<KeySource, string> = { wkd: 'from their mail service (WKD)', autocrypt: 'from their mail (Autocrypt)', attached: 'attached to their mail', imported: 'added by you' };
+/** A key with its fingerprint, ready to store. */
+async function peer(email: string, publicKey: string, source: KeySource): Promise<PeerKey> {
+  return { email, publicKey, source, fingerprint: (await (await pgp()).describeKey(publicKey)).fingerprint, added: new Date().toISOString() };
+}
+
+/** People's keys: where each came from, its fingerprint, and any key that changed (you decide which one to trust). */
 function PeopleKeys() {
+  const [list, setList] = useState<PeerKey[]>([]);
   const [text, setText] = useState(''), [msg, setMsg] = useState('');
+  const reload = () => peerKeys().then(setList);
+  useEffect(() => { reload(); }, []);
   const add = async () => {
     try {
       const found = await (await pgp()).readPublicKeys(text);
-      for (const [email, publicKey] of found) await savePeerKey({ email, publicKey, source: 'imported', added: new Date().toISOString() });
+      for (const [email, publicKey] of found) await savePeerKey(await peer(email, publicKey, 'imported'));
       setMsg(found.length ? `Added keys for ${[...new Set(found.map(([e]) => e))].join(', ')}.` : 'That key has no email address in it.'); setText('');
     } catch { setMsg('That doesn’t look like an OpenPGP public key.'); }
+    reload();
   };
   return <>
-    <p className="fine">Someone’s key, if their mail service doesn’t publish it:</p>
+    <p className="fine">People’s keys</p>
+    {list.length > 0 && <ul className="rule-list">{list.map((k) => (
+      <li key={k.email} className="peer-key">
+        <span><b>{k.email}</b> <span className="fine">{SOURCE[k.source]}</span><br /><code className="key">{fp(k.fingerprint)}</code>
+          {k.conflict && <span className="banner banner--danger" role="alert"><Icon name="shield" size={16} /><span className="grow">
+            A different key turned up {SOURCE[k.conflict.source]}: <code className="key">{fp(k.conflict.fingerprint)}</code>. Someone may be pretending to be {k.email}. Encrypted mail to them is paused until you choose. Check with them another way.</span>
+            <Button variant="link" onClick={async () => { await savePeerKey({ ...k.conflict!, email: k.email }, true); reload(); }}>Use the new key</Button>
+            <Button variant="link" onClick={async () => { await savePeerKey({ ...k, conflict: undefined }, true); reload(); }}>Keep the current one</Button></span>}
+        </span>
+        <Button variant="quiet" size="sm" icon="trash" label={`Forget ${k.email}’s key`} onClick={async () => { await removePeerKey(k.email); reload(); }} />
+      </li>))}</ul>}
     <div className="inline-form">
-      <input className="input key" placeholder="Paste a public key (-----BEGIN PGP PUBLIC KEY BLOCK-----…)" value={text} onChange={(e) => setText(e.target.value)} />
+      <input className="input key" aria-label="Someone’s public key" placeholder="Paste someone’s public key (-----BEGIN PGP PUBLIC KEY BLOCK-----…)" value={text} onChange={(e) => setText(e.target.value)} />
       <Button size="md" disabled={!text.trim()} onClick={add}>Add</Button>
     </div>
     {msg && <p className="fine" role="status">{msg}</p>}
@@ -174,32 +195,38 @@ export function secureKind(m: EmailFull): SecureKind {
   return t.includes('application/pgp-signature') ? 'signed' : null;
 }
 
-/** Learn a sender's key from their Autocrypt header or an attached key (first key seen for an address wins). */
-async function learnKeys(client: Jmap, m: EmailFull) {
+/** Learn a sender's key from their Autocrypt header or an attached key, but only from mail whose sender the server
+ *  authenticated (DMARC / aligned DKIM) and that isn't junk: a forged From must not plant a key. A key that differs
+ *  from the one we have is kept aside as a conflict, never swapped in. */
+async function learnKeys(client: Jmap, m: EmailFull, me: string, inJunk: boolean) {
   const from = m.from?.[0]?.email;
-  if (!from || (await peerKey(from))) return;
   const att = m.attachments.find((a) => a.type.toLowerCase() === 'application/pgp-keys' && a.size < 100_000);
-  if (!m.autocrypt && !att) return;
+  if (!from || (!m.autocrypt && !att) || inJunk || m.keywords.$junk || from.toLowerCase() === me.toLowerCase()) return;
+  if (!senderAuthenticated(from, m.authResults?.[0], me.split('@')[1] ?? '')) return;
   const p = await pgp();
-  let key = m.autocrypt ? await p.autocryptKey(from, m.autocrypt) : null, source: 'autocrypt' | 'attached' = 'autocrypt';
+  let key = m.autocrypt ? await p.autocryptKey(from, m.autocrypt) : null, source: KeySource = 'autocrypt';
   if (!key && att) { key = (await p.readPublicKeys(await (await client.download(att)).text()).catch(() => [])).find(([e]) => e === from.toLowerCase())?.[1] ?? null; source = 'attached'; }
-  if (key) await savePeerKey({ email: from, publicKey: key, source, added: new Date().toISOString() });
+  if (key) await savePeerKey(await peer(from, key, source));
 }
 
-/** Decrypts and verifies a message on this device. `inline` maps Content-ID → data: URL for embedded images. */
-export function useSecureMail(client: Jmap, m: EmailFull, me: string) {
+/** Decrypts and verifies a message on this device. `inline` maps Content-ID → data: URL for embedded images.
+ *  keyChanged: a different key turned up for this sender (see Settings). */
+export function useSecureMail(client: Jmap, m: EmailFull, me: string, inJunk = false) {
   const kind = secureKind(m);
   const [state, setState] = useState<(Opened & { locked?: boolean; inline: Record<string, string> }) | null>(null);
+  const [keyChanged, setKeyChanged] = useState(false);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let live = true;
-    setState(null);
+    setState(null); setKeyChanged(false);
     (async () => {
-      await learnKeys(client, m).catch(() => {});
+      await learnKeys(client, m, me, inJunk).catch(() => {});
+      const sender = m.from?.[0]?.email ?? '', theirs = await peerKey(sender);
+      if (live) setKeyChanged(!!theirs?.conflict);
       if (kind !== 'encrypted' && kind !== 'signed') return;
-      const sender = m.from?.[0]?.email ?? '', mine = await myKey(me), priv = unlockedKey(me);
+      const mine = await myKey(me), priv = unlockedKey(me);
       if (kind === 'encrypted' && !priv) return live && setState({ encrypted: true, signature: null, mail: null, locked: !!mine?.wrapped, inline: {} });
-      const known = sender.toLowerCase() === me.toLowerCase() ? mine?.publicKey : (await peerKey(sender))?.publicKey;
+      const known = sender.toLowerCase() === me.toLowerCase() ? mine?.publicKey : theirs?.publicKey;
       const p = await pgp(), opened = await p.openMessage(await client.rawMessage(m.blobId), priv, known ? [known] : []);
       // Embedded images as data: URLs (the message frame's CSP allows only those); raster types only, never SVG.
       const inline = Object.fromEntries((opened.mail?.attachments ?? []).filter((f) => f.cid && /^image\/(png|jpe?g|gif|webp)$/i.test(f.type))
@@ -208,31 +235,38 @@ export function useSecureMail(client: Jmap, m: EmailFull, me: string) {
     })().catch((e) => live && setState({ encrypted: kind === 'encrypted', signature: null, mail: null, error: `Couldn’t open it: ${(e as Error).message}`, inline: {} }));
     return () => { live = false; };
   }, [m.id, tick]);
-  return { kind, state, retry: () => setTick((t) => t + 1) };
+  return { kind, state, keyChanged, retry: () => setTick((t) => t + 1) };
 }
 
-/** What the reader says about an encrypted or signed message, plus its decrypted attachments. */
-export function SecureBanner({ me, m, kind, state, retry }: { me: string; m: EmailFull } & ReturnType<typeof useSecureMail>) {
-  if (kind === 'smime') return <p className="banner banner--info"><Icon name="lock" size={16} /><span className="grow">This message is encrypted with S/MIME. Open it in a mail app that has your certificate (Apple Mail, Outlook or Thunderbird).</span></p>;
-  if (!kind || !state) return kind === 'encrypted' ? <p className="banner banner--info"><Icon name="lock" size={16} /><span className="grow">Decrypting on this device…</span></p> : null;
+/** How the reader labels a message. Green only for a verified signature, or encryption with no signature claim. */
+export function securityLabel(encrypted: boolean, sig: Opened['signature'], who: string): { tone: 'safe' | 'info' | 'danger'; text: string } {
+  const what = encrypted ? 'Encrypted' : 'Signed';
+  const tail = encrypted ? ' Search can’t see inside it.' : '';
+  if (sig === 'verified') return { tone: 'safe', text: `${what} · Verified: signed by ${who}’s key.${tail}` };
+  if (sig === 'bad') return { tone: 'danger', text: `The signature doesn’t match. This message was changed on the way, or isn’t really from ${who}. Don’t trust what it asks you to do.` };
+  if (sig === 'unknown') return { tone: 'info', text: `${encrypted ? 'Encrypted · signature' : 'Signature'} unverified: we don’t have ${who}’s key to check it, so we can’t say who wrote this.${tail}` };
+  return { tone: 'safe', text: `Encrypted · not signed.${tail}` };
+}
+
+/** What the reader says about an encrypted or signed message, plus its decrypted (or verified) attachments. */
+export function SecureBanner({ me, m, kind, state, keyChanged, retry }: { me: string; m: EmailFull } & ReturnType<typeof useSecureMail>) {
   const who = displayName(m.from?.[0], me);
-  if (state.error) return <p className="banner banner--danger" role="alert"><Icon name="lock" size={16} /><span className="grow">{state.error}</span></p>;
-  if (!state.mail) return (
+  const changed = keyChanged && <p className="banner banner--danger" role="alert"><Icon name="shield" size={16} /><span className="grow">{who}’s key has changed. It may be a new device, or someone pretending to be them. Check in Settings → Security before sending them anything private.</span></p>;
+  if (kind === 'smime') return <>{changed}<p className="banner banner--info"><Icon name="lock" size={16} /><span className="grow">This message is encrypted with S/MIME. Open it in a mail app that has your certificate (Apple Mail, Outlook or Thunderbird).</span></p></>;
+  if (!kind || !state) return <>{changed}{kind === 'encrypted' && <p className="banner banner--info"><Icon name="lock" size={16} /><span className="grow">Decrypting on this device…</span></p>}</>;
+  if (state.error) return <>{changed}<p className="banner banner--danger" role="alert"><Icon name="lock" size={16} /><span className="grow">{state.error}</span></p></>;
+  if (!state.mail) return <>{changed}
     <p className="banner banner--info"><Icon name="lock" size={16} />
       {state.locked
         ? <><span className="grow">This message is encrypted. Unlock your key to read it here.</span><Button variant="link" onClick={async () => { if (await ensureUnlocked(me)) retry(); }}>Unlock</Button></>
         : <span className="grow">This message is encrypted to your key, which isn’t in this browser. Restore your key backup in Settings → Security to read it here.</span>}
-    </p>
-  );
-  const sig = state.signature;
+    </p></>;
+  const label = securityLabel(state.encrypted, state.signature, who);
   const files = state.mail.attachments.filter((f) => !(f.cid && state.inline[f.cid]));
   return <>
-    {sig === 'bad'
-      ? <p className="banner banner--danger" role="alert"><Icon name="shield" size={16} /><span className="grow"><b>The signature doesn’t match.</b> This message was changed on the way, or isn’t really from {who}. Don’t trust what it asks you to do.</span></p>
-      : <p className="banner banner--safe"><Icon name={state.encrypted ? 'lock' : 'shield'} size={16} /><span className="grow">
-          {state.encrypted ? 'Encrypted' : 'Signed'}
-          {sig === 'verified' ? <> · <b>Verified</b>: signed by {who}’s key</> : sig === 'unknown' ? ` · signed, but we don’t have ${who}’s key to check it` : state.encrypted ? ' · not signed' : ''}
-          {state.encrypted && '. Search can’t see inside it.'}</span></p>}
+    {changed}
+    <p className={`banner banner--${label.tone}`} role={label.tone === 'danger' ? 'alert' : undefined}>
+      <Icon name={state.encrypted ? 'lock' : 'shield'} size={16} /><span className="grow">{label.text}</span></p>
     {files.length > 0 && <ul className="chips" aria-label="Attachments">{files.map((f, i) => (
       <li key={i}><button className="chip" title={`Download ${f.name}`} onClick={() => saveFile(f)}>
         <Icon name="file" size={16} /><span className="fname">{f.name}</span><span className="fsize">{fileSize(f.data.length)}</span><Icon name="download" size={16} />
@@ -263,11 +297,13 @@ export function useRecipientKeys(fields: string[], me: string) {
       const people = [...new Set(fields.flatMap((f) => parseAddresses(f).list.map((a) => a.email.toLowerCase())))];
       if (live) setState((s) => ({ ...s, mine, checking: true }));
       const have = await Promise.all(people.map(async (email) => {
-        if (await peerKey(email)) return true;
+        const known = await peerKey(email);
+        // Keys learned from mail are checked against the domain's WKD: a different key there is a conflict to resolve.
+        if (known && (known.source === 'imported' || known.source === 'wkd')) return !known.conflict;
         if (!wkdSeen.has(email)) wkdSeen.set(email, pgp().then((p) => p.wkdLookup(email, me.split('@')[1])));
         const k = await wkdSeen.get(email)!;
-        if (k) await savePeerKey({ email, publicKey: k, source: 'wkd', added: new Date().toISOString() });
-        return !!k;
+        const now = k ? await savePeerKey(await peer(email, k, 'wkd')) : known;
+        return !!now && !now.conflict;
       }));
       if (live) setState({ mine, missing: people.filter((_, i) => !have[i]), checking: false });
     }, 600);

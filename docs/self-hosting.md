@@ -106,6 +106,7 @@ Add every record the installer printed at your DNS host. Here's what each one do
 | `TXT _dmarc…` (DMARC) | Tells receivers to reject mail that fails SPF and DKIM, and where to send reports |
 | `CNAME mta-sts…`, `TXT _mta-sts…`, `TXT _smtp._tls…` | MTA-STS and TLS-RPT: other servers must use encryption when sending to you, and report problems |
 | `SRV _imaps._tcp…`, `_submissions._tcp…`, `CNAME autoconfig…`, `autodiscover…` | Let mail apps find your server settings automatically |
+| `CNAME openpgpkey.example.com` → your mail host (optional, add it yourself) | Web Key Directory: other mail apps (Thunderbird, Proton, GnuPG) find your users' encryption keys here. Caddy serves it from the account service |
 
 The record names are printed in full. Many DNS panels want only the part before your domain, for example `_dmarc` instead of `_dmarc.example.com`, and `@` for the domain itself. The RSA DKIM value is long. Paste it as one value; most panels split it automatically.
 
@@ -163,7 +164,7 @@ cd openmail && git pull
 cd deploy/production && sudo ./install.sh --yes --rebuild-web
 ```
 
-This rebuilds the web client. If `git pull` brought a new Stalwart or Caddy version, it also pulls the new image and restarts. Image versions are pinned in `docker-compose.yml`, so nothing changes under you without a `git pull`. Before moving to a new major Stalwart version, read its [upgrade notes](https://stalw.art/docs/install/upgrade/).
+This rebuilds the web client and re-registers the webmail's sign-in permissions (encryption in Settings → Security needs the `settings` permission, added in this version). If `git pull` brought a new Stalwart or Caddy version, it also pulls the new image and restarts. Image versions are pinned in `docker-compose.yml`, so nothing changes under you without a `git pull`. Before moving to a new major Stalwart version, read its [upgrade notes](https://stalw.art/docs/install/upgrade/).
 
 ## 7. Backups
 

@@ -94,7 +94,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
       <h1 className="subject">{last.subject?.replace(/^((re|fwd?|aw|sv)\s*:\s*)+/i, '') || '(no subject)'}</h1>
 
       {messages.map((m) => open.has(m.id)
-        ? <Message key={m.id} client={client} m={m} me={me} onUnsubscribe={onUnsubscribe} onRsvp={onRsvp} onReceipt={onReceipt} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
+        ? <Message key={m.id} client={client} m={m} me={me} inJunk={inJunk} onUnsubscribe={onUnsubscribe} onRsvp={onRsvp} onReceipt={onReceipt} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
         : (
           <button key={m.id} className="folded" onClick={() => setOpen((s) => new Set(s).add(m.id))}>
             <span className="who">{displayName(m.from?.[0], me)}</span>
@@ -114,8 +114,8 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   );
 }
 
-function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
-  client: Jmap; m: EmailFull; me: string; onFold?: () => void; onUnsubscribe: (m: EmailFull) => void;
+function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onReceipt }: {
+  client: Jmap; m: EmailFull; me: string; inJunk: boolean; onFold?: () => void; onUnsubscribe: (m: EmailFull) => void;
   onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void>;
   onReceipt: (m: EmailFull, send: boolean) => void;
 }) {
@@ -125,8 +125,9 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
   const [assist, setAssist] = useState<{ kind: 'translation' | 'summary'; text: string; note: string } | null>(null);
   const [assisting, setAssisting] = useState('');
   // Encrypted mail is opened here, on this device; what's shown is the decrypted message.
-  const secure = useSecureMail(client, m, me);
-  const shown = secure.state?.encrypted && secure.state.mail ? { html: secure.state.mail.html, text: secure.state.mail.text } : m;
+  // Encrypted or signed: show exactly the part that was decrypted / checked, never the server's own parse of it.
+  const secure = useSecureMail(client, m, me, inJunk);
+  const shown = secure.state?.mail ?? m;
   // Prefer the sender's plain-text part; from HTML, only what a reader can actually see (see visibleText).
   const plain = (shown.text || (shown.html ? visibleText(shown.html) : '')).trim();
   async function help(kind: 'translation' | 'summary') {
@@ -149,7 +150,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
     return () => { live = false; };
   }, [embedded]);
   const html = useMemo(() => (shown.html ? buildSrcdoc(shown.html, showImages, { ...inline, ...secure.state?.inline }) : null), [shown.html, showImages, inline, secure.state]);
-  const files = m.attachments.filter((a) => !embedded.includes(a) && !(secure.kind && isCryptoPart(a)));
+  const files = secure.state?.mail ? [] /* SecureBanner lists the checked files */ : m.attachments.filter((a) => !embedded.includes(a) && !(secure.kind && isCryptoPart(a)));
   const sender = m.from?.[0];
   return (
     <section className="message">

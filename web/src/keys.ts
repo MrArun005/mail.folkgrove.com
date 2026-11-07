@@ -14,7 +14,11 @@ export interface MyKey {
   wrapped?: { salt: string; iv: string; data: string; rounds: number };
 }
 export type KeySource = 'wkd' | 'autocrypt' | 'attached' | 'imported';
-export interface PeerKey { email: string; publicKey: string; source: KeySource; added: string }
+export interface PeerKey {
+  email: string; publicKey: string; fingerprint: string; source: KeySource; added: string;
+  /** A different key that turned up later. Never used until you choose it in Settings (it may be an attacker's). */
+  conflict?: Omit<PeerKey, 'conflict' | 'email'>;
+}
 
 const DB = 'openmail-keys', STORE = 'kv';
 let dbp: Promise<IDBDatabase> | null = null;
@@ -35,10 +39,44 @@ export const myKey = (user: string) => get<MyKey>(`me:${lc(user)}`);
 export const saveMyKey = (user: string, k: MyKey) => put(`me:${lc(user)}`, k);
 export async function forgetMyKey(user: string) { unlocked.delete(lc(user)); await tx('readwrite', (s) => s.delete(`me:${lc(user)}`)); }
 export const peerKey = (email: string) => get<PeerKey>(`peer:${lc(email)}`);
-/** First key seen for an address wins (trust on first use); only a key you import yourself replaces it. */
-export async function savePeerKey(k: PeerKey, replace = k.source === 'imported') {
-  if (!replace && (await peerKey(k.email))) return;
-  await put(`peer:${lc(k.email)}`, { ...k, email: lc(k.email) });
+/** The first key seen for an address is kept (trust on first use). A different one later is kept aside as a conflict
+ *  for you to decide on; only a key you import (or choose) yourself replaces it. */
+export function mergePeerKey(old: PeerKey | undefined, k: PeerKey, replace = k.source === 'imported'): PeerKey {
+  const { conflict: _, ...incoming } = { ...k, email: lc(k.email) };
+  if (!old || replace) return incoming;
+  if (old.fingerprint === k.fingerprint) return old;
+  return { ...old, conflict: { publicKey: k.publicKey, fingerprint: k.fingerprint, source: k.source, added: k.added } };
+}
+export async function savePeerKey(k: PeerKey, replace?: boolean) {
+  const old = await peerKey(k.email), next = mergePeerKey(old, k, replace);
+  if (next !== old) await put(`peer:${lc(k.email)}`, next);
+  return next;
+}
+export const removePeerKey = (email: string) => tx('readwrite', (s) => s.delete(`peer:${lc(email)}`));
+export async function peerKeys(): Promise<PeerKey[]> {
+  const all = await tx<PeerKey[]>('readonly', (s) => s.getAll(IDBKeyRange.bound('peer:', 'peer:\uffff')) as IDBRequest<PeerKey[]>).catch(() => []);
+  return all.sort((a, b) => a.email.localeCompare(b.email));
+}
+
+/**
+ * Did the server authenticate the sender's domain? Only then may a key that came with the mail be learned (a forged
+ * From could otherwise plant a key for someone else). `ar` is the topmost Authentication-Results header, the one our
+ * server adds on delivery: DMARC pass for the From domain, or a passing DKIM signature aligned with it. Mail between
+ * accounts on this server has no such header; it was authenticated at submission, so it counts for our own domain.
+ * ponytail: we don't check the header's authserv-id (the app doesn't know the server's name); a header forged by the
+ * sender sits below the server's, and mail from our own users is trusted to be theirs.
+ */
+export function senderAuthenticated(from: string, ar: string | null | undefined, ownDomain: string): boolean {
+  const domain = from.slice(from.lastIndexOf('@') + 1).toLowerCase();
+  if (!ar) return domain === ownDomain.toLowerCase();
+  const aligned = (d?: string) => !!d && (d = d.toLowerCase().replace(/^@/, '').replace(/.*@/, ''), d === domain || domain.endsWith('.' + d) || d.endsWith('.' + domain));
+  return ar.split(';').slice(1).some((r) => {
+    const v = r.replace(/\([^)]*\)/g, ' ');
+    const prop = (k: string) => new RegExp(`(?:^|\\s)${k.replace('.', '\\.')}=("?)([^\\s";]+)\\1`, 'i').exec(v)?.[2];
+    if (/^\s*dmarc=pass\b/i.test(v)) return aligned(prop('header.from'));
+    if (/^\s*dkim=pass\b/i.test(v)) return aligned(prop('header.d') ?? prop('header.i'));
+    return false;
+  });
 }
 
 // ── Passphrase wrapping (WebCrypto only) ────────────────

@@ -117,6 +117,10 @@ The web app's `/admin` screen calls these. Each request must carry the admin's o
 
 Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) and the caller's own account can't be changed or deleted here; names in `ADMINS` are also reserved at sign-up. Delivered or bounced mail leaves the queue; Stalwart's delivery history (`x:Trace`) needs its Enterprise edition, so it isn't shown.
 
+### `GET /.well-known/openpgpkey/…` (Web Key Directory)
+
+Serves users' OpenPGP public keys (the ones they uploaded in Settings → Security, Stalwart `x:PublicKey`) so other mail apps can encrypt to them: `/.well-known/openpgpkey/hu/<hash>?l=<local>` (direct) and `/.well-known/openpgpkey/<domain>/hu/<hash>?l=<local>` (advanced, on `openpgpkey.<domain>`), plus an empty `policy`. Binary key, `Access-Control-Allow-Origin: *`, 60 lookups a minute per network. Only keys made out to the address asked about; requests without `?l=` get 404.
+
 ### `GET /healthz`
 
 `200 {"ok": true}`

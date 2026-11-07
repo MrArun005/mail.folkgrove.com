@@ -176,7 +176,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
     if (!t.list.length && !c.list.length && !b.list.length) return setError('Add at least one recipient');
     if (uploading) return setError('Wait for attachments to finish uploading');
     if (encrypt) {
-      if (!keys.ready) return setError(keys.checking ? 'Still looking up encryption keys. Try again in a moment.' : `There’s no encryption key for ${keys.missing.join(', ')}. Remove them or turn off encryption.`);
+      if (!keys.ready) return setError(keys.checking ? 'Still looking up encryption keys. Try again in a moment.' : `No usable encryption key for ${keys.missing.join(', ')} (none found, or it changed: see Settings → Security). Remove them or turn off encryption.`);
       if (!(await ensureUnlocked(me))) return;
     }
     const text = htmlToText(editor.current!.innerHTML);
@@ -287,7 +287,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
           <Button variant="quiet" icon="receipt" label={receipt ? 'Read receipt requested (click to cancel)' : 'Request a read receipt'} pressed={receipt}
             onClick={() => { setReceipt(!receipt); changed(); }} />
           {keys.mine && <Button variant="quiet" icon="lock" pressed={encrypt} disabled={!encrypt && !keys.ready}
-            label={encrypt ? 'Encrypted end to end (click to turn off)' : keys.ready ? 'Encrypt end to end' : keys.missing.length ? `Can’t encrypt: no key for ${keys.missing.join(', ')}` : 'Encrypt end to end (looking up keys…)'}
+            label={encrypt ? 'Encrypted end to end (click to turn off)' : keys.ready ? 'Encrypt end to end' : keys.missing.length ? `Can’t encrypt: no usable key for ${keys.missing.join(', ')}` : 'Encrypt end to end (looking up keys…)'}
             onClick={() => { setEncrypt(!encrypt); changed(); }} />}
           <Menu label="Templates" up align="right" button={<Button variant="quiet" icon="templates" label="Templates" />}>
             {(close) => <TemplatesMenu api={api} close={close}

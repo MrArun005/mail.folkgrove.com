@@ -110,7 +110,9 @@ export async function openMessage(raw: Uint8Array, privateKey: string | undefine
       return { encrypted, signature, mail: null, error: /session key|decrypt/i.test((e as Error).message) ? 'This message was encrypted to a different key than the one in this browser.' : `Couldn’t decrypt it: ${(e as Error).message}` };
     }
   }
-  if (root.type === 'multipart/signed' && root.parts.length === 2) {
+  if (root.type === 'multipart/signed') {
+    // Exactly the signed part and its signature; anything else is a message built to mislead. Only part 1 is shown.
+    if (root.parts.length !== 2) return { encrypted, signature: 'bad', mail: root.parts[0] ? readMail(root.parts[0]) : null };
     try {
       const v = await openpgp.verify({
         message: await openpgp.createMessage({ binary: bytes(root.parts[0].raw.replace(/\r?\n/g, '\r\n')) }),

@@ -67,8 +67,8 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Hostile HTML isolation | ✅ | ✅ | Sandboxed frame + strict CSP, tested |
 | 2FA / passkeys | ✅ | ✅ | Settings → Security: fresh sign-in → security token in memory only; QR enrolment with the code checked before saving; app passwords limited to IMAP/SMTP/POP/DAV (a leaked one can't change the password or 2FA); password change. Passkeys later |
 | OAuth sign-in (no stored password) | ✅ | ✅ | PKCE, rotating refresh token, revoked at sign-out |
-| End-to-end encryption | 🟡 (S/MIME) | ⬜ | OpenPGP.js, Phase 2.5 |
-| Encryption at rest | ✅ | 🟡 | Stalwart supports per-account encryption at rest; expose in settings |
+| End-to-end encryption | 🟡 (S/MIME) | ✅ | OpenPGP (PGP/MIME, signed + encrypted; works with Proton, Thunderbird, GnuPG). Keys found by WKD, Autocrypt (only from authenticated senders) or import; a changed key is held back until you choose; signatures checked in the reader. Our users' keys published by WKD + Autocrypt. Private key stays in the browser. Subject not hidden yet |
+| Encryption at rest | ✅ | ✅ | Per user, to *their own* key (Stalwart PGP/MIME): the server can't read stored mail. Decrypted in the browser; search can't see bodies; S/MIME keys accepted but read in another app |
 | Masked / disposable aliases | ⬜ | ✅ | One per site, labelled, switch off any time (sender gets “no such mailbox”) |
 | Self-hosting / data ownership | ⬜ | ✅ | AGPL, one-command install (Phase 3) |
 | Open standards (IMAP, JMAP, CalDAV, CardDAV, Sieve) | 🟡 | ✅ | No lock-in; any client works |
@@ -132,8 +132,8 @@ shared mailboxes and import close the rest of the 95%.
 ## Order of work
 
 1. **Next batch:** Priority Inbox, search chips, multiple accounts, import from Gmail (IMAP), tracking report.
-2. **Phase 2 security:** passkeys, E2E (OpenPGP).
+2. **Phase 2 security:** passkeys. (E2E OpenPGP and encryption at rest: done.)
 3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager,
-   multi-account, E2E (OpenPGP), saved searches, encryption-at-rest toggle.
+   multi-account, saved searches.
 4. **Phase 3–4:** shared mailboxes, admin console. Scale: docs/research/scale.md (1 → 3 → N nodes).
 5. **Toward Gmail:** smart categorisation, offline-first sync, AI features (opt-in), native apps.
