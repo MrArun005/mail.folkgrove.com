@@ -589,3 +589,13 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .subject .pill { margin-right: var(--s2); vertical-align: 1px; }
 /* Screener: decisions are the point of the folder, so the buttons are always shown */
 .row .screen-actions { display: flex; top: auto; bottom: var(--s2); gap: var(--s2); padding: 0; background: none; box-shadow: none; }
+
+/* Attachment preview */
+.att-preview { display: grid; grid-template-rows: auto 1fr; width: min(1100px, 100%); height: min(88vh, 100%); background: var(--paper); border-radius: var(--r-lg); box-shadow: var(--lift); overflow: hidden; }
+.att-preview header { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--rule); }
+.att-preview header .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.att-preview header .fsize { color: var(--muted); font-size: var(--t-sm); }
+.att-preview-body { min-height: 0; overflow: auto; display: grid; place-items: center; background: var(--list); }
+.att-preview-body img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.att-preview-body iframe { width: 100%; height: 100%; border: 0; }
+.att-preview-body pre { align-self: start; justify-self: stretch; margin: 0; padding: var(--s4); white-space: pre-wrap; font: var(--t-sm)/1.5 ui-monospace, monospace; color: var(--ink); }

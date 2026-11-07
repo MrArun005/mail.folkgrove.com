@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
 import { Button } from './Button';
 import { Icon } from './icons';
@@ -115,6 +116,7 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
 }) {
   const [showImages, setShowImages] = useState(false);
   const [inline, setInline] = useState<Record<string, string>>({});
+  const [preview, setPreview] = useState<Attachment | null>(null);
   // Images embedded in the message (cid:) are fetched with our credentials and handed to the frame as data: URLs.
   const embedded = useMemo(() => m.attachments.filter((a) => a.cid && m.html?.includes(`cid:${a.cid}`)), [m]);
   useEffect(() => {
@@ -168,15 +170,58 @@ function Message({ client, m, me, onFold, onUnsubscribe, onRsvp, onReceipt }: {
         <ul className="chips" aria-label="Attachments">
           {files.map((a) => (
             <li key={a.blobId + a.name}>
-              <button className="chip" onClick={() => save(client, a).catch(() => alert(`Couldn’t download ${a.name ?? 'the file'}. Try again.`))} title={`Download ${a.name ?? 'file'}`}>
+              <button className="chip" onClick={() => (previewKind(a) ? setPreview(a) : save(client, a).catch(() => alert(`Couldn’t download ${a.name ?? 'the file'}. Try again.`)))}
+                title={previewKind(a) ? `Preview ${a.name ?? 'file'}` : `Download ${a.name ?? 'file'}`}>
                 <Icon name="file" size={16} /><span className="fname">{a.name ?? 'Untitled file'}</span>
-                <span className="fsize">{fileSize(a.size)}</span><Icon name="download" size={16} />
+                <span className="fsize">{fileSize(a.size)}</span><Icon name={previewKind(a) ? 'search' : 'download'} size={16} />
               </button>
             </li>
           ))}
         </ul>
       )}
+      {preview && <Preview client={client} a={preview} onClose={() => setPreview(null)} />}
     </section>
+  );
+}
+
+// Images (as <img>: an SVG can't run scripts there), PDFs (the browser's viewer) and plain text open in place.
+const previewKind = (a: Attachment) => /^image\/(png|jpe?g|gif|webp|avif|bmp|svg\+xml)$/i.test(a.type) ? 'image'
+  : /^application\/pdf$/i.test(a.type) ? 'pdf' : /^text\/(plain|csv)$/i.test(a.type) && a.size < 1_000_000 ? 'text' : null;
+
+function Preview({ client, a, onClose }: { client: Jmap; a: Attachment; onClose: () => void }) {
+  const [src, setSrc] = useState<{ url: string; text?: string } | null>(null);
+  const [err, setErr] = useState('');
+  const kind = previewKind(a);
+  useEffect(() => {
+    let url = '';
+    client.download(a).then(async (b) => {
+      // Re-type the blob ourselves: the browser must treat it as the kind we checked, whatever the sender claimed.
+      const typed = new Blob([b], { type: kind === 'pdf' ? 'application/pdf' : kind === 'text' ? 'text/plain;charset=utf-8' : a.type });
+      url = URL.createObjectURL(typed);
+      setSrc({ url, text: kind === 'text' ? await typed.text() : undefined });
+    }, () => setErr('Couldn’t load this file.'));
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', esc, true);
+    return () => { if (url) URL.revokeObjectURL(url); window.removeEventListener('keydown', esc, true); };
+  }, [a]);
+  // Portal: the reader pane is its own containing block, so a fixed overlay inside it wouldn't cover the page.
+  return createPortal(
+    <div className="overlay" onMouseDown={onClose}>
+      <div className="att-preview" role="dialog" aria-label={`Preview of ${a.name ?? 'attachment'}`} onMouseDown={(e) => e.stopPropagation()}>
+        <header>
+          <span className="fname">{a.name ?? 'Untitled file'}</span><span className="fsize">{fileSize(a.size)}</span>
+          <Button size="sm" icon="download" onClick={() => save(client, a)}>Download</Button>
+          <Button variant="quiet" size="sm" icon="close" label="Close preview" onClick={onClose} />
+        </header>
+        <div className="att-preview-body">
+          {err ? <p className="error">{err}</p> : !src ? <p className="fine">Loading…</p>
+            : kind === 'image' ? <img src={src.url} alt={a.name ?? 'Attachment'} />
+            : kind === 'pdf' ? <iframe title={a.name ?? 'PDF'} src={src.url} />
+            : <pre>{src.text}</pre>}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
