@@ -53,8 +53,9 @@ async function authorize(user: string, pass: string, scope: string, otp?: string
 export async function signIn(user: string, pass: string, otp?: string): Promise<Session | 'code'> {
   const t = await authorize(user, pass, SCOPE, otp);
   if (t === 'code') return t;
-  store.set('refresh', { token: t.refresh, username: t.username });
-  return new Session(t);
+  const s = new Session({ ...t, username: t.username || user.toLowerCase() });
+  s.remember();
+  return s;
 }
 
 export interface Tokens { access: string; refresh: string; expiresAt: number; username: string }
@@ -69,18 +70,42 @@ async function tokenRequest(body: Record<string, string>): Promise<Tokens> {
   return { access: j.access_token, refresh: j.refresh_token, expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000, username: j.username ?? '' };
 }
 
-/** Drop the remembered session (it can't be renewed). */
-export const forgetSession = () => store.set('refresh', null);
+// Several accounts can be signed in at once (Gmail-style switcher): one refresh token per account, plus which is
+// active. Same storage rules as before (sessionStorage: closing the tab signs everyone out).
+type Saved = Record<string, string>; // username → refresh token
+const saved = (): Saved => {
+  const old = store.get<{ token: string; username: string }>('refresh'); // single-account format, before switching existed
+  if (old) { store.set('refresh', null); store.set('accounts', { [old.username]: old.token }); store.set('active', old.username); }
+  return store.get<Saved>('accounts') ?? {};
+};
+/** Usernames signed in on this tab, active first. */
+export function signedInAccounts(): string[] {
+  const a = Object.keys(saved()), active = store.get<string>('active');
+  return active && a.includes(active) ? [active, ...a.filter((x) => x !== active)] : a;
+}
+/** Drop the active session (it can't be renewed). */
+export const forgetSession = () => {
+  const a = saved(), active = store.get<string>('active');
+  if (active) delete a[active];
+  store.set('accounts', a); store.set('active', Object.keys(a)[0] ?? null);
+};
 
 /** A token source the JMAP client asks for headers; refreshes shortly before expiry or after a 401. */
 export class Session {
   private refreshing: Promise<void> | null = null;
   constructor(private t: Tokens) {}
 
-  static resume(): Session | null {
-    const saved = store.get<{ token: string; username: string }>('refresh');
-    return saved ? new Session({ access: '', refresh: saved.token, expiresAt: 0, username: saved.username }) : null;
+  /** The active account's session (or a given account's), from this tab's storage. */
+  static resume(username?: string): Session | null {
+    const a = saved(), u = username ?? store.get<string>('active') ?? Object.keys(a)[0];
+    if (!u || !a[u]) return null;
+    store.set('active', u);
+    return new Session({ access: '', refresh: a[u], expiresAt: 0, username: u });
   }
+
+  get username() { return this.t.username; }
+  /** Save this account's refresh token and make it the active one. */
+  remember() { store.set('accounts', { ...saved(), [this.t.username]: this.t.refresh }); store.set('active', this.t.username); }
 
   async header(): Promise<string> {
     if (Date.now() > this.t.expiresAt - 60_000) await this.refresh();
@@ -90,13 +115,15 @@ export class Session {
   refresh(): Promise<void> {
     // One refresh at a time: refresh tokens rotate, so a second parallel request would use a dead token.
     this.refreshing ??= tokenRequest({ grant_type: 'refresh_token', refresh_token: this.t.refresh })
-      .then((t) => { this.t = { ...t, username: t.username || this.t.username }; store.set('refresh', { token: t.refresh, username: this.t.username }); })
+      .then((t) => { this.t = { ...t, username: t.username || this.t.username }; store.set('accounts', { ...saved(), [this.t.username]: t.refresh }); })
       .finally(() => { this.refreshing = null; });
     return this.refreshing;
   }
 
   async signOut() {
-    store.set('refresh', null);
+    const a = saved(); delete a[this.t.username];
+    store.set('accounts', a);
+    if (store.get<string>('active') === this.t.username) store.set('active', Object.keys(a)[0] ?? null);
     await fetch('/auth/revoke', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ client_id: CLIENT_ID, token: this.t.refresh, token_type_hint: 'refresh_token' }),

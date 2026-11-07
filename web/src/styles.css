@@ -663,3 +663,10 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .assist .grow { flex: 1; min-width: 0; }
 .assist .assist-text { display: block; margin-top: var(--s1); white-space: pre-wrap; color: var(--ink); font: var(--t-read)/1.5 var(--read); }
 .assist-note { margin-left: var(--text-col); }
+
+/* Account switcher in the rail footer */
+.me .menu { display: flex; }
+.account-btn { display: flex; align-items: center; gap: var(--s2); max-width: 100%; min-width: 0; padding: 2px var(--s2) 2px 0; border-radius: var(--r-sm); text-align: left; }
+.account-btn:hover { background: var(--hover); }
+.account-btn .addr { min-width: 0; }
+.account-btn .count { flex: none; padding: 0 6px; border-radius: var(--r-full); background: var(--hover); color: var(--ink-2); font-size: var(--t-xs); font-weight: 600; font-variant-numeric: tabular-nums; }

@@ -82,7 +82,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Tasks, notes, bookmarks | ✅ | ⬜ | Phase 5 (lightweight) |
 | Streams (team comments on mail) | ✅ | ⬜ | Phase 5: shared mailboxes first |
 | Shared / group mailboxes, delegation | ✅ | ⬜ | Phase 4: Stalwart groups + JMAP sharing |
-| Multiple accounts in one app | ✅ | ⬜ | Phase 2.5 |
+| Multiple accounts in one app | ✅ | ✅ | Gmail-style switcher; signing out of one keeps the others |
 | Import from Gmail / Zoho / IMAP | ✅ | ✅ | Gmail Takeout / any .mbox or .eml, in the browser, byte-exact; labels → folders, stars and unread kept |
 
 ## 6. Platform and admin

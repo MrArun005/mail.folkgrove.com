@@ -3,7 +3,7 @@ import { Button } from './Button';
 import { Jmap, JmapError, SESSION_EXPIRED } from './jmap';
 import { Mail } from './Mail';
 import { DialogHost } from './Dialog';
-import { forgetSession, Session, signIn } from './oauth';
+import { forgetSession, Session, signedInAccounts, signIn } from './oauth';
 import { applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
@@ -15,6 +15,7 @@ export default function App() {
   const [booting, setBooting] = useState(true);
   const [error, setError] = useState('');
   const session = useRef<Session | null>(null);
+  const [adding, setAdding] = useState(false); // signing in to another account while one is open
 
   useEffect(() => {
     (async () => {
@@ -36,19 +37,33 @@ export default function App() {
     return () => window.removeEventListener(SESSION_EXPIRED, expired);
   }, []);
 
+  async function open(s: Session) {
+    const c = await Jmap.connect(s);
+    session.current = s; s.remember(); setClient(c);
+  }
+  /** Sign out of the current account; stay signed in to any others (switch to the next one). */
   async function signOut() {
-    cache.clear();
     await session.current?.signOut();
     session.current = null;
+    const next = Session.resume();
+    if (next) { try { return await open(next); } catch { /* fall through to sign-in */ } }
+    cache.clear();
     setClient(null);
+  }
+  async function switchTo(username: string) {
+    const s = Session.resume(username);
+    if (!s) return;
+    try { await open(s); } catch (e) { setError((e as Error).message); }
   }
 
   if (booting) return <div className="reader-loading" aria-busy="true" />;
-  if (!client) return <Login key={error} initialError={error} onLogin={(c, s) => { session.current = s; setError(''); setClient(c); }} />;
-  return <><Mail client={client} onLogout={signOut} /><DialogHost /></>;
+  if (!client || adding) return <Login key={error} initialError={error} onCancel={adding ? () => setAdding(false) : undefined}
+    onLogin={(c, s) => { session.current = s; setError(''); setAdding(false); setClient(c); }} />;
+  return <><Mail key={client.username} client={client} onLogout={signOut} accounts={signedInAccounts()}
+    onSwitch={switchTo} onAddAccount={() => setAdding(true)} /><DialogHost /></>;
 }
 
-function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: Jmap, s: Session) => void }) {
+function Login({ initialError, onLogin, onCancel }: { initialError: string; onLogin: (c: Jmap, s: Session) => void; onCancel?: () => void }) {
   const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
   const [needCode, setNeedCode] = useState(false);
@@ -80,7 +95,7 @@ function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: J
     <main className="login">
       <form onSubmit={submit}>
         <p className="wordmark">OpenMail</p>
-        <h1>{needCode ? 'Two-step verification' : 'Sign in to your mailbox'}</h1>
+        <h1>{needCode ? 'Two-step verification' : onCancel ? 'Add another account' : 'Sign in to your mailbox'}</h1>
         {notice && <p className="banner banner--safe" role="status">{notice}</p>}
         {!needCode ? <>
           <label>Email address<input className="input" name="email" type="email" autoComplete="username" required autoFocus
@@ -96,6 +111,7 @@ function Login({ initialError, onLogin }: { initialError: string; onLogin: (c: J
         <Button type="submit" variant="primary" size="lg" disabled={busy}>{busy ? 'Signing in…' : needCode ? 'Verify' : 'Sign in'}</Button>
         {needCode && <Button variant="link" className="alt" onClick={() => { setNeedCode(false); setCode(''); setError(''); }}>Use a different account</Button>}
         {!needCode && canSignUp && <Button variant="link" className="alt" onClick={() => setSigningUp(true)}>Create an account</Button>}
+        {onCancel && <Button variant="link" className="alt" onClick={onCancel}>Back to your mail</Button>}
         <p className="fine">No ads. No reading your mail. Open source.</p>
       </form>
     </main>

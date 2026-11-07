@@ -38,7 +38,11 @@ class ErrorBoundary extends Component<{ children: ReactNode; resetKey: unknown }
   render() { return this.state.failed ? <p className="empty">This conversation couldn’t be displayed. Try another one, or reload the page.</p> : this.props.children; }
 }
 
-export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void }) {
+export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
+  client: Jmap; onLogout: () => void;
+  /** Accounts signed in on this tab (Gmail-style switcher), active first. */
+  accounts: string[]; onSwitch: (username: string) => void; onAddAccount: () => void;
+}) {
   const key = (k: string) => `${client.username}:${k}`;
   const [boxes, setBoxes] = useState<Mailbox[]>(() => cache.get(key('boxes')) ?? []);
   const [view, setView] = useState<string | null>(null); // mailbox id or virtual folder; null = Inbox
@@ -637,7 +641,21 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
           </div>
         )}
         <div className="me">
-          <span className="addr">{identity?.name && identity.name !== identity.email ? identity.name : client.username}</span>
+          <Menu label="Accounts" up button={
+            <button className="account-btn" title="Switch account">
+              <span className="addr">{identity?.name && identity.name !== identity.email ? identity.name : client.username}</span>
+              {accounts.length > 1 && <span className="count">{accounts.length}</span>}
+            </button>}>
+            {(close) => <>
+              <p className="menu-title">Signed in on this tab</p>
+              {accounts.map((a) => (
+                <button key={a} className="menu-item" role="menuitem" aria-current={a === client.username} onClick={() => { close(); if (a !== client.username) onSwitch(a); }}>
+                  <Icon name={a === client.username ? 'check' : 'person'} size={16} /><span className="grow">{a}</span>
+                </button>
+              ))}
+              <button className="menu-item menu-sep" role="menuitem" onClick={() => { close(); onAddAccount(); }}><Icon name="compose" size={16} />Add another account</button>
+            </>}
+          </Menu>
           <span className="links">
             <Button variant="link" onClick={() => setOverlay('settings')}>Settings</Button>
             <Button variant="link" onClick={() => setOverlay('palette')} title="Find any action (⌘K)">Commands</Button>
