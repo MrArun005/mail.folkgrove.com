@@ -199,6 +199,9 @@ Stalwart's webhook posts events here, signed with a key the service makes at eac
 
 ### Outgoing spam held for review
 
+The same hook also checks the From line people see (Stalwart checks only the envelope sender): it must be one of the sender's own addresses or aliases, a team mailbox they belong to, or, with `Sender:` naming them, an owner whose Inbox they may send from (delegation). Anything else is refused with `550 5.7.1 You can't send as …`. Without the hook (`HOLD_HOOK_SECRET` unset) this check is off too.
+
+
 Stalwart calls `POST /internal/outbound-hook` (an MTA hook, `x:MtaHook`, at the DATA stage) for every message a signed-in user sends, by mail app (SMTP) or web app (JMAP). The path isn't under `/api/`, so Caddy never forwards it; the hook also sends `HOLD_HOOK_SECRET`.
 
 1. The service asks Stalwart to score the message (`x:Action` `ClassifySpam`) and adds up only the tags about the message itself. Tags about the connection (`AUTH_*`, `DMARC_*`, `SPF_*`, `HELO_*`, `RCVD_*`, `SOURCE_*`, `FROM_INVALID`…) are dropped: ClassifySpam scores a message as if it came from outside, which says nothing about mail a signed-in user submits. Messages containing the GTUBE test string are always held.

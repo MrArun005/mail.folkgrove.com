@@ -80,7 +80,7 @@ Shared team inboxes, notes and tasks, native mobile apps.
 
 ## Known gaps we accept (sharing)
 - Delegates send “on behalf of”, never as the owner: Stalwart 1.0.3 refuses another account's envelope sender. Their Sent copy and Undo stay in their own mailbox.
-- **Stalwart accepts any From header** on mail a signed-in user submits (only the envelope must be theirs). So the “may send on my behalf” switch is enforced by our app, not the server, and anyone on the server could already forge a From of a colleague. Fix belongs in Stalwart (or a DATA-stage check) before public sign-up; tracked with the Gate 1 abuse items.
+- ✅ **From header checked** (2026-11-08): Stalwart only checks the envelope, so the account service's DATA-stage hook (hold.mjs) refuses a From that isn't the sender's own address, a team mailbox they're in, or a delegating owner (with Sender: them and maySubmit). Tested: forged From → 550. Needs the hook (`HOLD_HOOK_SECRET`, set by install.sh).
 - Team comments are keyed by conversation id and their author is the From address (members could forge it); search inside a team mailbox can find them.
 
 ## Biggest risks

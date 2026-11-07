@@ -128,6 +128,11 @@ test('outgoing spam is held for review; release delivers it; repeated holds paus
   let ok = await smtpSend(S, pass, R, msg('Lunch on Friday', 'Are you free at 1pm?'));
   if (ok.code === 454) { await sleep(1000); ok = await smtpSend(S, pass, R, msg('Lunch on Friday', 'Are you free at 1pm?')); }
   assert.equal(ok.code, 250, JSON.stringify(ok));
+
+  // A From line that isn't theirs (here: the recipient's address) is refused, though the envelope is their own.
+  const forged = await smtpSend(S, pass, R, msg('Forged', 'Hi').replace(`From: <${S}>`, `From: Boss <${R}>`));
+  assert.equal(forged.code, 550, JSON.stringify(forged));
+  assert.match(forged.text, /can't send as/);
   assert.ok(await arrives('Lunch on Friday'));
   if (!hookCalls) return t.skip(`Stalwart couldn't reach the hook at ${HOOK_HOST}:${port} (set HOOK_HOST)`);
 

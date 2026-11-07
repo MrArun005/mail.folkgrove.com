@@ -26,6 +26,8 @@ const HELD = 'This message looks like spam, so it is held for review. An adminis
 /** The message as Stalwart hands it to a hook: headers ([name, " value\r\n"]) plus the body. */
 export const rawOf = (m) => m.headers.map(([n, v]) => `${n}:${v}`).join('') + '\r\n' + m.contents;
 const header = (m, name) => m.headers.find(([n]) => n.toLowerCase() === name)?.[1].trim() ?? '';
+/** The address in a From/Sender value ("Ann <ann@x.org>" or "ann@x.org"); the first one if there are several. */
+export const addressOf = (v) => (/<([^<>@\s]+@[^<>\s]+)>/.exec(v)?.[1] ?? /[^\s<>,;:"]+@[^\s<>,;:"]+/.exec(v)?.[0] ?? '').toLowerCase();
 
 /** Score from ClassifySpam's tags, counting only tags about the content; reasons = the tags that added to it. */
 export function outboundScore(tags = {}) {
@@ -100,6 +102,38 @@ export function holdRoutes({ cfg, jmap, getDomainId, send, fail, readJson, abuse
     return true;
   }
 
+  // ── Who may appear in From ──
+  let domainNames = null; // domain id → name (custom domains included); refreshed when an unknown id turns up
+  const domainName = async (id) => {
+    if (!domainNames?.has(id)) domainNames = new Map((await jmap([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).list.map((d) => [d.id, d.name]));
+    return domainNames.get(id);
+  };
+  const addressesOf = async (a) => [a.emailAddress, ...await Promise.all(Object.values(a.aliases ?? {}).filter((x) => x.enable !== false)
+    .map(async (x) => `${x.name}@${await domainName(x.domainId)}`))].map((x) => String(x).toLowerCase());
+  const accountByAddress = async (addr) => {
+    const [local, domain] = addr.split('@');
+    const domId = domain === cfg.domain ? await getDomainId() : null;
+    if (!domId) return null;
+    const { ids } = await jmap([['x:Account/query', { filter: { name: local, domainId: domId } }, 'q']]);
+    return ids.length === 1 ? (await jmap([['x:Account/get', { ids, properties: ['name', 'emailAddress', 'aliases', 'memberGroupIds'] }, 'g']])).list[0] : null;
+  };
+  async function mayUseFrom(login, from, sender) {
+    if (!from) return false;
+    const me = await accountByAddress(login.includes('@') ? login.toLowerCase() : `${login.toLowerCase()}@${cfg.domain}`);
+    if (!me) return false;
+    const mine = await addressesOf(me);
+    if (mine.includes(from)) return true;
+    const groups = Object.keys(me.memberGroupIds ?? {});
+    if (groups.length) for (const g of (await jmap([['x:Account/get', { ids: groups, properties: ['emailAddress', 'aliases'] }, 'g']])).list)
+      if ((await addressesOf(g)).includes(from)) return true;
+    // Delegation: the owner shared their Inbox with you with maySubmit, and Sender: is one of your addresses.
+    if (!mine.includes(sender)) return false;
+    const owner = await accountByAddress(from);
+    if (!owner) return false;
+    const boxes = (await jmap([['Mailbox/get', { accountId: owner.id, properties: ['role', 'shareWith'] }, 'm']], ['urn:ietf:params:jmap:mail'])).list ?? [];
+    return !!boxes.find((b) => b.role === 'inbox')?.shareWith?.[me.id]?.maySubmit;
+  }
+
   async function hook(req, res) {
     const auth = String(req.headers.authorization ?? '');
     if (!timingSafeEqual(digest(auth), want)) return fail(res, 401, 'unauthorized', 'Wrong hook secret.');
@@ -113,6 +147,13 @@ export function holdRoutes({ cfg, jmap, getDomainId, send, fail, readJson, abuse
     const login = body.context?.sasl?.login;
     // Only signed-in senders; the admin login is how released mail goes back out (install.sh lets it send as anyone).
     if (!login || !body.message || !body.envelope || login === cfg.admin.user) return send(res, 200, ACCEPT);
+    // Stalwart checks only the envelope sender; the From line people see is checked here, or anyone could send as a
+    // colleague. Allowed: your own addresses, a team mailbox you're in, or (delegation) an owner who let you send on
+    // their behalf, with Sender: naming you.
+    const fromAddr = addressOf(header(body.message, 'from'));
+    if (!(await mayUseFrom(login, fromAddr, addressOf(header(body.message, 'sender'))).catch((e) => { console.error('hold: From check failed:', e.message); return false; })))
+      return send(res, 200, { action: 'reject', response: { status: 550, enhancedStatus: '5.7.1',
+        message: `5.7.1 You can't send as ${fromAddr || 'that address'}. Use one of your own addresses, or ask its owner to let you send on their behalf.` } });
     const raw = rawOf(body.message);
     let v;
     try { v = await verdict(body, raw); } catch (e) {
