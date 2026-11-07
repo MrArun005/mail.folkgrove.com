@@ -36,12 +36,18 @@ export async function* splitMbox(chunks: AsyncIterable<Uint8Array>): AsyncGenera
 
 function stripSeparator(m: Uint8Array): Uint8Array {
   const eol = m.indexOf(NL);
-  let body = eol < 0 ? new Uint8Array(0) : m.subarray(eol + 1);
-  // Drop the blank line mbox writers put between messages.
-  let end = body.length;
-  while (end > 0 && (body[end - 1] === NL || body[end - 1] === 0x0d)) end--;
-  body = body.subarray(0, end);
-  return body;
+  const body = eol < 0 ? new Uint8Array(0) : m.subarray(eol + 1);
+  // Drop the one line break that ends the entry (the blank line mbox writers put between messages); the message
+  // keeps its own final line break, so an export from exporter.ts comes back byte for byte.
+  const n = body.length, cut = body[n - 1] !== NL ? 0 : body[n - 2] === 0x0d ? 2 : 1;
+  return body.subarray(0, n - cut);
+}
+
+/** exporter.ts puts its X-Gmail-Labels header first (Gmail's own Takeout never does): remove it before storing. */
+export function dropLabels(m: Uint8Array): Uint8Array {
+  if (!/^X-Gmail-Labels:/i.test(new TextDecoder('latin1').decode(m.subarray(0, 15)))) return m;
+  const eol = m.indexOf(NL);
+  return eol < 0 ? m : m.subarray(eol + 1);
 }
 
 /** ">From " at the start of a line was "From " in the original (mboxo/mboxrd: remove one ">"). */
@@ -80,7 +86,9 @@ export function placement(headers: string): Placement {
   const raw = /^X-Gmail-Labels:\s*(.*)$/im.exec(unfolded)?.[1];
   const p: Placement = { roles: [], folders: [], keywords: {} };
   if (!raw) { p.keywords.$seen = true; return p; }
-  const labels = raw.split(',').map((l) => l.trim().replace(/^"|"$/g, '')).filter(Boolean);
+  // Labels are UTF-8 (headerText read the bytes as latin1); a quoted label may contain commas.
+  const utf8 = new TextDecoder().decode(Uint8Array.from(raw, (c) => c.charCodeAt(0)));
+  const labels = (utf8.match(/\s*(?:"[^"]*"|[^,]+)/g) ?? []).map((l) => l.trim().replace(/^"|"$/g, '')).filter(Boolean);
   let unread = false;
   for (const l of labels) {
     const k = l.toLowerCase();

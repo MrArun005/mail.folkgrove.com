@@ -6,6 +6,7 @@ import { Button } from './Button';
 import { SecuritySection } from './Security';
 import { AddressesSection } from './Addresses';
 import { ImportSection } from './Import';
+import { DeleteAccountSection, ExportSection } from './Export';
 import { disablePush, enablePush, notifyOn, notifySupported, setNotify } from './notify';
 import { chooseSignature, textToHtml, type Signature } from './mailutil';
 
@@ -36,9 +37,9 @@ export const applyDisplayPrefs = () => (Object.keys(DISPLAY) as DisplayKey[]).fo
 
 const dateOnly = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
 
-export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFoldersChanged, onIdentitiesChanged }: {
+export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFoldersChanged, onIdentitiesChanged, onAccountDeleted }: {
   client: Jmap; boxes: Mailbox[]; prefillRule?: Partial<Rule>;
-  onClose: () => void; onSaved: (msg: string) => void; onFoldersChanged: () => void; onIdentitiesChanged: () => void;
+  onClose: () => void; onSaved: (msg: string) => void; onFoldersChanged: () => void; onIdentitiesChanged: () => void; onAccountDeleted: () => void;
 }) {
   const [name, setName] = useState('');
   const [sigs, setSigs] = useState<Signature[]>([]);
@@ -146,6 +147,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         <FiltersSection client={client} boxes={boxes} prefill={prefillRule} />
         <FoldersSection client={client} boxes={boxes} onChanged={onFoldersChanged} />
         <ImportSection client={client} onDone={onFoldersChanged} />
+        <ExportSection client={client} />
 
         {notifySupported() && (
           <section>
@@ -186,6 +188,8 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
           ))}
           <p className="fine">Saved on this device. Your browser’s zoom (⌘ +/−) works too.</p>
         </section>
+
+        <DeleteAccountSection client={client} onDeleted={onAccountDeleted} />
 
         {error && <p className="error" role="alert">{error}</p>}
         <footer>

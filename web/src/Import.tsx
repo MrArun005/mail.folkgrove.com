@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Button } from './Button';
 import type { Jmap } from './jmap';
-import { fileChunks, headerText, placement, splitMbox } from './importer';
+import { dropLabels, fileChunks, headerText, placement, splitMbox } from './importer';
 
 const PARALLEL = 4; // uploads in flight at once
 
@@ -37,7 +37,7 @@ export function ImportSection({ client, onDone }: { client: Jmap; onDone: () => 
         // Gmail without Inbox = archived; a plain export (no Gmail labels) goes into one dated folder.
         if (!ids.length) ids.push(/^X-Gmail-Labels:/im.test(h) ? await client.mailboxFor('archive', 'Archive', boxes) : await client.folderPath(importFolder, known, boxes));
         const date = Date.parse(/^Date:\s*(.+)$/im.exec(h)?.[1] ?? '');
-        await client.importMessage(raw, ids, p.keywords, Number.isFinite(date) ? new Date(date).toISOString().replace(/\.\d+Z$/, 'Z') : undefined);
+        await client.importMessage(dropLabels(raw), ids, p.keywords, Number.isFinite(date) ? new Date(date).toISOString().replace(/\.\d+Z$/, 'Z') : undefined);
       };
 
       for (const file of files) {

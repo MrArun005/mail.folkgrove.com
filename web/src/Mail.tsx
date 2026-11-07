@@ -845,7 +845,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
 
       {overlay === 'palette' && <Palette commands={commands} onClose={() => setOverlay(null)} />}
       {overlay === 'settings' && <Settings client={client} boxes={boxes} prefillRule={rulePrefill}
-        onClose={() => { setOverlay(null); setRulePrefill(undefined); reloadCategories(); }} onFoldersChanged={refresh} onIdentitiesChanged={loadIdentity}
+        onClose={() => { setOverlay(null); setRulePrefill(undefined); reloadCategories(); }} onFoldersChanged={refresh} onIdentitiesChanged={loadIdentity} onAccountDeleted={onLogout}
         onSaved={(m) => { setOverlay(null); setRulePrefill(undefined); say({ text: m }); loadIdentity(); reloadCategories(); }} />}
       {overlay === 'help' && (
         <div className="overlay" onClick={() => setOverlay(null)} onKeyDown={(e) => e.key === 'Escape' && setOverlay(null)}>

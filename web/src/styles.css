@@ -603,7 +603,7 @@ select.input { appearance: auto; }
 .totp-setup { display: grid; grid-template-columns: 168px 1fr; gap: var(--s4); align-items: start; }
 .totp-setup .qr { width: 168px; height: 168px; image-rendering: pixelated; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--white); padding: var(--s1); }
 .totp-setup .steps { display: grid; gap: var(--s3); }
-.totp-setup .actions { display: flex; gap: var(--s2); }
+.totp-setup .actions, .delete-account .actions { display: flex; gap: var(--s2); }
 code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .inline-form { display: flex; gap: var(--s2); }
 .inline-form .input { flex: 1; min-width: 0; }

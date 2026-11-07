@@ -88,7 +88,7 @@ const FULL = [...SUMMARY, 'blobId', 'cc', 'bcc', 'replyTo', 'messageId', 'inRepl
 export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
 async function aliasReply(r: Response) {
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.ok) throw new JmapError(j.error?.message ?? `The server returned an error (${r.status})`);
+  if (!r.ok || !j.ok) throw Object.assign(new JmapError(j.error?.message ?? `The server returned an error (${r.status})`), { code: j.error?.code as string | undefined });
   return j;
 }
 
@@ -567,6 +567,55 @@ export class Jmap {
   }
   async deleteAlias(id: string): Promise<void> {
     await aliasReply(await this.fetch(`${this.base}/api/aliases/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+  }
+
+  /** Delete this account for good (the account service, signup/account.mjs). Errors carry the service's `code`. */
+  async deleteAccount(body: { password: string; code?: string; confirm: string }): Promise<void> {
+    const r = await this.fetch(`${this.base}/api/account`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.status === 404 || r.status === 502) throw new JmapError('This server can’t delete accounts from here. Ask its administrator.');
+    await aliasReply(r);
+  }
+
+  // ── Export (Settings → Export your data) ──────────────
+
+  /** One page of every message, oldest first (new mail lands after the pages already read). */
+  async emailPage(position: number, limit = 500): Promise<{ total: number; list: { id: string; blobId: string; mailboxIds: Record<string, true>; keywords: Record<string, true>; receivedAt: string }[] }> {
+    const [q, g] = await this.call([
+      ['Email/query', { accountId: this.accountId, sort: [{ property: 'receivedAt', isAscending: true }], position, limit, calculateTotal: true }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: ['blobId', 'mailboxIds', 'keywords', 'receivedAt'] }, 'g'],
+    ]);
+    return { total: q.total, list: g.list };
+  }
+
+  /** A message exactly as stored (RFC 5322 bytes). */
+  async rawMessage(blobId: string): Promise<Uint8Array> {
+    return new Uint8Array(await (await this.download({ blobId, name: 'message.eml', type: 'message/rfc822', size: 0 })).arrayBuffer());
+  }
+
+  /**
+   * Every calendar event (kind 'cal', iCalendar) or contact (kind 'card', vCard) exactly as stored, via CalDAV/CardDAV:
+   * JMAP has no "give me the original" for these.
+   */
+  async davObjects(kind: 'cal' | 'card'): Promise<string[]> {
+    const dav = async (path: string, method: string, body: string) => {
+      const r = await this.fetch(this.base + path, { method, headers: { Depth: '1', 'Content-Type': 'application/xml' }, body });
+      if (r.status !== 207) throw new JmapError(`The server didn’t list your ${kind === 'cal' ? 'calendars' : 'contacts'} (${r.status})`);
+      return new DOMParser().parseFromString(await r.text(), 'application/xml');
+    };
+    const ns = kind === 'cal' ? 'urn:ietf:params:xml:ns:caldav' : 'urn:ietf:params:xml:ns:carddav';
+    const [type, data, query] = kind === 'cal' ? ['calendar', 'calendar-data', 'calendar-query'] : ['addressbook', 'address-data', 'addressbook-query'];
+    const home = await dav(`/dav/${kind}/${encodeURIComponent(this.username)}/`, 'PROPFIND', '<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>');
+    // Matched by namespace and local name by hand (getElementsByTagNameNS isn't everywhere, e.g. test DOMs).
+    const els = (n: Document | Element, uri: string, local: string) => [...n.getElementsByTagName('*')].filter((e) => e.namespaceURI === uri && e.localName === local);
+    const collections = els(home, 'DAV:', 'response').filter((r) => els(r, ns, type).length)
+      .map((r) => els(r, 'DAV:', 'href')[0]?.textContent ?? '').filter(Boolean);
+    const out: string[] = []; 
+    for (const href of collections) {
+      const filter = kind === 'cal' ? '<C:filter><C:comp-filter name="VCALENDAR"/></C:filter>' : '';
+      const doc = await dav(pathOnly(href), 'REPORT', `<?xml version="1.0"?><C:${query} xmlns:D="DAV:" xmlns:C="${ns}"><D:prop><C:${data}/></D:prop>${filter}</C:${query}>`);
+      for (const el of els(doc, ns, data)) if (el.textContent?.trim()) out.push(el.textContent);
+    }
+    return out;
   }
 
   /** The identity a draft sends as: its chosen From address if the account still owns it, else the main one. */
