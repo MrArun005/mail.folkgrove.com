@@ -24,8 +24,18 @@ export async function saveScript(client: Jmap, boxes: Mailbox[], change: (d: Scr
   if ((await client.vacation().catch(() => null))?.isEnabled) await client.setVacation({ isEnabled: false });
   for (let attempt = 0; ; attempt++) {
     const { id, script, state } = await client.getRules();
-    try { return await client.saveRules(toSieve(change(parseScript(script)), folderNames(boxes)), id, state); }
-    catch (e) { if (attempt >= 4 || !/stateMismatch/i.test((e as Error).message)) throw e; }
+    const mine = toSieve(change(parseScript(script)), folderNames(boxes));
+    try {
+      await client.saveRules(mine, id, state);
+      // Two saves at the same instant can both pass the server's state check; the later one wins. Read back once:
+      // if ours isn't what's stored, someone saved over it, so re-apply our change on top of theirs.
+      // ponytail: a save landing after this read can still win; only true simultaneous saves, rare across devices.
+      if ((await client.getRules()).script === mine || attempt >= 4) return;
+    } catch (e) {
+      // stateMismatch (JMAP) or Stalwart's own "Another process modified this script": both mean retry.
+      if (attempt >= 4 || !/stateMismatch|another process modified/i.test((e as Error).message)) throw e;
+    }
+    await new Promise((r) => setTimeout(r, 50 + Math.random() * 150)); // de-synchronise two retrying devices
   }
 }
 
