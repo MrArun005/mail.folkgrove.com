@@ -1,0 +1,80 @@
+# Alert rules. What each one means and what to do: docs/self-hosting.md, "Monitoring".
+# Metric names were checked against Stalwart v1.0.3's /metrics/prometheus. Stalwart only lists a counter after the event
+# has happened once, so missing counters are treated as 0 ("or vector(0)").
+groups:
+  - name: openmail
+    rules:
+      - alert: StalwartDown
+        expr: up{job="stalwart"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: Stalwart's metrics endpoint hasn't answered for 2 minutes (mail server down, or metrics auth broken).
+          # Alerts by email go out through this same Stalwart, so this one may only reach you by webhook.
+
+      - alert: MonitoringTargetDown
+        expr: up{job=~"queue|node"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.job }} exporter is down: the queue or disk alerts can't fire while it is."
+
+      - alert: QueueOldMessage
+        expr: openmail_queue_oldest_seconds > 1800
+        labels: { severity: warning }
+        annotations:
+          summary: "The oldest message in the outgoing queue is {{ $value | humanizeDuration }} old."
+
+      - alert: QueueGrowing
+        expr: deriv(openmail_queue_messages[5m]) > 0 and openmail_queue_messages > 20
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "The outgoing queue has grown for 5 minutes ({{ $value }} messages/s)."
+
+      - alert: QueueBackPressure
+        expr: increase(stalwart_queue_back_pressure_total[5m]) > 0 # name seen on the scale cluster, not on this dev box
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: Stalwart is refusing new mail because its queue is full (back-pressure).
+
+      - alert: DeliveryFailureRatioHigh
+        # Per-recipient outcomes. Stalwart's counters have no destination label, so this ratio is for all destinations;
+        # DestinationDeferring below is the per-destination signal (from the queue).
+        expr: |
+          (
+              (sum(rate(stalwart_delivery_dsn_temp_fail_total[5m])) or vector(0))
+            + (sum(rate(stalwart_delivery_dsn_perm_fail_total[5m])) or vector(0))
+          ) / (
+              (sum(rate(stalwart_delivery_dsn_success_total[5m])) or vector(0))
+            + (sum(rate(stalwart_delivery_dsn_temp_fail_total[5m])) or vector(0))
+            + (sum(rate(stalwart_delivery_dsn_perm_fail_total[5m])) or vector(0))
+          ) > 0.05
+          and on() (sum(increase(stalwart_delivery_attempt_start_total[5m])) or vector(0)) >= 10
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of deliveries failed over the last 15 minutes."
+
+      - alert: DestinationDeferring
+        # ponytail: a count, not a ratio; Stalwart 1.0.3 doesn't count successful deliveries per domain.
+        expr: openmail_queue_deferred_recipients >= 5
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} recipients at {{ $labels.domain }} have been failing and retrying for 15+ minutes."
+
+      - alert: AuthFailureSpike
+        # ponytail: fixed threshold; tune to your normal background of password-guessing bots.
+        expr: sum(increase(stalwart_auth_failed_total[10m])) > 200
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | humanize }} failed sign-ins in 10 minutes."
+
+      - alert: DiskAlmostFull
+        expr: 1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs|ramfs"} / node_filesystem_size_bytes > 0.85
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} is {{ $value | humanizePercentage }} full."

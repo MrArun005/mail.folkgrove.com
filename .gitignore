@@ -7,4 +7,5 @@ deploy/production/.env
 deploy/production/.admin-credentials
 *.age
 deploy/production/.system-mail.env
+deploy/production/.metrics-password
 .claude/

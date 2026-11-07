@@ -1,0 +1,34 @@
+# Alertmanager: emails alerts to ALERT_EMAIL (in .env), sent through this server's Stalwart as the system account
+# install.sh creates (.system-mail.env). The __NAME__ placeholders are filled in when the container starts
+# (see docker-compose.monitoring.yml); Alertmanager itself can't read environment variables.
+#
+# Use an address on ANOTHER provider: if this server is broken, its own mailboxes are too. And since the email goes out
+# through Stalwart, "StalwartDown" can't be emailed; add a webhook (below) if you want that one on your phone.
+global:
+  smtp_smarthost: stalwart:465          # implicit TLS, like the sign-up service
+  smtp_from: OpenMail alerts <__SMTP_USER__>
+  smtp_auth_username: __SMTP_USER__
+  smtp_auth_password: __SMTP_PASS__
+  smtp_require_tls: false               # 465 is TLS from the first byte; STARTTLS doesn't apply
+
+route:
+  receiver: email
+  group_by: [alertname]
+  group_wait: 1m
+  group_interval: 10m
+  repeat_interval: 6h
+
+receivers:
+  - name: email
+    email_configs:
+      - to: __ALERT_EMAIL__
+        send_resolved: true
+        tls_config:
+          server_name: __TLS_NAME__     # Stalwart's certificate is for the mail hostname, not "stalwart"
+    # Optional: also push to your phone or chat. Uncomment one, then: docker compose up -d alertmanager
+    # webhook_configs:
+    #   - url: https://ntfy.sh/your-secret-topic   # ntfy (or your own ntfy server); posts Alertmanager's JSON
+    # slack_configs:
+    #   - api_url: https://hooks.slack.com/services/XXX/YYY/ZZZ
+    #     channel: "#alerts"
+    #     send_resolved: true

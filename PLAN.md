@@ -51,7 +51,7 @@ Tracked row by row in [PARITY.md](PARITY.md).
 - [ ] Hosted stack on PostgreSQL + S3 (reuse `deploy/scale/`), with PostgreSQL backups (pg_dump + WAL archiving)
 - [x] Email verification at sign-up: a 6-digit code to an existing address (hashed, 15 min, 5 tries, rate-limited per network and per address), sent from a system account through our own server
 - [ ] Abuse controls (each with numbers in [scale.md](docs/research/scale.md) §10): new-account sending tiers, outbound spam held for review, forwarding limits (one confirmed forwarding address per account), abuse@ mailbox, complaint/bounce-rate suspension (e.g. > 0.3% complaints over 7 days with ≥ 200 sends)
-- [ ] Monitoring: Prometheus + Alertmanager. Alerts: queue age > 30 min, delivery failures > 5% per provider for 15 min, back-pressure rising 5 min
+- [x] Monitoring: `install.sh --monitoring` (Prometheus + Alertmanager + Grafana, deploy/production/monitoring/). Alerts: queue age > 30 min, delivery failures > 5% for 15 min, queue growing / back-pressure 5 min, disk > 85%, Stalwart down, auth-failure spike. Stalwart 1.0.3 counters have no destination label, so "per provider" is recipients stuck in retry per domain (from the queue API), not a ratio. Not yet run on a real server
 - [ ] Terms, privacy policy, GDPR export/delete, law-enforcement request process
 - Expected volume: invite-only, under 100k messages a day at launch. Scale stages 2–3 in scale.md are reference, not commitments.
 
