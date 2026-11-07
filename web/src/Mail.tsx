@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
@@ -51,6 +51,9 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const [editingPerson, setEditingPerson] = useState(false);
   const [query, setQuery] = useState('');
   const [list, setList] = useState<EmailSummary[] | null>(null);
+  /** Priority Inbox: how many rows at the top are "Important and unread" (from people you write to). */
+  const [important, setImportant] = useState(0);
+  const correspondents = useRef<Set<string>>(new Set());
   const [scheduled, setScheduled] = useState<Scheduled[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -112,7 +115,16 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         : { inMailbox: box };
       const l = await client.threads(filter, limit.current + 1); // one extra tells us whether there's more
       setHasMore(l.length > limit.current);
-      const page = l.slice(0, limit.current);
+      let page = l.slice(0, limit.current);
+      // Priority Inbox (Primary only): unread mail from people you write to comes first, under its own label.
+      let top = 0;
+      if (isInbox && !query && (!categories || tab !== 'updates')) {
+        const imp = (e: EmailSummary) => !e.keywords.$seen && !!e.from?.some((a) => correspondents.current.has(a.email.toLowerCase()));
+        const first = page.filter(imp);
+        top = first.length;
+        if (top) page = [...first, ...page.filter((e) => !imp(e))];
+      }
+      setImportant(top);
       setList(page);
       if (!query) cache.set(key(listKey(box)), page.slice(0, PAGE));
     } catch (e) { say({ text: e instanceof Error ? e.message : String(e) }); }
@@ -130,6 +142,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
 
   // Live updates: the server pushes a note whenever anything changes; coalesce bursts.
   const refreshRef = useRef(refresh); refreshRef.current = refresh;
+  useEffect(() => { client.correspondents().then((s) => { correspondents.current = s; refreshRef.current(); }, () => {}); }, [client]);
   async function loadMore() {
     if (loadingMore.current) return;
     loadingMore.current = true; limit.current += PAGE;
@@ -706,8 +719,9 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
             {inScreener && !!list?.length && <p className="list-note">First-time senders. Allow them into your Inbox, or block them for good.</p>}
             {list?.length === 0 && <p className="empty">{inScreener ? 'Nobody new is waiting. New senders show up here first.' : emptyText}</p>}
             <ul className={`rows${selected.size ? ' selecting' : ''}`}>
-              {list?.map((e) => (
-                <li key={e.threadId} className={`row${e.keywords.$seen ? '' : ' unread'}${e.threadId === threadId ? ' active' : ''}${selected.has(e.threadId) ? ' selected' : ''}`}>
+              {list?.map((e, i) => (<Fragment key={e.threadId}>
+                {important > 0 && (i === 0 || i === important) && <li className="list-section" role="presentation">{i === 0 ? 'Important and unread' : 'Everything else'}</li>}
+                <li className={`row${e.keywords.$seen ? '' : ' unread'}${e.threadId === threadId ? ' active' : ''}${selected.has(e.threadId) ? ' selected' : ''}`}>
                   <input type="checkbox" className="check" checked={selected.has(e.threadId)} aria-label={`Select ${e.subject || 'conversation'}`}
                     onChange={() => {}} onClick={(ev) => toggleSelect(e.threadId, ev.shiftKey)} />
                   <button className="open" onClick={(ev) => (ev.shiftKey || selected.size ? toggleSelect(e.threadId, ev.shiftKey) : openThread(e.threadId))}>
@@ -733,7 +747,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
                     </span>
                   )}
                 </li>
-              ))}
+              </Fragment>))}
             </ul>
             {hasMore && <div className="list-more"><Button variant="link" onClick={loadMore}>Show more</Button></div>}
           </>

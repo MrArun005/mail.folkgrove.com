@@ -215,6 +215,19 @@ export class Jmap {
     return r.list;
   }
 
+  /** Everyone you've written to recently (recipients of your last 500 sent messages), lowercased. Priority Inbox. */
+  async correspondents(): Promise<Set<string>> {
+    const sent = (await this.mailboxes()).find((b) => b.role === 'sent');
+    if (!sent) return new Set();
+    const [, r] = await this.call([
+      ['Email/query', { accountId: this.accountId, filter: { inMailbox: sent.id }, sort: [{ property: 'receivedAt', isAscending: false }], limit: 500 }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: ['to', 'cc'] }, 'g'],
+    ]);
+    const mine = new Set((await this.identities()).map((i) => i.email.toLowerCase())); // notes to self aren't "important"
+    return new Set((r.list as { to: Address[] | null; cc: Address[] | null }[]).flatMap((e) => [...(e.to ?? []), ...(e.cc ?? [])])
+      .map((a) => a.email.toLowerCase()).filter((a) => !mine.has(a)));
+  }
+
   /** Every message in a conversation, oldest first. */
   async thread(threadId: string): Promise<EmailFull[]> {
     const [, r] = await this.call([

@@ -115,7 +115,7 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 | Screener (first-time senders wait) | ⬜ | ✅ | Server-side Sieve; spam still goes to Junk (spamtest, can't be forged) |
 | Masked addresses | ⬜ | ✅ | See above |
 | 150+ recipients from mail apps | ✅ | ✅ | 500 per message for signed-in senders (was 100) |
-| Priority Inbox / important | ✅ | ⬜ | Next |
+| Priority Inbox / important | ✅ | ✅ | Unread mail from people you write to comes first; no scanning, no AI: it uses your own Sent mail |
 | Search chips + typeahead | ✅ | ✅ | One-click filters (unread, starred, attachments, last 7 days, sent) and “From <person>” as you type |
 | AI (summarise, smart reply) | ✅ | ⬜ | Opt-in, your own key or a local model |
 | Offline mail | ✅ | ⬜ | Installable today; mail offline later |
