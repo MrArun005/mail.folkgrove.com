@@ -69,6 +69,8 @@ export const SESSION_EXPIRED = 'om:session-expired';
 
 export const TEMPLATES = 'Templates';
 export const TASKS = 'Tasks'; // app storage like Templates: hidden from the folder list
+export const NOTES = 'Notes';
+export interface Note { id: string; title: string; body: string; updatedAt: string; pinned: boolean }
 export interface Task { id: string; title: string; done: boolean; due: string | null; threadId: string | null; createdAt: string }
 export interface Subscription { from: Address; count: number; lastAt: string; unsubscribe: { urls: string[]; oneClick: boolean } }
 /** A contact in the address book (a simplified JSContact card, RFC 9553). */
@@ -223,7 +225,7 @@ export class Jmap {
     const [r] = await this.call([['Mailbox/get', {
       accountId: this.accountId, properties: ['name', 'role', 'unreadEmails', 'sortOrder', 'parentId'],
     }, 'm']]);
-    if (!includeHidden) r.list = (r.list as Mailbox[]).filter((b) => b.role || (b.name !== TEMPLATES && b.name !== TASKS));
+    if (!includeHidden) r.list = (r.list as Mailbox[]).filter((b) => b.role || ![TEMPLATES, TASKS, NOTES].includes(b.name));
     return orderMailboxes(r.list);
   }
 
@@ -643,6 +645,32 @@ export class Jmap {
   }
   setTaskDone(id: string, done: boolean) { return this.call([['Email/set', { accountId: this.accountId, update: { [id]: { 'keywords/$done': done || null } } }, 'd']]); }
   deleteTask(id: string) { return this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
+
+  // ── Notes: like tasks, each a small message in a hidden "Notes" folder (title = subject, text = body) ──
+  // Messages can't be edited in place, so saving replaces the old one in the same call. $pinned keeps a note on top.
+
+  async notes(): Promise<Note[]> {
+    const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === NOTES);
+    if (!box) return [];
+    const [, r] = await this.call([
+      ['Email/query', { accountId: this.accountId, filter: { inMailbox: box.id }, sort: [{ property: 'receivedAt', isAscending: false }], limit: 1000 }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' },
+        properties: ['subject', 'keywords', 'receivedAt', 'textBody', 'bodyValues'], fetchTextBodyValues: true }, 'g'],
+    ]);
+    return (r.list as any[]).map((e) => ({ id: e.id, title: e.subject ?? '', updatedAt: e.receivedAt, pinned: !!e.keywords?.$pinned,
+      body: e.textBody?.[0] ? e.bodyValues?.[e.textBody[0].partId]?.value ?? '' : '' }));
+  }
+
+  /** Create or replace a note. Returns the new id (a replaced note gets a new id). */
+  async saveNote(n: { id?: string; title: string; body: string; pinned?: boolean }): Promise<string> {
+    const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === NOTES)?.id ?? await this.createMailbox(NOTES);
+    const [r] = await this.call([['Email/set', { accountId: this.accountId,
+      create: { n: { mailboxIds: { [box]: true }, keywords: { $seen: true, ...(n.pinned && { $pinned: true }) }, from: [{ email: this.username }],
+        subject: n.title.trim().slice(0, 300) || 'Untitled note', bodyValues: { t: { value: n.body } }, textBody: [{ partId: 't', type: 'text/plain' }] } },
+      ...(n.id && { destroy: [n.id] }) }, 'n']]);
+    return r.created.n.id;
+  }
+  deleteNote(id: string) { return this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
 
   async templates(): Promise<Template[]> {
     const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === TEMPLATES);

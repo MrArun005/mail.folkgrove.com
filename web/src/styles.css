@@ -733,3 +733,23 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .nav-more svg.flip { transform: rotate(180deg); }
 
 .login label.keep { display: flex; align-items: center; gap: var(--s2); font-weight: 400; }
+
+/* Notes: list | editor, full width like the calendar */
+.notes { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; min-height: 0; background: var(--paper); }
+@media (min-width: 861px) { .notes { margin: var(--s2) var(--s2) var(--s2) 0; border-radius: var(--r-lg); overflow: hidden; } }
+.notes-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--rule); overflow: auto; }
+.notes-head { display: flex; gap: var(--s2); padding: var(--s3) var(--gutter-list); position: sticky; top: 0; background: var(--paper); }
+.notes-head .input { flex: 1; min-width: 0; }
+.note-row { display: grid; grid-template-columns: 1fr auto; gap: 2px var(--s3); width: 100%; padding: var(--row-pad) var(--gutter-list); border-bottom: 1px solid var(--rule); text-align: left; }
+.note-row:hover { background: var(--hover); }
+.note-row.active { background: var(--accent-wash); }
+.note-row .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-row .title .pill { margin-right: var(--s2); }
+.note-row .preview { grid-column: 1 / -1; color: var(--muted); font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-row time { color: var(--muted); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.note-editor { display: flex; flex-direction: column; min-height: 0; padding: var(--s4) var(--gutter-reader) var(--s6); }
+.note-tools { display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); min-height: var(--h-md); }
+.note-tools .fine { margin-right: auto; }
+.note-title { border: 0; outline: none; background: none; color: var(--ink); font: 500 var(--t-h1)/1.25 var(--ui); padding: var(--s2) 0; }
+.note-body { flex: 1; border: 0; outline: none; resize: none; background: none; color: var(--ink); font: var(--t-read)/1.6 var(--read); padding: var(--s2) 0; }
+@media (max-width: 860px) { .notes { grid-template-columns: 1fr; } .note-editor { padding: var(--s4); } }

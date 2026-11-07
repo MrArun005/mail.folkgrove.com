@@ -79,7 +79,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 |---|---|---|---|
 | Calendar + invites in mail | ✅ | ✅ | Week and month views, create/edit/delete, all-day; invitations: Yes/Maybe/No sent to the organizer (iTIP), added once by UID |
 | Contacts / address book | ✅ | ✅ | JMAP Contacts: list, search, add/edit/delete, "Add sender to contacts", feeds autocomplete |
-| Tasks, notes, bookmarks | ✅ | 🟡 | Tasks: due dates, “Add to Tasks” from any email, synced everywhere. Notes later |
+| Tasks, notes, bookmarks | ✅ | ✅ | Tasks (due dates, “Add to Tasks” from any email) and Notes (search, pin), synced everywhere |
 | Streams (team comments on mail) | ✅ | ⬜ | Phase 5: shared mailboxes first |
 | Shared / group mailboxes, delegation | ✅ | ⬜ | Phase 4: Stalwart groups + JMAP sharing |
 | Multiple accounts in one app | ✅ | ✅ | Gmail-style switcher; signing out of one keeps the others |

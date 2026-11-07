@@ -346,6 +346,19 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     expect((await c.tasks()).some((x) => x.id === id)).toBe(false);
   });
 
+  it('notes: save, edit (replaces the copy, never duplicates), pin, delete', async () => {
+    const c = await login();
+    const title = `Ideas ${Date.now()}`;
+    const id1 = await c.saveNote({ title, body: 'first' });
+    const id2 = await c.saveNote({ id: id1, title, body: 'second', pinned: true });
+    try {
+      const mine = (await c.notes()).filter((n) => n.title === title);
+      expect(mine).toHaveLength(1);
+      expect(mine[0]).toMatchObject({ id: id2, body: 'second', pinned: true });
+    } finally { await c.deleteNote(id2); }
+    expect((await c.notes()).some((n) => n.title === title)).toBe(false);
+  });
+
   it('Bcc reaches the recipient without a Bcc header; the Sent copy keeps it', async () => {
     const c = await login();
     const boxes = await c.mailboxes();

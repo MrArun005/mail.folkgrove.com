@@ -14,6 +14,7 @@ import { localZone } from './calendar';
 import type { PartStat } from './ics';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
 import { TaskList } from './Tasks';
+import { NotesView } from './Notes';
 import { addRule, loadScript, saveScript } from './Filters';
 import { SCREENER, UPDATES, type Rule, type ScriptData } from './rules';
 import { enablePush, notifyOn, showMail } from './notify';
@@ -29,7 +30,7 @@ const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', at
 // Virtual folders: views that aren't mailboxes on the server.
 /** Always in the rail (Gmail's set); everything else folds under More. */
 const MAIN = ['inbox', 'starred', 'snoozed', 'sent', 'drafts'];
-const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks';
+const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks', NOTES = 'notes';
 
 type Toast = { text: string; undo?: () => void } | null;
 type BulkAction = Action | 'read' | { snooze: Date } | { moveTo: string | null; label: boolean };
@@ -86,7 +87,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
   const listKey = (box: string | null) => `list:${box}${box && box === inbox && categories ? `:${tab}` : ''}`;
   const current = query ? null : view ?? inbox;
   const currentBox = boxes.find((b) => b.id === current);
-  const role = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS].includes(current ?? '') ? current : currentBox?.role ?? null;
+  const role = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS, NOTES].includes(current ?? '') ? current : currentBox?.role ?? null;
   // Moves need a real source folder; from Starred or search results, act on the Inbox copy.
   const source = currentBox ? currentBox.id : inbox;
   const folders = useMemo(() => boxes.filter((b) => (!b.role || b.role === 'archive' || b.role === 'inbox') && b.id !== source), [boxes, source]);
@@ -118,7 +119,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
       if (box === SCHEDULED) { setScheduled(await client.scheduled()); return; }
       if (box === SUBSCRIPTIONS) { setSubs(await client.subscriptions()); return; }
       if (box === CONTACTS) { setPeople(await client.addressBook()); return; }
-      if (box === CALENDAR || box === TASKS) return; // these load their own data
+      if (box === CALENDAR || box === TASKS || box === NOTES) return; // these load their own data
       const isInbox = b.find((x) => x.id === box)?.role === 'inbox';
       const filter: Filter = query ? parseSearch(query, b) : box === STARRED ? { hasKeyword: '$flagged' }
         : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box }, tab === 'updates' ? { hasKeyword: UPDATES } : { notKeyword: UPDATES }] }
@@ -553,6 +554,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
     { id: CONTACTS, name: 'Contacts', role: CONTACTS, unreadEmails: 0, sortOrder: 0 },
     { id: CALENDAR, name: 'Calendar', role: CALENDAR, unreadEmails: 0, sortOrder: 0 },
     { id: TASKS, name: 'Tasks', role: TASKS, unreadEmails: 0, sortOrder: 0 },
+    { id: NOTES, name: 'Notes', role: NOTES, unreadEmails: 0, sortOrder: 0 },
   ];
 
   const commands: Command[] = [
@@ -629,7 +631,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
   );
 
   return (
-    <div className={`app${role === CALENDAR ? ' calendar-mode' : ''}${threadId || (role === CONTACTS && (personId || editingPerson)) ? ' reading' : ''}`}>
+    <div className={`app${role === CALENDAR || role === NOTES ? ' calendar-mode' : ''}${threadId || (role === CONTACTS && (personId || editingPerson)) ? ' reading' : ''}`}>
       <nav className="rail" aria-label="Folders">
         <p className="wordmark">OpenMail</p>
         <Button variant="primary" size="lg" icon="compose" className="compose-btn" onClick={newMessage} title="Compose (c)">Compose</Button>
@@ -696,7 +698,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
         </div>
       </nav>
 
-      {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : <>
+      {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : role === NOTES ? <NotesView client={client} say={(text) => say({ text })} /> : <>
       <section className="list" aria-label="Conversations" onScroll={(e) => {
         const el = e.currentTarget;
         if (hasMore && el.scrollTop + el.clientHeight > el.scrollHeight - 600) loadMore();
