@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
-import { Jmap, JmapError } from './jmap';
+import { Jmap, JmapError, SESSION_EXPIRED } from './jmap';
 import { Mail } from './Mail';
 import { finishSignIn, Session, startSignIn } from './oauth';
 import { applyTheme, savedTheme } from './Settings';
@@ -29,6 +29,13 @@ export default function App() {
     })();
   }, []);
 
+  // A session that can't be renewed sends you back to sign in, with a reason, instead of a page of errors.
+  useEffect(() => {
+    const expired = () => { cache.clear(); session.current = null; setClient(null); setError('Your session has ended. Please sign in again.'); };
+    window.addEventListener(SESSION_EXPIRED, expired);
+    return () => window.removeEventListener(SESSION_EXPIRED, expired);
+  }, []);
+
   async function signOut() {
     cache.clear();
     await session.current?.signOut();
@@ -37,7 +44,7 @@ export default function App() {
   }
 
   if (booting) return <div className="reader-loading" aria-busy="true" />;
-  if (!client) return <Login initialError={error} onLogin={setClient} />;
+  if (!client) return <Login key={error} initialError={error} onLogin={(c) => { setError(''); setClient(c); }} />;
   return <Mail client={client} onLogout={signOut} />;
 }
 

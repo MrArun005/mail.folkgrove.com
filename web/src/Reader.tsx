@@ -7,7 +7,7 @@ import { buildSrcdoc } from './safeHtml';
 import { Menu, TimeChoices } from './Menu';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star';
-export type MoreAction = 'original' | 'print' | 'block' | 'filter';
+export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact';
 
 export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
@@ -69,6 +69,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
               {item('print', 'print', 'Print')}
               {item('original', 'file', 'Show original')}
               {sender && sender.toLowerCase() !== me.toLowerCase() && <>
+                {item('addContact', 'compose', 'Add sender to contacts')}
                 {item('filter', 'tag', 'Filter messages like this')}
                 {item('block', 'junk', `Block ${sender}`)}
               </>}

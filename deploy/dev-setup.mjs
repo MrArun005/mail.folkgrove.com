@@ -62,7 +62,7 @@ const admin = JSON.parse(readFileSync(SECRET_FILE, 'utf8'));
 {
   const [[, cl]] = await jmap(admin, [['x:OAuthClient/get', { ids: null, properties: ['clientId'] }, 'c']]);
   const existing = cl.list.find((c) => c.clientId === 'openmail-web');
-  const fields = { redirectUris: { 'http://localhost:5173/': true }, scopes: { mail: true }, description: 'OpenMail web (dev)' };
+  const fields = { redirectUris: { 'http://localhost:5173/': true }, scopes: { mail: true, contacts: true }, description: 'OpenMail web (dev)' };
   await jmap(admin, [['x:OAuthClient/set', existing
     ? { update: { [existing.id]: fields } }
     : { create: { c: { clientId: 'openmail-web', ...fields } } }, 'c']]);

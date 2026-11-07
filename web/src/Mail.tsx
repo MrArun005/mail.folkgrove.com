@@ -2,11 +2,12 @@ import { Component, useCallback, useEffect, useMemo, useRef, useState, type Reac
 import { Button } from './Button';
 import { Compose, type ComposeApi } from './Compose';
 import { Icon, roleIcon } from './icons';
-import { Jmap, UNDO_SECONDS, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
+import { Jmap, UNDO_SECONDS, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
 import { displayName, draftFor, draftFromEmail, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { SubscriptionsList } from './Subscriptions';
+import { ContactList, ContactPanel, fullName } from './Contacts';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
 import { addRule, loadScript, saveScript } from './Filters';
 import { UPDATES, type Rule } from './rules';
@@ -19,7 +20,7 @@ import { describe } from './when';
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
 const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
 // Virtual folders: views that aren't mailboxes on the server.
-const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions';
+const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts';
 
 type Toast = { text: string; undo?: () => void } | null;
 type BulkAction = Action | 'read' | { snooze: Date } | { moveTo: string | null; label: boolean };
@@ -39,6 +40,9 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const [categories, setCategories] = useState(true);
   const [subs, setSubs] = useState<Subscription[] | null>(null);
   const [saved, setSaved] = useState<{ name: string; query: string }[]>([]);
+  const [people, setPeople] = useState<Contact[] | null>(null);
+  const [personId, setPersonId] = useState<string | null>(null);
+  const [editingPerson, setEditingPerson] = useState(false);
   const [query, setQuery] = useState('');
   const [list, setList] = useState<EmailSummary[] | null>(null);
   const [scheduled, setScheduled] = useState<Scheduled[] | null>(null);
@@ -62,7 +66,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   const listKey = (box: string | null) => `list:${box}${box && box === inbox && categories ? `:${tab}` : ''}`;
   const current = query ? null : view ?? inbox;
   const currentBox = boxes.find((b) => b.id === current);
-  const role = current === STARRED || current === SCHEDULED || current === SUBSCRIPTIONS ? current : currentBox?.role ?? null;
+  const role = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS].includes(current ?? '') ? current : currentBox?.role ?? null;
   // Moves need a real source folder; from Starred or search results, act on the Inbox copy.
   const source = currentBox ? currentBox.id : inbox;
   const folders = useMemo(() => boxes.filter((b) => (!b.role || b.role === 'archive' || b.role === 'inbox') && b.id !== source), [boxes, source]);
@@ -85,6 +89,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       const box = query ? null : view ?? b.find((x) => x.role === 'inbox')?.id ?? null;
       if (box === SCHEDULED) { setScheduled(await client.scheduled()); return; }
       if (box === SUBSCRIPTIONS) { setSubs(await client.subscriptions()); return; }
+      if (box === CONTACTS) { setPeople(await client.addressBook()); return; }
       const isInbox = b.find((x) => x.id === box)?.role === 'inbox';
       const filter: Filter = query ? parseSearch(query, b) : box === STARRED ? { hasKeyword: '$flagged' }
         : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box }, tab === 'updates' ? { hasKeyword: UPDATES } : { notKeyword: UPDATES }] }
@@ -114,7 +119,13 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     });
   }, [client]);
 
-  const loadContacts = useCallback(() => client.contacts().then((c) => { setContacts(c); cache.set(key('contacts'), c); }, () => {}), [client]);
+  // Autocomplete: address book entries first (they have proper names), then people from recent mail.
+  const loadContacts = useCallback(() => Promise.all([client.addressBook().catch(() => [] as Contact[]), client.contacts()]).then(([book, recent]) => {
+    const seen = new Set<string>();
+    const merged = [...book.flatMap((p) => p.emails.map((email) => ({ name: fullName(p) || null, email }))), ...recent]
+      .filter((a) => !seen.has(a.email.toLowerCase()) && seen.add(a.email.toLowerCase()));
+    setContacts(merged); cache.set(key('contacts'), merged);
+  }, () => {}), [client]);
   const loadIdentity = useCallback(() => client.getIdentityFresh().then(setIdentity, () => {}), [client]);
   useEffect(() => { loadContacts(); loadIdentity(); }, [loadContacts, loadIdentity]);
 
@@ -298,6 +309,11 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         document.body.appendChild(frame);
       } else if (what === 'filter') {
         setRulePrefill({ from: sender }); setOverlay('settings');
+      } else if (what === 'addContact') {
+        const name = m.from?.[0]?.name?.trim() ?? '';
+        const [given, ...rest] = name.split(/\s+/);
+        await client.saveContact({ given: given ?? '', surname: rest.join(' '), emails: [sender], phones: [], org: '', note: '' });
+        say({ text: `Added ${name || sender} to contacts` }); loadContacts();
       } else if (what === 'block') {
         if (!parseAddresses(sender).list.length) return say({ text: 'This sender’s address can’t be blocked safely. Use a filter instead.' });
         if (!confirm(`Block ${sender}? Messages from exactly this address will go straight to Junk. You can undo this in Settings → Filters.`)) return;
@@ -396,6 +412,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     { id: STARRED, name: 'Starred', role: STARRED, unreadEmails: 0, sortOrder: 0 },
     ...boxes.slice(1).flatMap((b) => (b.role === 'drafts' ? [b, { id: SCHEDULED, name: 'Scheduled', role: SCHEDULED, unreadEmails: 0, sortOrder: 0 }] : [b])),
     { id: SUBSCRIPTIONS, name: 'Subscriptions', role: SUBSCRIPTIONS, unreadEmails: 0, sortOrder: 0 },
+    { id: CONTACTS, name: 'Contacts', role: CONTACTS, unreadEmails: 0, sortOrder: 0 },
   ];
 
   const commands: Command[] = [
@@ -460,7 +477,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
   );
 
   return (
-    <div className={`app${threadId ? ' reading' : ''}`}>
+    <div className={`app${threadId || (role === CONTACTS && (personId || editingPerson)) ? ' reading' : ''}`}>
       <nav className="rail" aria-label="Folders">
         <p className="wordmark">OpenMail</p>
         <Button variant="primary" size="lg" icon="compose" className="compose-btn" onClick={newMessage} title="Compose (c)">Compose</Button>
@@ -538,7 +555,10 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         )}
         </div>
 
-        {role === SUBSCRIPTIONS ? (
+        {role === CONTACTS ? (
+          <ContactList contacts={people} selected={personId}
+            onSelect={(id) => { setPersonId(id); setEditingPerson(false); }} onNew={() => { setPersonId(null); setEditingPerson(true); }} />
+        ) : role === SUBSCRIPTIONS ? (
           <SubscriptionsList subs={subs} onDeleteAll={deleteAllFrom}
             onUnsubscribe={(x) => unsubscribe({ from: [x.from], unsubscribe: x.unsubscribe })} />
         ) : role === SCHEDULED ? (
@@ -589,7 +609,16 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       </section>
 
       <section className="reader" aria-label="Conversation">
-        {threadId
+        {role === CONTACTS
+          ? <ContactPanel contact={people?.find((x) => x.id === personId) ?? null} editing={editingPerson}
+              onEdit={() => setEditingPerson(true)} onCancel={() => setEditingPerson(false)}
+              onSave={async (c) => { const id = await client.saveContact(c); setEditingPerson(false); setPersonId(id); say({ text: 'Contact saved' }); refresh(); loadContacts(); }}
+              onDelete={async (c) => {
+                if (!confirm(`Delete ${fullName(c) || c.emails[0]} from your contacts?`)) return;
+                try { await client.deleteContact(c.id!); setPersonId(null); say({ text: 'Contact deleted' }); refresh(); loadContacts(); } catch (e) { fail(e); }
+              }}
+              onEmail={(c) => setCompose(withSignature({ ...EMPTY_DRAFT, to: [{ name: fullName(c) || null, email: c.emails[0] }] }))} />
+          : threadId
           ? <ErrorBoundary resetKey={threadId}>
               <Reader client={client} me={client.username} messages={messages} error={readerError} folders={folders}
                 inTrash={role === 'trash'} inJunk={role === 'junk'}

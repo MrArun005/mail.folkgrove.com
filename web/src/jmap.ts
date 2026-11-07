@@ -2,7 +2,10 @@
 import { SCRIPT_NAME, UPDATES } from './rules';
 
 
-const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve', 'urn:ietf:params:jmap:contacts'];
+const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve'];
+// Contacts are asked for only on contact calls: a session without contacts access (or a server without it)
+// must still be able to do everything else.
+const CONTACTS = 'urn:ietf:params:jmap:contacts';
 export const UNDO_SECONDS = 10;
 
 export interface Mailbox { id: string; name: string; role: string | null; unreadEmails: number; sortOrder: number }
@@ -32,6 +35,8 @@ export interface Draft {
 export type Filter = Record<string, unknown>;
 
 export class JmapError extends Error {}
+/** Fired on window when the sign-in can't be renewed; the app returns to the sign-in screen. */
+export const SESSION_EXPIRED = 'om:session-expired';
 
 export const TEMPLATES = 'Templates';
 export interface Subscription { from: Address; count: number; lastAt: string; unsubscribe: { urls: string[]; oneClick: boolean } }
@@ -84,17 +89,22 @@ export class Jmap {
   private async fetch(url: string, init: RequestInit = {}, retry = true): Promise<Response> {
     const res = await fetch(url, { ...init, headers: { ...init.headers, Authorization: await this.authHeader() } });
     if (res.status === 401 && retry && this.onUnauthorized) {
-      await this.onUnauthorized();
+      try { await this.onUnauthorized(); }
+      catch {
+        // The refresh token no longer works (signed out elsewhere, revoked, or the server's settings changed).
+        window.dispatchEvent(new Event(SESSION_EXPIRED));
+        throw new JmapError('Your session has ended. Please sign in again.');
+      }
       return this.fetch(url, init, false);
     }
     return res;
   }
 
-  async call(methodCalls: [string, object, string][]): Promise<any[]> {
+  async call(methodCalls: [string, object, string][], extra: string[] = []): Promise<any[]> {
     const res = await this.fetch(this.base + this.apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ using: USING, methodCalls }),
+      body: JSON.stringify({ using: [...USING, ...extra], methodCalls }),
     });
     if (!res.ok) throw new JmapError(`The mail server returned an error (${res.status})`);
     const { methodResponses } = await res.json();
@@ -512,7 +522,7 @@ export class Jmap {
     const [, r] = await this.call([
       ['ContactCard/query', { accountId: this.accountId }, 'q'],
       ['ContactCard/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'ContactCard/query', path: '/ids' } }, 'g'],
-    ]);
+    ], [CONTACTS]);
     const part = (c: any, kind: string) => c.name?.components?.find((x: { kind: string }) => x.kind === kind)?.value ?? '';
     return (r.list as any[]).map((c) => ({
       id: c.id,
@@ -534,17 +544,17 @@ export class Jmap {
       notes: c.note.trim() ? { n0: { note: c.note.trim() } } : {},
     };
     if (c.id) {
-      await this.call([['ContactCard/set', { accountId: this.accountId, update: { [c.id]: card } }, 's']]);
+      await this.call([['ContactCard/set', { accountId: this.accountId, update: { [c.id]: card } }, 's']], [CONTACTS]);
       return c.id;
     }
-    const [books] = await this.call([['AddressBook/get', { accountId: this.accountId, properties: ['isDefault'] }, 'b']]);
+    const [books] = await this.call([['AddressBook/get', { accountId: this.accountId, properties: ['isDefault'] }, 'b']], [CONTACTS]);
     const book = (books.list as { id: string; isDefault: boolean }[]).find((b) => b.isDefault) ?? books.list[0];
     if (!book) throw new JmapError('This account has no address book');
-    const [r] = await this.call([['ContactCard/set', { accountId: this.accountId, create: { c: { ...card, addressBookIds: { [book.id]: true } } } }, 's']]);
+    const [r] = await this.call([['ContactCard/set', { accountId: this.accountId, create: { c: { ...card, addressBookIds: { [book.id]: true } } } }, 's']], [CONTACTS]);
     return r.created.c.id;
   }
 
-  async deleteContact(id: string) { await this.call([['ContactCard/set', { accountId: this.accountId, destroy: [id] }, 'd']]); }
+  async deleteContact(id: string) { await this.call([['ContactCard/set', { accountId: this.accountId, destroy: [id] }, 'd']], [CONTACTS]); }
 
   /**
    * People you correspond with, most frequent first, for recipient autocomplete.
@@ -553,7 +563,7 @@ export class Jmap {
   async contacts(): Promise<Address[]> {
     const [, r] = await this.call([
       ['Email/query', { accountId: this.accountId, sort: [{ property: 'receivedAt', isAscending: false }], limit: 300 }, 'q'],
-      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: ['from', 'to', 'cc'] }, 'g'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: ['from', 'to', 'cc', 'keywords', 'header:List-Unsubscribe', 'header:List-Id'] }, 'g'],
     ]);
     const me = this.username.toLowerCase();
     const seen = new Map<string, { a: Address; n: number }>();
@@ -563,11 +573,12 @@ export class Jmap {
       const cur = seen.get(k);
       seen.set(k, { a: cur?.a.name ? cur.a : a, n: (cur?.n ?? 0) + weight });
     };
-    for (const e of r.list as { from: Address[] | null; to: Address[] | null; cc: Address[] | null }[]) {
-      const mine = e.from?.some((a) => a.email.toLowerCase() === me);
+    for (const e of r.list as any[]) {
+      const mine = e.from?.some((a: Address) => a.email.toLowerCase() === me);
       // People you write to matter more than people who write to you.
-      if (mine) [...(e.to ?? []), ...(e.cc ?? [])].forEach((a) => add(a, 3));
-      else (e.from ?? []).forEach((a) => add(a, 1));
+      if (mine) [...(e.to ?? []), ...(e.cc ?? [])].forEach((a: Address) => add(a, 3));
+      // Newsletters and automated mail aren't people you'd write to: never suggest their senders.
+      else if (!e['header:List-Unsubscribe'] && !e['header:List-Id'] && !e.keywords?.[UPDATES]) (e.from ?? []).forEach((a: Address) => add(a, 1));
     }
     return [...seen.values()].sort((x, y) => y.n - x.n).map((x) => x.a);
   }

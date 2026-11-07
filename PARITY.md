@@ -78,7 +78,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Feature | Zoho | Us | Plan |
 |---|---|---|---|
 | Calendar + invites in mail | ✅ | ⬜ | Phase 2.5: Stalwart has CalDAV/JMAP calendars; build the UI |
-| Contacts / address book | ✅ | 🟡 | Autocomplete done; address book UI on JMAP contacts next |
+| Contacts / address book | ✅ | ✅ | JMAP Contacts: list, search, add/edit/delete, "Add sender to contacts", feeds autocomplete |
 | Tasks, notes, bookmarks | ✅ | ⬜ | Phase 5 (lightweight) |
 | Streams (team comments on mail) | ✅ | ⬜ | Phase 5: shared mailboxes first |
 | Shared / group mailboxes, delegation | ✅ | ⬜ | Phase 4: Stalwart groups + JMAP sharing |
@@ -100,14 +100,14 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 ## Score today
 
 Counting rows a typical Zoho Mail user touches (sections 1–4 plus calendar, contacts and the web app):
-**37 of 50 at parity or better (74%), 5 partial.** The "next batch" items below take that to roughly 70%;
+**38 of 50 at parity or better (76%), 4 partial.** The "next batch" items below take that past 80%;
 Phase 2.5 (calendar, contacts UI, categories, multiple signatures, multi-account, E2E, OAuth/2FA) takes it past 90%;
 shared mailboxes and import close the rest of the 95%.
 
 ## Order of work
 
 1. **Next batch (small, high value):** several signatures, 2FA enrolment (step-up sign-in), app passwords,
-   read receipts (opt-in), address book screen.
+   read receipts (opt-in), calendar.
 2. **Phase 2 security:** passkeys; branded sign-in page (today it is the mail server's own page).
 3. **Phase 2.5:** calendar, address book, inbox categories, subscriptions manager, multiple signatures,
    multi-account, E2E (OpenPGP), saved searches, encryption-at-rest toggle.

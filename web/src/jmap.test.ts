@@ -291,31 +291,44 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     const c = await login();
     const boxes = await c.mailboxes();
     const inbox = boxes.find((b) => b.role === 'inbox')!.id;
-    const stamp = Date.now();
-    const imp = async (from: string, subject: string, mailbox = inbox) => {
-      const raw = `From: ${from}\r\nTo: alice@openmail.test\r\nSubject: ${subject}\r\nMessage-ID: <${subject}@t>\r\n\r\nx\r\n`;
-      const blob = await c.upload(Object.assign(new Blob([raw], { type: 'message/rfc822' }), { name: 'm.eml' }));
-      const [r] = await c.call([['Email/import', { accountId: c.accountId, emails: { e: { blobId: blob.blobId, mailboxIds: { [mailbox]: true } } } }, 'i']]);
-      return r.created.e.id as string;
+    const purge = async (text: string) => {
+      const [q] = await c.call([['Email/query', { accountId: c.accountId, filter: { text } }, 'q']]);
+      if (q.ids.length) await c.call([['Email/set', { accountId: c.accountId, destroy: q.ids }, 'd']]);
     };
-    const target = await imp('Shop <shop@x.example>', `exact-${stamp}`);
-    const lookalike = await imp('Evil <shop@x.example.evil.net>', `lookalike-${stamp}`);
-    const named = await imp('"shop@x.example" <someone@else.example>', `named-${stamp}`);
-    expect(await c.trashFrom('shop@x.example', boxes)).toBe(1);
-    const trash = boxes.find((b) => b.role === 'trash')!.id;
-    const [g] = await c.call([['Email/get', { accountId: c.accountId, ids: [target, lookalike, named], properties: ['mailboxIds'] }, 'g']]);
-    const where = Object.fromEntries((g.list as { id: string; mailboxIds: Record<string, boolean> }[]).map((e) => [e.id, Object.keys(e.mailboxIds)]));
-    expect(where[target]).toEqual([trash]);
-    expect(where[lookalike]).toEqual([inbox]);
-    expect(where[named]).toEqual([inbox]);
-    await expect(c.trashFrom('not an address', boxes)).rejects.toThrow('valid sender');
-    await c.call([['Email/set', { accountId: c.accountId, destroy: [target, lookalike, named] }, 'd']]);
+    await purge('trashfrom-test'); // leftovers from an interrupted earlier run
+    const stamp = `trashfrom-test-${Date.now()}`;
+    try {
+      const imp = async (from: string, kind: string) => {
+        const raw = `From: ${from}\r\nTo: alice@openmail.test\r\nSubject: ${stamp} ${kind}\r\nMessage-ID: <${stamp}-${kind}@t>\r\n\r\nx\r\n`;
+        const blob = await c.upload(Object.assign(new Blob([raw], { type: 'message/rfc822' }), { name: 'm.eml' }));
+        const [r] = await c.call([['Email/import', { accountId: c.accountId, emails: { e: { blobId: blob.blobId, mailboxIds: { [inbox]: true } } } }, 'i']]);
+        return r.created.e.id as string;
+      };
+      const target = await imp('Shop <shop@x.example>', 'exact');
+      const lookalike = await imp('Evil <shop@x.example.evil.net>', 'lookalike');
+      const named = await imp('"shop@x.example" <someone@else.example>', 'named');
+      // Search indexing is asynchronous: wait until the new mail is findable by sender.
+      for (let i = 0; i < 40; i++) {
+        const [q] = await c.call([['Email/query', { accountId: c.accountId, filter: { text: stamp } }, 'q']]);
+        if (q.ids.length === 3) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      expect(await c.trashFrom('shop@x.example', boxes)).toBe(1);
+      const trash = boxes.find((b) => b.role === 'trash')!.id;
+      const [g] = await c.call([['Email/get', { accountId: c.accountId, ids: [target, lookalike, named], properties: ['mailboxIds'] }, 'g']]);
+      const where = Object.fromEntries((g.list as { id: string; mailboxIds: Record<string, boolean> }[]).map((e) => [e.id, Object.keys(e.mailboxIds)]));
+      expect(where[target]).toEqual([trash]);
+      expect(where[lookalike]).toEqual([inbox]);
+      expect(where[named]).toEqual([inbox]);
+      await expect(c.trashFrom('not an address', boxes)).rejects.toThrow('valid sender');
+    } finally { await purge(stamp); }
   });
 
   it('suggests contacts, people I write to first, never me', async () => {
     const c = await login();
     const people = (await c.contacts()).map((a) => a.email);
     expect(people).not.toContain('alice@openmail.test');
+    expect(people).not.toContain('digest@example.org'); // newsletter senders aren't suggested
     expect(people[0]).toBe('priya@example.org'); // alice wrote to Priya in the seed data
   });
 });

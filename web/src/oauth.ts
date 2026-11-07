@@ -6,7 +6,7 @@
 // revoked at sign-out; a backend-held httpOnly cookie would remove that window if we ever add a backend.
 
 export const CLIENT_ID = 'openmail-web';
-const SCOPE = 'openid offline_access urn:ietf:params:oauth:scope:mail';
+const SCOPE = 'openid offline_access urn:ietf:params:oauth:scope:mail urn:ietf:params:oauth:scope:contacts';
 const KEY = 'om:oauth';
 const redirectUri = () => `${location.origin}/`;
 
