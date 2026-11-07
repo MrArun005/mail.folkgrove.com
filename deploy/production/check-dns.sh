@@ -36,7 +36,7 @@ if [ "$got" = "$MAIL_HOSTNAME." ]; then pass "PTR $SERVER_IP"; else fail "PTR $S
 
 # Optional: openpgpkey.<domain> lets other mail apps find users' encryption keys (Web Key Directory).
 got=$(lookup "openpgpkey.$MAIL_DOMAIN" CNAME)
-if [ -z "$got" ]; then printf '\033[33mNOTE\033[0m  CNAME openpgpkey.%s (optional): not set, so other mail apps can'"'"'t find your users'"'"' encryption keys\n' "$DOMAIN"
+if [ -z "$got" ]; then printf '\033[33mNOTE\033[0m  CNAME openpgpkey.%s (optional): not set, so other mail apps can'"'"'t find your users'"'"' encryption keys\n' "$MAIL_DOMAIN"
 elif [ "${got%.}" = "$MAIL_HOSTNAME" ]; then pass "CNAME openpgpkey.$MAIL_DOMAIN"
 else fail "CNAME openpgpkey.$MAIL_DOMAIN (optional, but wrong)" "$MAIL_HOSTNAME." "$got"; fi
 
