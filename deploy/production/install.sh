@@ -334,6 +334,10 @@ if ! api '[["x:MtaInboundThrottle/get",{"ids":null,"properties":["description"]}
     "match":{"match":{},"else":"!is_empty(authenticated_as) && !is_local_domain(rcpt_domain)"},"rate":{"count":2000,"period":86400000}}}},"t"]]' >/dev/null
 fi
 
+# Login abuse: Stalwart bans an IP after 100 failed sign-ins a day, by default forever. Forever locks out whole offices or
+# schools behind one shared IP (one phone with an old password is enough); an hour still stops password guessing.
+api '[["x:Security/set",{"update":{"singleton":{"authBanPeriod":3600000}}},"s"]]' >/dev/null
+
 # Apply the changes above (listeners only take effect after a restart).
 if [ "$NEED_RESTART" = 1 ]; then restart_stalwart
 else api '[["x:Action/set",{"create":{"a":{"@type":"ReloadSettings"}}},"a"]]' >/dev/null; fi
