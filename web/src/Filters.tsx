@@ -87,7 +87,7 @@ export function FiltersSection({ client, boxes, prefill }: { client: Jmap; boxes
             {draft.action === 'move' && (
               <label>Folder<select className="input" value={draft.folder ?? ''} onChange={(e) => set({ folder: e.target.value })}>
                 <option value="" disabled>Choose a folder</option>
-                {folders.map((f) => <option key={f.id} value={f.name}>{f.name}</option>)}
+                {folders.map((f) => <option key={f.id} value={f.path ?? f.name}>{f.path ?? f.name}</option>)}
               </select></label>
             )}
             {draft.action === 'forward' && (
@@ -118,14 +118,24 @@ export function FoldersSection({ client, boxes, onChanged }: { client: Jmap; box
       {mine.length === 0 ? <p className="fine">Folders you create (from Move to → New folder) appear here.</p> : (
         <ul className="rule-list">
           {mine.map((b) => (
-            <li key={b.id}>
-              <span>{b.name}</span>
+            <li key={b.id} style={{ paddingLeft: `calc(var(--s3) + ${b.depth ?? 0} * var(--s5))` }}>
+              <span className="grow">{b.name}</span>
               <span className="row-btns">
+                <select className="input input--sm" aria-label={`Put ${b.name} inside`} value={b.parentId ?? ''}
+                  onChange={(e) => run(() => client.moveMailbox(b.id, e.target.value || null))}>
+                  <option value="">Top level</option>
+                  {mine.filter((p) => p.id !== b.id && !(p.path ?? '').startsWith(`${b.path}/`)).map((p) => <option key={p.id} value={p.id}>Inside {p.path}</option>)}
+                </select>
+                <Button variant="quiet" size="sm" icon="folder" label={`New folder inside ${b.name}`} onClick={async () => {
+                  const name = await promptIt({ title: `New folder inside “${b.name}”`, label: 'Folder name', confirm: 'Create folder' });
+                  if (name) run(() => client.createMailbox(name, b.id));
+                }} />
                 <Button variant="quiet" size="sm" icon="compose" label={`Rename ${b.name}`} onClick={async () => {
                   const name = await promptIt({ title: `Rename “${b.name}”`, label: 'New name', value: b.name, confirm: 'Rename' });
                   if (name && name !== b.name) run(() => client.renameMailbox(b.id, name));
                 }} />
                 <Button variant="quiet" size="sm" icon="trash" label={`Delete ${b.name}`} onClick={async () => {
+                  if (mine.some((x) => x.parentId === b.id)) return setError(`“${b.name}” has folders inside it. Move or delete those first.`);
                   if (await confirmIt({ title: `Delete the folder “${b.name}”?`, body: 'Messages that are only in this folder are deleted too.', confirm: 'Delete folder', danger: true })) run(() => client.deleteMailbox(b.id));
                 }} />
               </span>

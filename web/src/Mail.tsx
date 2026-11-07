@@ -584,7 +584,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
     <Menu label={kind === 'move' ? 'Move to' : 'Label as'} button={<Button variant="quiet" size="sm" icon={kind === 'move' ? 'folder' : 'tag'} label={kind === 'move' ? 'Move to folder' : 'Label as'} />}>
       {(close) => <>
         <p className="menu-title">{kind === 'move' ? 'Move to' : 'Label as'}</p>
-        {folders.map((f) => <button key={f.id} className="menu-item" role="menuitem" onClick={() => { close(); act({ moveTo: f.id, label: kind === 'label' }); }}><Icon name="folder" size={16} />{f.name}</button>)}
+        {folders.map((f) => <button key={f.id} className="menu-item" role="menuitem" onClick={() => { close(); act({ moveTo: f.id, label: kind === 'label' }); }}><Icon name="folder" size={16} />{f.path ?? f.name}</button>)}
         <button className="menu-item" role="menuitem" onClick={() => { close(); act({ moveTo: null, label: kind === 'label' }); }}><Icon name="compose" size={16} />New folder…</button>
       </>}
     </Menu>
@@ -602,7 +602,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
             <ul>
               {group.map((b) => (
                 <li key={b.id}>
-                  <button className={`nav-item${b.id === current ? ' active' : ''}`} aria-current={b.id === current ? 'page' : undefined} onClick={() => openFolder(b.id)}>
+                  <button className={`nav-item${b.id === current ? ' active' : ''}`} aria-current={b.id === current ? 'page' : undefined} onClick={() => openFolder(b.id)}
+                    style={b.depth ? { paddingLeft: `calc(var(--s3) + ${b.depth} * var(--s4))` } : undefined}>
                     <Icon name={roleIcon(b.role)} /><span className="name">{b.name}</span>
                     {b.unreadEmails > 0 && !['trash', 'sent', 'drafts'].includes(b.role ?? '') && <span className="count">{b.unreadEmails}</span>}
                   </button>

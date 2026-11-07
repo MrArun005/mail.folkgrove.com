@@ -634,3 +634,5 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .btn--primary.btn--danger { background: var(--danger); color: var(--on-tint); }
 .btn--primary.btn--danger:hover:not(:disabled) { background: color-mix(in oklch, var(--danger) 86%, var(--ink)); }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(4px) scale(.985); } }
+.input--sm { height: var(--h-sm); width: 172px; flex: none; padding: 0 var(--s2); font-size: var(--t-sm); }
+.rule-list li > .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

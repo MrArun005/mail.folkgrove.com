@@ -13,7 +13,12 @@ const STALWART = 'urn:stalwart:jmap';
 const CALENDARS = ['urn:ietf:params:jmap:calendars', 'urn:ietf:params:jmap:calendars:parse'];
 export const UNDO_SECONDS = 10;
 
-export interface Mailbox { id: string; name: string; role: string | null; unreadEmails: number; sortOrder: number }
+export interface Mailbox {
+  id: string; name: string; role: string | null; unreadEmails: number; sortOrder: number;
+  parentId?: string | null;
+  /** Nesting depth (0 = top level) and the full "Parent/Child" path, which is what Sieve filters file into. */
+  depth?: number; path?: string;
+}
 export interface Address { name: string | null; email: string }
 export interface Attachment { blobId: string; name: string | null; type: string; size: number; cid?: string | null; disposition?: string | null }
 export interface EmailSummary {
@@ -81,6 +86,32 @@ async function aliasReply(r: Response) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.ok) throw new JmapError(j.error?.message ?? `The server returned an error (${r.status})`);
   return j;
+}
+
+/**
+ * System folders in a fixed order, then your folders as a tree (each parent followed by its children, depth-first),
+ * with depth and full path filled in. Exported for tests.
+ */
+export function orderMailboxes(list: Mailbox[]): Mailbox[] {
+  const order = ['inbox', 'snoozed', 'drafts', 'sent', 'archive', 'junk', 'trash'];
+  const rank = (b: Mailbox) => (b.role && order.includes(b.role) ? order.indexOf(b.role) : 99);
+  const byName = (a: Mailbox, b: Mailbox) => rank(a) - rank(b) || a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+  const ids = new Set(list.map((b) => b.id));
+  const kids = new Map<string | null, Mailbox[]>();
+  for (const b of list) {
+    const p = b.parentId && ids.has(b.parentId) ? b.parentId : null; // an orphan (parent hidden) shows at the top
+    kids.set(p, [...(kids.get(p) ?? []), b]);
+  }
+  const out: Mailbox[] = [];
+  const walk = (parent: string | null, depth: number, prefix: string) => {
+    for (const b of (kids.get(parent) ?? []).sort(byName)) {
+      const path = prefix ? `${prefix}/${b.name}` : b.name;
+      out.push({ ...b, depth, path });
+      walk(b.id, depth + 1, path);
+    }
+  };
+  walk(null, 0, '');
+  return out;
 }
 
 export class Jmap {
@@ -154,12 +185,10 @@ export class Jmap {
   /** Folders, Inbox first. The Templates folder is app storage, so it's hidden unless asked for. */
   async mailboxes(includeHidden = false): Promise<Mailbox[]> {
     const [r] = await this.call([['Mailbox/get', {
-      accountId: this.accountId, properties: ['name', 'role', 'unreadEmails', 'sortOrder'],
+      accountId: this.accountId, properties: ['name', 'role', 'unreadEmails', 'sortOrder', 'parentId'],
     }, 'm']]);
     if (!includeHidden) r.list = (r.list as Mailbox[]).filter((b) => b.role || b.name !== TEMPLATES);
-    const order = ['inbox', 'snoozed', 'drafts', 'sent', 'archive', 'junk', 'trash'];
-    const rank = (b: Mailbox) => (b.role && order.includes(b.role) ? order.indexOf(b.role) : 99);
-    return (r.list as Mailbox[]).sort((a, b) => rank(a) - rank(b) || a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+    return orderMailboxes(r.list);
   }
 
   /** Newest matching message of each conversation. */
@@ -269,9 +298,14 @@ export class Jmap {
     }, 's']]);
   }
 
-  async createMailbox(name: string): Promise<string> {
-    const [r] = await this.call([['Mailbox/set', { accountId: this.accountId, create: { m: { name } } }, 'c']]);
+  async createMailbox(name: string, parentId?: string | null): Promise<string> {
+    const [r] = await this.call([['Mailbox/set', { accountId: this.accountId, create: { m: { name, ...(parentId && { parentId }) } } }, 'c']]);
     return r.created.m.id;
+  }
+
+  /** Put a folder inside another (or back at the top level with null). */
+  async moveMailbox(id: string, parentId: string | null) {
+    await this.call([['Mailbox/set', { accountId: this.accountId, update: { [id]: { parentId } } }, 'p']]);
   }
 
   /**
