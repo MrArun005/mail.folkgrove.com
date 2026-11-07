@@ -13,6 +13,7 @@ import { CalendarView } from './CalendarView';
 import { localZone } from './calendar';
 import type { PartStat } from './ics';
 import { Reader, shortDate, type Action, type MoreAction } from './Reader';
+import { TaskList } from './Tasks';
 import { addRule, loadScript, saveScript } from './Filters';
 import { SCREENER, UPDATES, type Rule, type ScriptData } from './rules';
 import { notifyOn, showMail } from './notify';
@@ -26,7 +27,7 @@ const PAGE = 50;
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
 const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
 // Virtual folders: views that aren't mailboxes on the server.
-const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar';
+const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks';
 
 type Toast = { text: string; undo?: () => void } | null;
 type BulkAction = Action | 'read' | { snooze: Date } | { moveTo: string | null; label: boolean };
@@ -80,7 +81,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
   const listKey = (box: string | null) => `list:${box}${box && box === inbox && categories ? `:${tab}` : ''}`;
   const current = query ? null : view ?? inbox;
   const currentBox = boxes.find((b) => b.id === current);
-  const role = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR].includes(current ?? '') ? current : currentBox?.role ?? null;
+  const role = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS].includes(current ?? '') ? current : currentBox?.role ?? null;
   // Moves need a real source folder; from Starred or search results, act on the Inbox copy.
   const source = currentBox ? currentBox.id : inbox;
   const folders = useMemo(() => boxes.filter((b) => (!b.role || b.role === 'archive' || b.role === 'inbox') && b.id !== source), [boxes, source]);
@@ -112,7 +113,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
       if (box === SCHEDULED) { setScheduled(await client.scheduled()); return; }
       if (box === SUBSCRIPTIONS) { setSubs(await client.subscriptions()); return; }
       if (box === CONTACTS) { setPeople(await client.addressBook()); return; }
-      if (box === CALENDAR) return; // the calendar loads its own week
+      if (box === CALENDAR || box === TASKS) return; // these load their own data
       const isInbox = b.find((x) => x.id === box)?.role === 'inbox';
       const filter: Filter = query ? parseSearch(query, b) : box === STARRED ? { hasKeyword: '$flagged' }
         : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box }, tab === 'updates' ? { hasKeyword: UPDATES } : { notKeyword: UPDATES }] }
@@ -366,6 +367,9 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
         frame.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden';
         frame.onload = () => { frame.contentWindow?.print(); setTimeout(() => frame.remove(), 1000); };
         document.body.appendChild(frame);
+      } else if (what === 'task') {
+        await client.addTask(m.subject?.replace(/^((re|fwd?)\s*:\s*)+/i, '') || 'Follow up', { threadId: m.threadId });
+        say({ text: 'Added to Tasks' });
       } else if (what === 'unmute') {
         await client.unmute(m.threadId); setThreadVersion((v) => v + 1); say({ text: 'Unmuted' });
       } else if (what === 'filter') {
@@ -528,6 +532,7 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
     { id: SUBSCRIPTIONS, name: 'Subscriptions', role: SUBSCRIPTIONS, unreadEmails: 0, sortOrder: 0 },
     { id: CONTACTS, name: 'Contacts', role: CONTACTS, unreadEmails: 0, sortOrder: 0 },
     { id: CALENDAR, name: 'Calendar', role: CALENDAR, unreadEmails: 0, sortOrder: 0 },
+    { id: TASKS, name: 'Tasks', role: TASKS, unreadEmails: 0, sortOrder: 0 },
   ];
 
   const commands: Command[] = [
@@ -714,6 +719,8 @@ export function Mail({ client, onLogout, accounts, onSwitch, onAddAccount }: {
         ) : role === SUBSCRIPTIONS ? (
           <SubscriptionsList subs={subs} onDeleteAll={deleteAllFrom}
             onUnsubscribe={(x) => unsubscribe({ from: [x.from], unsubscribe: x.unsubscribe })} />
+        ) : role === TASKS ? (
+          <TaskList client={client} say={(text) => say({ text })} onOpenThread={(tid) => { setView(null); setThreadId(tid); }} />
         ) : role === SCHEDULED ? (
           <>
             {scheduled === null && <div className="rows-loading" aria-busy="true">{[0, 1, 2].map((i) => <span key={i} />)}</div>}

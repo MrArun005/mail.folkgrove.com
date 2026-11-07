@@ -58,4 +58,4 @@ export function Icon({ name, size = 18, filled = false }: { name: IconName; size
 }
 
 export const roleIcon = (role: string | null): IconName =>
-  (({ inbox: 'inbox', drafts: 'drafts', sent: 'sent', archive: 'archive', junk: 'junk', trash: 'trash', snoozed: 'clock', starred: 'star', scheduled: 'clock', subscriptions: 'unread', contacts: 'person', calendar: 'calendar' } as const)[role ?? ''] ?? 'folder');
+  (({ inbox: 'inbox', drafts: 'drafts', sent: 'sent', archive: 'archive', junk: 'junk', trash: 'trash', snoozed: 'clock', starred: 'star', scheduled: 'clock', subscriptions: 'unread', contacts: 'person', calendar: 'calendar', tasks: 'check' } as const)[role ?? ''] ?? 'folder');

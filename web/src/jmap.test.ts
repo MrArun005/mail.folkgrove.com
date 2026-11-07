@@ -329,6 +329,23 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     }
   }, 30_000);
 
+  it('tasks: add (with due date and linked email), finish, delete; hidden from the folder list', async () => {
+    const c = await login();
+    const title = `Send the deck ${Date.now()}`;
+    const id = await c.addTask(title, { due: '2026-12-01', threadId: 'abc123' });
+    try {
+      let t = (await c.tasks()).find((x) => x.id === id)!;
+      expect(t).toMatchObject({ title, done: false, due: '2026-12-01', threadId: 'abc123' });
+      await c.setTaskDone(id, true);
+      t = (await c.tasks()).find((x) => x.id === id)!;
+      expect(t.done).toBe(true);
+      expect((await c.mailboxes()).some((b) => b.name === 'Tasks')).toBe(false);
+    } finally {
+      await c.deleteTask(id);
+    }
+    expect((await c.tasks()).some((x) => x.id === id)).toBe(false);
+  });
+
   it('Bcc reaches the recipient without a Bcc header; the Sent copy keeps it', async () => {
     const c = await login();
     const boxes = await c.mailboxes();

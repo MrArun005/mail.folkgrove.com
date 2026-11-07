@@ -12,7 +12,7 @@ import type { PartStat } from './ics';
 import { Menu, TimeChoices } from './Menu';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
-export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute';
+export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task';
 
 export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
@@ -76,6 +76,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
             return <>
               {muted ? item('unmute', 'unread', 'Unmute')
                 : <button className="menu-item" role="menuitem" onClick={() => { close(); onAction('mute'); }}><Icon name="mute" size={16} />Mute (new replies skip your Inbox)</button>}
+              {item('task', 'check', 'Add to Tasks')}
               {item('print', 'print', 'Print')}
               {item('original', 'file', 'Show original')}
               {sender && sender.toLowerCase() !== me.toLowerCase() && <>

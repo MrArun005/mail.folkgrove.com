@@ -670,3 +670,20 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .account-btn:hover { background: var(--hover); }
 .account-btn .addr { min-width: 0; }
 .account-btn .count { flex: none; padding: 0 6px; border-radius: var(--r-full); background: var(--hover); color: var(--ink-2); font-size: var(--t-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Tasks */
+.tasks { display: grid; align-content: start; }
+.task-add { display: flex; gap: var(--s2); padding: var(--s2) var(--gutter-list) var(--s3); }
+.task-add .input:first-child { flex: 1; min-width: 0; }
+.input--date { width: 148px; flex: none; }
+.task-list li.task { display: flex; align-items: center; gap: var(--s3); min-height: var(--h-lg); padding: 0 var(--s2) 0 var(--gutter-list); border-bottom: 1px solid var(--rule); }
+.task .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task.done .title { color: var(--muted); text-decoration: line-through; }
+.task .due { flex: none; color: var(--muted); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.task .due.late { color: var(--danger); font-weight: 600; }
+
+/* The rail scrolls when it's taller than the window (many folders); the account footer stays pinned. */
+@media (min-width: 861px) {
+  .rail { overflow-y: auto; }
+  .rail .me { position: sticky; bottom: calc(-1 * var(--s3)); background: var(--rail); padding-bottom: var(--s3); }
+}

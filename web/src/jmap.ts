@@ -68,6 +68,8 @@ export class JmapError extends Error {}
 export const SESSION_EXPIRED = 'om:session-expired';
 
 export const TEMPLATES = 'Templates';
+export const TASKS = 'Tasks'; // app storage like Templates: hidden from the folder list
+export interface Task { id: string; title: string; done: boolean; due: string | null; threadId: string | null; createdAt: string }
 export interface Subscription { from: Address; count: number; lastAt: string; unsubscribe: { urls: string[]; oneClick: boolean } }
 /** A contact in the address book (a simplified JSContact card, RFC 9553). */
 export interface Contact { id?: string; given: string; surname: string; emails: string[]; phones: string[]; org: string; note: string }
@@ -187,7 +189,7 @@ export class Jmap {
     const [r] = await this.call([['Mailbox/get', {
       accountId: this.accountId, properties: ['name', 'role', 'unreadEmails', 'sortOrder', 'parentId'],
     }, 'm']]);
-    if (!includeHidden) r.list = (r.list as Mailbox[]).filter((b) => b.role || b.name !== TEMPLATES);
+    if (!includeHidden) r.list = (r.list as Mailbox[]).filter((b) => b.role || (b.name !== TEMPLATES && b.name !== TASKS));
     return orderMailboxes(r.list);
   }
 
@@ -557,6 +559,34 @@ export class Jmap {
   async deleteDraft(id: string) { await this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
 
   // ── Templates: saved messages in a "Templates" folder (hidden from the folder list), so they sync everywhere ──
+
+  // ── Tasks: each is a tiny message in a hidden "Tasks" folder (title = subject), so they sync everywhere ──
+  // Keywords: $done when finished. Headers: X-OpenMail-Due (YYYY-MM-DD), X-OpenMail-Thread (the email it came from).
+
+  async tasks(): Promise<Task[]> {
+    const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === TASKS);
+    if (!box) return [];
+    const [, r] = await this.call([
+      ['Email/query', { accountId: this.accountId, filter: { inMailbox: box.id }, sort: [{ property: 'receivedAt', isAscending: true }], limit: 1000 }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' },
+        properties: ['subject', 'keywords', 'receivedAt', 'header:X-OpenMail-Due:asText', 'header:X-OpenMail-Thread:asText'] }, 'g'],
+    ]);
+    return (r.list as any[]).map((e) => ({ id: e.id, title: e.subject ?? '', done: !!e.keywords?.$done, createdAt: e.receivedAt,
+      due: e['header:X-OpenMail-Due:asText']?.trim() || null, threadId: e['header:X-OpenMail-Thread:asText']?.trim() || null }));
+  }
+
+  async addTask(title: string, opts: { due?: string | null; threadId?: string | null } = {}): Promise<string> {
+    const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === TASKS)?.id ?? await this.createMailbox(TASKS);
+    const [r] = await this.call([['Email/set', { accountId: this.accountId, create: { t: {
+      mailboxIds: { [box]: true }, keywords: { $seen: true }, from: [{ email: this.username }], subject: title.trim().slice(0, 300),
+      ...(opts.due && /^\d{4}-\d{2}-\d{2}$/.test(opts.due) && { 'header:X-OpenMail-Due:asText': opts.due }),
+      ...(opts.threadId && /^[\w-]{1,64}$/.test(opts.threadId) && { 'header:X-OpenMail-Thread:asText': opts.threadId }),
+      bodyValues: { t: { value: '' } }, textBody: [{ partId: 't', type: 'text/plain' }],
+    } } }, 't']]);
+    return r.created.t.id;
+  }
+  setTaskDone(id: string, done: boolean) { return this.call([['Email/set', { accountId: this.accountId, update: { [id]: { 'keywords/$done': done || null } } }, 'd']]); }
+  deleteTask(id: string) { return this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
 
   async templates(): Promise<Template[]> {
     const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === TEMPLATES);
