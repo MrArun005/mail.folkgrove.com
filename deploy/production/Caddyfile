@@ -35,7 +35,8 @@
 	# and the web client simply hides its "Create an account" link.
 	# X-Real-IP is always overwritten with the real client address (clients can't spoof it), so per-IP rate
 	# limits work. Run the signup container with CLIENT_IP_HEADER=x-real-ip.
-	@signup path /api/signup /api/username-available /api/aliases /api/aliases/* /api/session/* /api/account /api/admin/*
+	# /api/events is left out on purpose: only Stalwart posts to it, on the internal network.
+	@signup path /api/signup /api/username-available /api/aliases /api/aliases/* /api/session/* /api/account /api/admin/* /api/sending /api/sending/* /api/blocked
 	handle @signup {
 		reverse_proxy signup:3000 {
 			header_up X-Real-IP {remote_host}

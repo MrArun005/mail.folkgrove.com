@@ -803,3 +803,7 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   .admin-table .acts { display: flex; flex-wrap: wrap; gap: var(--s1); white-space: normal; padding-top: var(--s1); }
   .admin-table .acts .btn--sm { height: var(--h-md); } /* tap targets on phones (DESIGN §10) */
 }
+
+/* Sending suspended (Sending.tsx) */
+.banner--warn { background: color-mix(in srgb, var(--star) 18%, transparent); color: var(--ink); }
+.banner--warn .grow { flex-basis: 100%; } /* the action goes under the explanation */

@@ -7,10 +7,10 @@ import type { Jmap } from './jmap';
  * Admin console (/admin): users, blocked addresses and new-account limits, and the outgoing queue. Every call goes
  * to the account service (signup/admin.mjs), which checks that the signed-in account is on its ADMINS list.
  */
-type Tab = 'overview' | 'users' | 'limits' | 'queue';
-const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['limits', 'Blocked & limits'], ['queue', 'Message trace']];
+type Tab = 'overview' | 'users' | 'limits' | 'queue' | 'abuse';
+const TABS: [Tab, string][] = [['overview', 'Overview'], ['users', 'Users'], ['limits', 'Blocked & limits'], ['queue', 'Message trace'], ['abuse', 'Suspended & inactive']];
 
-interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; admin: boolean; newAccount: boolean }
+interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; admin: boolean; newAccount: boolean; sending: boolean }
 interface Blocked { id: string; address: string; reason: string; createdAt: string; expiresAt: string | null }
 interface Queued { id: string; from: string; createdAt: string; nextRetry: string | null; size: number; recipients: { to: string; status: string; attempts: number; nextAttempt: string | null; error: string | null; code: string | null }[] }
 
@@ -51,16 +51,17 @@ export function Admin({ client }: { client: Jmap }) {
         {tab === 'users' && <Users client={client} />}
         {tab === 'limits' && <><BlockedIps client={client} /><NewAccounts client={client} /></>}
         {tab === 'queue' && <Queue client={client} />}
+        {tab === 'abuse' && <><Suspended client={client} /><Inactive client={client} /></>}
       </main>
     </div>
   );
 }
 
 function Overview({ client, go }: { client: Jmap; go: (t: Tab) => void }) {
-  const { data, error } = useLoad(() => client.admin<{ accounts: number; queued: number; blockedIps: number; newAccounts: number }>('overview'));
+  const { data, error } = useLoad(() => client.admin<{ accounts: number; queued: number; blockedIps: number; newAccounts: number; suspended: number }>('overview'));
   if (error) return <p className="error" role="alert">{error}</p>;
   const stats: [string, number | undefined, Tab][] = [['Accounts', data?.accounts, 'users'], ['Waiting to send', data?.queued, 'queue'],
-    ['Blocked IP addresses', data?.blockedIps, 'limits'], ['On new-account limits', data?.newAccounts, 'limits']];
+    ['Blocked IP addresses', data?.blockedIps, 'limits'], ['On new-account limits', data?.newAccounts, 'limits'], ['Sending suspended', data?.suspended, 'abuse']];
   return (
     <section>
       <div className="stats">
@@ -127,6 +128,7 @@ function Users({ client }: { client: Jmap }) {
                 <td data-label="Status">
                   <span className={u.enabled ? 'pill on' : 'pill'}>{u.enabled ? 'Active' : 'Disabled'}</span>
                   {u.newAccount && <span className="pill pill--warn">New-account limits</span>}
+                  {!u.sending && <span className="pill pill--warn">Sending suspended</span>}
                   {u.admin && <span className="pill">Server admin</span>}
                 </td>
                 <td className="acts">
@@ -148,6 +150,12 @@ function Users({ client }: { client: Jmap }) {
                             await act(() => patch(u, { enabled: false }), reload);
                         }}>Disable</Button>
                       : <Button size="sm" variant="quiet" onClick={() => act(() => patch(u, { enabled: true }), reload)}>Enable</Button>}
+                    {u.sending
+                      ? <Button size="sm" variant="quiet" onClick={async () => {
+                          if (await confirmIt({ title: `Suspend sending for ${u.email}?`, body: 'They can still sign in and read their mail, but can’t send until you allow it again. They see a notice saying an administrator did this.', confirm: 'Suspend sending', danger: true }))
+                            await act(() => patch(u, { sending: false }), reload);
+                        }}>Suspend sending</Button>
+                      : <Button size="sm" variant="quiet" onClick={() => act(() => patch(u, { sending: true }), reload)}>Allow sending</Button>}
                     <Button size="sm" variant="quiet" icon="trash" label={`Delete ${u.email}`} onClick={async () => {
                       if (await confirmIt({ title: `Delete ${u.email}?`, body: 'All of its mail, contacts, calendars and files are deleted, The address is retired: no one can take it later. This can’t be undone. To stop someone using it, disable it instead.', confirm: 'Delete account', danger: true }))
                         await act(() => client.admin(`users/${u.id}`, 'DELETE'), reload);
@@ -253,6 +261,68 @@ function Queue({ client }: { client: Jmap }) {
                       await act(() => client.admin(`queue/${m.id}`, 'DELETE'), reload);
                   }}>Cancel</Button>
                 </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ))}
+    </section>
+  );
+}
+
+function Suspended({ client }: { client: Jmap }) {
+  const { data, error, reload } = useLoad(() => client.admin<{ suspended: { id: string; email: string; reason: string; at: string; by: string | null; times: number }[] }>('suspended'));
+  return (
+    <section>
+      <h2>Sending suspended</h2>
+      <p className="fine">Sending stops by itself when an account keeps hitting the sending limits or many of its messages bounce. People can switch it back on themselves once; a second time within a week lands here for you. They can still read their mail.</p>
+      {error && <p className="error" role="alert">{error}</p>}
+      {data && (data.suspended.length === 0 ? <p className="empty">No account has sending suspended.</p> : (
+        <table className="admin-table">
+          <thead><tr><th>Account</th><th>Why</th><th>Since</th><th className="n">This week</th><th><span className="sr">Actions</span></th></tr></thead>
+          <tbody>
+            {data.suspended.map((x) => (
+              <tr key={x.id}>
+                <td data-label="Account"><b>{x.email}</b></td>
+                <td data-label="Why">{x.reason}{x.by && <span className="fine"> · by {x.by}</span>}</td>
+                <td data-label="Since">{when(x.at)}</td>
+                <td data-label="This week" className="n">{x.times}×</td>
+                <td className="acts"><Button size="sm" onClick={() => act(() => client.admin(`users/${x.id}`, 'PATCH', { sending: true }), reload)}>Allow sending</Button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ))}
+    </section>
+  );
+}
+
+function Inactive({ client }: { client: Jmap }) {
+  const { data, error, reload } = useLoad(() => client.admin<{ months: number; since: string; accounts: { id: string; email: string; lastSeen: string | null; reminded: number | null; due: boolean; enabled: boolean }[] }>('inactive'));
+  const list = data ? [...data.accounts].sort((a, b) => Number(b.due) - Number(a.due) || (a.reminded ?? 0) - (b.reminded ?? 0)) : [];
+  return (
+    <section>
+      <h2>Inactive accounts</h2>
+      {data && <p className="fine">{data.months
+        ? `A daily check emails accounts with no sign-in for close to ${data.months} months (60, 30 and 7 days before). Accounts past ${data.months} months are listed as due: blocking or deleting them is up to you. Sign-ins are counted since ${when(data.since)}.`
+        : 'The inactive-account check is off on this server (INACTIVE_MONTHS).'}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+      {data && (data.months > 0 || list.length > 0) && (list.length === 0 ? <p className="empty">No inactive accounts.</p> : (
+        <table className="admin-table">
+          <thead><tr><th>Account</th><th>Last sign-in</th><th>Status</th><th><span className="sr">Actions</span></th></tr></thead>
+          <tbody>
+            {list.map((x) => (
+              <tr key={x.id}>
+                <td data-label="Account"><b>{x.email}</b></td>
+                <td data-label="Last sign-in">{x.lastSeen ? when(x.lastSeen) : `Not since ${when(data.since)}`}</td>
+                <td data-label="Status">
+                  {x.due ? <span className="pill pill--warn">Due for blocking</span> : <span className="pill">Reminded ({x.reminded} days before)</span>}
+                  {!x.enabled && <span className="pill">Disabled</span>}
+                </td>
+                <td className="acts">{x.due && x.enabled && <Button size="sm" variant="quiet" onClick={async () => {
+                  if (await confirmIt({ title: `Disable ${x.email}?`, body: 'They can’t sign in or send until you enable the account again (Users tab). Nothing is deleted.', confirm: 'Disable', danger: true }))
+                    await act(() => client.admin(`users/${x.id}`, 'PATCH', { enabled: false }), reload);
+                }}>Disable</Button>}</td>
               </tr>
             ))}
           </tbody>

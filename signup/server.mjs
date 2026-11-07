@@ -9,6 +9,7 @@ import { aliasRoutes } from './aliases.mjs';
 import { sessionRoutes } from './session.mjs';
 import { accountRoutes } from './account.mjs';
 import { adminRoutes } from './admin.mjs';
+import { abuseRoutes } from './abuse.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
@@ -56,6 +57,12 @@ export function configFromEnv(env = process.env) {
     // Admin console (/admin): usernames on DOMAIN allowed to use it. Empty = console off.
     admins: (env.ADMINS || '').split(',').map((s) => s.trim().toLowerCase().replace(/@.*$/, '')).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+    // Abuse and inactive accounts (abuse.mjs): Stalwart posts events to EVENTS_URL; state survives restarts in STATE_FILE.
+    eventsUrl: env.EVENTS_URL || null,
+    stateFile: env.STATE_FILE || null,
+    abuseLimitHits: Number(env.ABUSE_LIMIT_HITS || 10), // throttle refusals per hour before sending is suspended
+    abuseBounces: Number(env.ABUSE_BOUNCES || 20), // hard bounces per hour before sending is suspended
+    inactiveMonths: env.INACTIVE_MONTHS ? Number(env.INACTIVE_MONTHS) : signupEnabled ? 12 : 0, // 0 = off
   };
 }
 
@@ -265,16 +272,18 @@ export function createApp(cfg) {
     setTimeout(run, 60_000).unref(); setInterval(run, 3600e3).unref();
   }
   const account = accountRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
-  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const abuse = abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
+  const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, abuse, ipOf: (req) => ipKey(clientIp(req)) });
   const session = sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
 
-  return createServer(async (req, res) => {
+  return Object.assign(createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://x');
       if (url.pathname.startsWith('/api/aliases') && await aliases(req, res, url)) return;
       if (url.pathname === '/api/account' && await account(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
       if (url.pathname.startsWith('/api/admin/') && await admin(req, res, url)) return;
+      if (/^\/api\/(events|blocked|sending)/.test(url.pathname) && await abuse(req, res, url)) return;
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);
@@ -285,7 +294,7 @@ export function createApp(cfg) {
       console.error('unhandled:', e);
       if (!res.headersSent) fail(res, 500, 'internal', 'Something went wrong on our side. Please try again.');
     }
-  });
+  }), { abuse }); // abuse: its jobs and state, for tests
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
