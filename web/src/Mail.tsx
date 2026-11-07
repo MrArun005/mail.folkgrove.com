@@ -96,6 +96,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
       let b = await client.mailboxes();
       const woke = await client.wakeSnoozed(b);
       if (woke) { b = await client.mailboxes(); say({ text: woke === 1 ? 'A snoozed conversation is back in your Inbox' : `${woke} snoozed conversations are back in your Inbox` }); }
+      const nudged = await client.sweep(b).catch(() => 0); // muted conversations, follow-up reminders
+      if (nudged) say({ text: nudged === 1 ? 'No reply yet to a message you sent: it’s back in your Inbox' : `${nudged} sent messages got no reply: they’re back in your Inbox` });
       setBoxes(b); cache.set(key('boxes'), b);
       const box = query ? null : view ?? b.find((x) => x.role === 'inbox')?.id ?? null;
       if (box === SCHEDULED) { setScheduled(await client.scheduled()); return; }
@@ -271,6 +273,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         await each((t) => (label ? client.addToMailbox(t, target!) : client.move(t, source, target!)));
         say({ text: label ? `Labelled ${name}` : `${many} moved to ${name}` });
       }
+      else if (a === 'mute') { await each((t) => client.mute(t, source, boxes)); say({ text: `${many} muted. New replies will skip your Inbox.` }); }
       else if (a === 'archive') { const to = await client.mailboxFor('archive', 'Archive', boxes); await each((t) => client.move(t, source, to)); say({ text: `${many} archived` }); }
       else if (a === 'trash' && role === 'trash') { await each((t) => client.destroyThread(t, source)); say({ text: 'Deleted forever' }); }
       else if (a === 'trash') { await each((t) => client.move(t, source, box('trash'))); say({ text: 'Moved to Deleted Items' }); }
@@ -346,6 +349,8 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         frame.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden';
         frame.onload = () => { frame.contentWindow?.print(); setTimeout(() => frame.remove(), 1000); };
         document.body.appendChild(frame);
+      } else if (what === 'unmute') {
+        await client.unmute(m.threadId); setThreadVersion((v) => v + 1); say({ text: 'Unmuted' });
       } else if (what === 'filter') {
         setRulePrefill({ from: sender }); setOverlay('settings');
       } else if (what === 'addContact') {
@@ -512,7 +517,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
         j: () => ids.length && openThread(ids[Math.min(i + 1, ids.length - 1)]),
         k: () => ids.length && openThread(ids[Math.max(i - 1, 0)]),
         x: () => threadId && toggleSelect(threadId, false),
-        e: () => act('archive'), '#': () => act('trash'), '!': () => act('junk'), u: () => act('unread'), s: () => act('star'),
+        m: () => act('mute'), e: () => act('archive'), '#': () => act('trash'), '!': () => act('junk'), u: () => act('unread'), s: () => act('star'),
         I: () => act('read'), U: () => act('unread'),
         r: () => last && reply('reply', last), a: () => last && reply('replyAll', last), f: () => last && reply('forward', last),
         c: newMessage, '/': () => searchRef.current?.focus(), '?': () => setOverlay('help'),
@@ -662,7 +667,7 @@ export function Mail({ client, onLogout }: { client: Jmap; onLogout: () => void 
                     <span className="from">{role === 'sent' || role === 'drafts'
                       ? `To ${e.to?.map((a) => displayName(a)).join(', ') || '(no recipients)'}` : displayName(e.from?.[0], client.username)}</span>
                     <time dateTime={e.receivedAt}>{e.keywords.$flagged && <span className="starmark" aria-label="Starred"><Icon name="star" size={13} filled /></span>}{shortDate(e.receivedAt)}</time>
-                    <span className="subject">{e.subject || '(no subject)'}{e.hasAttachment && <Icon name="clip" size={14} />}</span>
+                    <span className="subject">{e.keywords.$nudge && role === 'inbox' && <span className="pill pill--warn">No reply yet</span>}{e.subject || '(no subject)'}{e.hasAttachment && <Icon name="clip" size={14} />}</span>
                     <span className="preview">{e.preview}</span>
                   </button>
                   {role !== 'trash' && !selected.size && (

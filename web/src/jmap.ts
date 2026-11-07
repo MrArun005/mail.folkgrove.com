@@ -43,6 +43,8 @@ export interface Draft {
   inReplyTo?: string[]; references?: string[];
   /** Ask the recipient for a read receipt. */
   receipt?: boolean;
+  /** Bring it back to the Inbox if nobody replies within this many days. */
+  followUpDays?: number;
 }
 /** An Email/query filter: { inMailbox }, { text }, { hasKeyword }, … */
 export type Filter = Record<string, unknown>;
@@ -300,6 +302,61 @@ export class Jmap {
     return Object.keys(update).length;
   }
 
+  // ── Mute and follow-up reminders: keywords, like snooze. No server changes, so any JMAP server works. ──
+
+  /** Mute: archive the conversation and keep archiving anything new in it (see sweep()). */
+  async mute(threadId: string, from: string, boxes: Mailbox[]) {
+    await this.move(threadId, from, await this.mailboxFor('archive', 'Archive', boxes), { $muted: true, $seen: true });
+  }
+  unmute(threadId: string) { return this.patchThread(threadId, null, { 'keywords/$muted': null }); }
+
+  /**
+   * Housekeeping on each refresh. Muted: new Inbox messages in a muted conversation go straight to Archive.
+   * Follow-up: a sent message whose reminder is due and that got no reply comes back to the top of the Inbox,
+   * unread, with $nudge ("No reply yet"); one that got a reply just loses its reminder. Returns how many nudged.
+   * ponytail: two small queries per refresh, each capped (500 muted messages, 200 reminders); a server-side
+   * Sieve/cron job would be the upgrade if accounts ever carry thousands of either.
+   */
+  async sweep(boxes: Mailbox[]): Promise<number> {
+    const inbox = boxes.find((b) => b.role === 'inbox')?.id, archive = boxes.find((b) => b.role === 'archive')?.id;
+    if (!inbox) return 0;
+    const ids = (name: string) => ({ resultOf: name, name: 'Email/query', path: '/ids' });
+    const [, muted, , inInbox, , follow] = await this.call([
+      ['Email/query', { accountId: this.accountId, filter: { hasKeyword: '$muted' }, limit: 500 }, 'mq'],
+      ['Email/get', { accountId: this.accountId, '#ids': ids('mq'), properties: ['threadId'] }, 'mg'],
+      ['Email/query', { accountId: this.accountId, filter: { operator: 'AND', conditions: [{ inMailbox: inbox }, { notKeyword: '$muted' }] }, sort: [{ property: 'receivedAt', isAscending: false }], limit: 200 }, 'iq'],
+      ['Email/get', { accountId: this.accountId, '#ids': ids('iq'), properties: ['threadId'] }, 'ig'],
+      ['Email/query', { accountId: this.accountId, filter: { hasKeyword: '$followup' }, limit: 200 }, 'fq'],
+      ['Email/get', { accountId: this.accountId, '#ids': ids('fq'), properties: ['threadId', 'keywords', 'receivedAt'] }, 'fg'],
+    ]);
+    const update: Record<string, Record<string, unknown>> = {};
+    const mutedThreads = new Set((muted.list as { threadId: string }[]).map((e) => e.threadId));
+    if (archive) for (const e of inInbox.list as { id: string; threadId: string }[])
+      if (mutedThreads.has(e.threadId)) update[e.id] = { [`mailboxIds/${inbox}`]: null, [`mailboxIds/${archive}`]: true, 'keywords/$muted': true, 'keywords/$seen': true };
+
+    const now = Date.now() / 1000;
+    const due = (follow.list as { id: string; threadId: string; keywords: Record<string, boolean>; receivedAt: string }[])
+      .map((e) => ({ ...e, at: +(Object.keys(e.keywords).find((k) => k.startsWith('$followup-'))?.slice(10) ?? 0) }))
+      .filter((e) => e.at <= now);
+    let nudged = 0;
+    if (due.length) {
+      const [, later] = await this.call([
+        ['Thread/get', { accountId: this.accountId, ids: [...new Set(due.map((e) => e.threadId))] }, 't'],
+        ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 't', name: 'Thread/get', path: '/list/*/emailIds' }, properties: ['threadId', 'from', 'receivedAt'] }, 'g'],
+      ]);
+      const mine = new Set((await this.identities()).map((i) => i.email.toLowerCase()));
+      for (const e of due) {
+        const replied = (later.list as { threadId: string; from: Address[] | null; receivedAt: string }[]).some((x) =>
+          x.threadId === e.threadId && x.receivedAt > e.receivedAt && x.from?.some((a) => !mine.has(a.email.toLowerCase())));
+        const clear = { 'keywords/$followup': null, [`keywords/$followup-${e.at}`]: null };
+        update[e.id] = replied ? clear : { ...clear, [`mailboxIds/${inbox}`]: true, 'keywords/$nudge': true, 'keywords/$seen': null };
+        if (!replied) nudged++;
+      }
+    }
+    if (Object.keys(update).length) await this.call([['Email/set', { accountId: this.accountId, update }, 'u']]);
+    return nudged;
+  }
+
   /** Mailbox with a role, created if missing (Stalwart doesn't make an Archive by default). */
   async mailboxFor(role: string, name: string, known: Mailbox[]): Promise<string> {
     const found = known.find((b) => b.role === role);
@@ -529,7 +586,8 @@ export class Jmap {
             ? { HOLDUNTIL: sendAt.toISOString().replace(/\.\d+Z$/, 'Z') } : { HOLDFOR: String(UNDO_SECONDS) } },
           rcptTo: [...d.to, ...d.cc, ...(d.bcc ?? [])].map((a) => ({ email: a.email })),
         } } },
-        onSuccessUpdateEmail: { '#s': { [`mailboxIds/${drafts}`]: null, [`mailboxIds/${sent}`]: true, 'keywords/$draft': null } },
+        onSuccessUpdateEmail: { '#s': { [`mailboxIds/${drafts}`]: null, [`mailboxIds/${sent}`]: true, 'keywords/$draft': null,
+          ...(d.followUpDays && { 'keywords/$followup': true, [`keywords/$followup-${Math.floor((+(sendAt ?? new Date()) + d.followUpDays * 86400e3) / 1000)}`]: true }) } },
       }, 's'],
     ]);
     return { submissionId: sub.created.s.id, emailId: created.created.d.id };

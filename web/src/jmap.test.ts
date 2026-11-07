@@ -270,6 +270,47 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     await c.saveRules(before.script || toSieve({ rules: [], vacation: { enabled: false } }, { trash: 'Deleted Items', junk: 'Junk Mail' }), (await c.getRules()).id);
   }, 20_000);
 
+  it('sweep: muted conversations skip the Inbox; unanswered follow-ups come back, answered ones are cleared', async () => {
+    const c = await login();
+    const boxes = await c.mailboxes();
+    const box = (r: string) => boxes.find((b) => b.role === r)!.id;
+    await c.mailboxFor('archive', 'Archive', boxes);
+    const all = await c.mailboxes(), inbox = box('inbox'), sent = box('sent'), archive = all.find((b) => b.role === 'archive')!.id;
+    const tag = Date.now();
+    const mk = (k: string, over: object) => ({ [k]: { subject: `sweep ${k} ${tag}`, from: [{ email: 'carol@example.org' }], to: [{ email: 'alice@openmail.test' }],
+      bodyValues: { t: { value: 'x' } }, textBody: [{ partId: 't', type: 'text/plain' }], receivedAt: new Date(Date.now() - 86400e3 * 5).toISOString(), ...over } });
+    const past = Math.floor(Date.now() / 1000) - 60;
+    const [made] = await c.call([['Email/set', { accountId: c.accountId, create: {
+      ...mk('m1', { messageId: [`m1-${tag}@x`], mailboxIds: { [inbox]: true } }),
+      ...mk('f1', { messageId: [`f1-${tag}@x`], from: [{ email: 'alice@openmail.test' }], to: [{ email: 'dan@example.org' }], mailboxIds: { [sent]: true }, keywords: { $seen: true, $followup: true, [`$followup-${past}`]: true } }),
+      ...mk('f2', { messageId: [`f2-${tag}@x`], from: [{ email: 'alice@openmail.test' }], to: [{ email: 'erin@example.org' }], mailboxIds: { [sent]: true }, keywords: { $seen: true, $followup: true, [`$followup-${past}`]: true } }),
+    } }, 'c']]);
+    const ids = Object.values(made.created).map((x: any) => x.id);
+    // Erin answered f2 (same thread via References).
+    const [r2] = await c.call([['Email/set', { accountId: c.accountId, create: mk('f2r', { subject: `Re: sweep f2 ${tag}`, from: [{ email: 'erin@example.org' }], references: [`f2-${tag}@x`], inReplyTo: [`f2-${tag}@x`], mailboxIds: { [inbox]: true }, receivedAt: new Date().toISOString() }) }, 'c']]);
+    ids.push(r2.created.f2r.id);
+    const thread = async (id: string) => (await c.call([['Email/get', { accountId: c.accountId, ids: [id], properties: ['threadId'] }, 'g']]))[0].list[0].threadId;
+    await c.mute(await thread(made.created.m1.id), inbox, all);
+    // A new message lands in the muted conversation.
+    const [r1] = await c.call([['Email/set', { accountId: c.accountId, create: mk('m1r', { subject: `Re: sweep m1 ${tag}`, references: [`m1-${tag}@x`], inReplyTo: [`m1-${tag}@x`], mailboxIds: { [inbox]: true }, receivedAt: new Date().toISOString() }) }, 'c']]);
+    ids.push(r1.created.m1r.id);
+    try {
+      expect(await c.sweep(all)).toBeGreaterThanOrEqual(1);
+      const [got] = await c.call([['Email/get', { accountId: c.accountId, ids, properties: ['mailboxIds', 'keywords'] }, 'g']]);
+      const by = Object.fromEntries((got.list as any[]).map((e) => [e.id, e]));
+      const m1r = by[r1.created.m1r.id], f1 = by[made.created.f1.id], f2 = by[made.created.f2.id];
+      expect(m1r.mailboxIds[inbox], 'muted reply left the Inbox').toBeUndefined();
+      expect(m1r.mailboxIds[archive]).toBe(true);
+      expect(f1.mailboxIds[inbox], 'unanswered is back').toBe(true);
+      expect(f1.keywords.$nudge).toBe(true);
+      expect(f1.keywords.$followup).toBeUndefined();
+      expect(f2.mailboxIds[inbox], 'answered stays in Sent').toBeUndefined();
+      expect(f2.keywords.$followup).toBeUndefined();
+    } finally {
+      await c.call([['Email/set', { accountId: c.accountId, destroy: ids }, 'd']]);
+    }
+  }, 30_000);
+
   it('Bcc reaches the recipient without a Bcc header; the Sent copy keeps it', async () => {
     const c = await login();
     const boxes = await c.mailboxes();

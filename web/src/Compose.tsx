@@ -39,6 +39,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
   const [subject, setSubject] = useState(initial.subject);
   const [files, setFiles] = useState<Attachment[]>(initial.attachments);
   const [receipt, setReceipt] = useState(!!initial.receipt);
+  const [followUp, setFollowUp] = useState<number | undefined>(initial.followUpDays);
   const [uploading, setUploading] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState('');
@@ -99,7 +100,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
     return {
       ...initial, id: draftId.current, subject: subject.trim(), html, text: htmlToText(html), attachments, receipt,
       to: parseAddresses(to).list, cc: parseAddresses(showCc ? cc : '').list, bcc: parseAddresses(showBcc ? bcc : '').list,
-      from: from || undefined,
+      from: from || undefined, followUpDays: followUp,
     };
   };
 
@@ -264,6 +265,18 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
                 await api.saveTemplate({ ...d, subject: d.subject || 'Untitled template' });
                 setStatus(`Saved “${d.subject || 'Untitled template'}” as a template`);
               }} />}
+          </Menu>
+          <Menu label="Remind me" up align="right" button={<Button variant="quiet" icon="bell" pressed={!!followUp}
+            label={followUp ? `Reminder if no reply in ${followUp} day${followUp > 1 ? 's' : ''} (click to change)` : 'Remind me if nobody replies'} />}>
+            {(close) => <>
+              <p className="menu-title">If nobody replies, bring it back in</p>
+              {[[1, '1 day'], [3, '3 days'], [7, '1 week']].map(([d, t]) => (
+                <button key={d} className="menu-item" role="menuitem" aria-checked={followUp === d} onClick={() => { close(); setFollowUp(d as number); changed(); }}>
+                  <Icon name={followUp === d ? 'check' : 'bell'} size={16} /><span className="grow">{t}</span>
+                </button>
+              ))}
+              {followUp && <button className="menu-item menu-sep" role="menuitem" onClick={() => { close(); setFollowUp(undefined); changed(); }}><Icon name="close" size={16} />No reminder</button>}
+            </>}
           </Menu>
           {signatures.length > 0 && (
             <Menu label="Signature" up align="right" button={<Button variant="quiet" icon="signature" label="Signature" />}>

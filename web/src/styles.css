@@ -585,3 +585,5 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .alias-list li.off code { opacity: .55; }
 
 .list-more { display: flex; justify-content: center; padding: var(--s3) 0 var(--s6); }
+.pill--warn { background: color-mix(in srgb, var(--star) 20%, transparent); color: color-mix(in srgb, var(--star) 70%, var(--ink)); }
+.subject .pill { margin-right: var(--s2); vertical-align: 1px; }

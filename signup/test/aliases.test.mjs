@@ -32,9 +32,9 @@ test('failed sign-ins are rate limited per network', async () => {
     send: () => {}, fail: (_res, status) => sent.push(status), readJson: null, RateLimiter, ipOf: () => '203.0.113.0/24' });
   const req = { headers: { authorization: 'Basic eDp5' }, method: 'GET' };
   const url = new URL('http://x/api/aliases');
-  for (let i = 0; i < 21; i++) await handle(req, {}, url);
+  await Promise.all(Array.from({ length: 21 }, () => handle(req, {}, url))); // in parallel: must still be caught
   stub.close();
-  assert.deepEqual([sent[0], sent.at(-1)], [401, 429]);
+  assert.deepEqual([sent.filter((x) => x === 401).length, sent.filter((x) => x === 429).length], [20, 1]);
 });
 
 /** Ask the dev MX whether it would take mail for this address (RCPT TO answer code). */

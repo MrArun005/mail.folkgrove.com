@@ -37,7 +37,7 @@ export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     const authz = req.headers.authorization;
     if (!authz || !/^(Bearer|Basic) /.test(authz)) return null;
     const r = await fetch(`${cfg.stalwartUrl}/jmap/session`, { headers: { Authorization: authz }, signal: AbortSignal.timeout(10_000) });
-    if (!r.ok) { badAuth.take(ipOf(req)); return null; }
+    if (!r.ok) return null;
     const session = await r.json();
     const [local, domain] = String(session.username ?? '').toLowerCase().split('@');
     // The account id comes from the caller's own session; the admin record must match it exactly.
@@ -57,10 +57,14 @@ export function aliasRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   return async function handle(req, res, url) {
     const m = url.pathname.match(/^\/api\/aliases(?:\/([a-z0-9.-]{1,64}))?$/);
     if (!m) return false;
-    const blocked = badAuth.peek(ipOf(req));
+    // Every attempt counts before Stalwart is asked (so parallel guesses can't slip past), and is given back
+    // once the sign-in proves good: only failures use up the budget.
+    const ip = ipOf(req), blocked = badAuth.take(ip);
     if (blocked) return fail(res, 429, 'rate_limited', 'Too many failed sign-ins from your network. Try again later.', { retryAfter: blocked }), true;
-    const id = await caller(req);
+    let id;
+    try { id = await caller(req); } catch (e) { badAuth.refund(ip); throw e; } // server trouble isn't a guess
     if (!id) return fail(res, 401, 'unauthorized', 'Please sign in again.'), true;
+    badAuth.refund(ip);
     const key = m[1];
 
     if (!key && req.method === 'GET') return send(res, 200, { ok: true, aliases: await list(id) }), true;

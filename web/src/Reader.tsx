@@ -8,8 +8,8 @@ import { span, type CalEvent } from './calendar';
 import type { PartStat } from './ics';
 import { Menu, TimeChoices } from './Menu';
 
-export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star';
-export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact';
+export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
+export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute';
 
 export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
@@ -39,6 +39,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   if (!messages) return <div className="reader-loading" aria-busy="true" />;
   const last = messages[messages.length - 1];
   const starred = messages.some((m) => m.keywords.$flagged);
+  const muted = messages.some((m) => m.keywords.$muted);
 
 
   return (
@@ -70,6 +71,8 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
             const item = (what: MoreAction, icon: Parameters<typeof Icon>[0]['name'], text: string) =>
               <button className="menu-item" role="menuitem" onClick={() => { close(); onMore(what, last); }}><Icon name={icon} size={16} />{text}</button>;
             return <>
+              {muted ? item('unmute', 'unread', 'Unmute')
+                : <button className="menu-item" role="menuitem" onClick={() => { close(); onAction('mute'); }}><Icon name="mute" size={16} />Mute (new replies skip your Inbox)</button>}
               {item('print', 'print', 'Print')}
               {item('original', 'file', 'Show original')}
               {sender && sender.toLowerCase() !== me.toLowerCase() && <>
@@ -82,6 +85,7 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
         </Menu>
       </div>
 
+      {muted && <p className="banner" role="status"><Icon name="mute" size={16} /><span className="grow">Muted: new replies in this conversation skip your Inbox.</span><Button variant="link" onClick={() => onMore('unmute', last)}>Unmute</Button></p>}
       <h1 className="subject">{last.subject?.replace(/^((re|fwd?|aw|sv)\s*:\s*)+/i, '') || '(no subject)'}</h1>
 
       {messages.map((m) => open.has(m.id)
