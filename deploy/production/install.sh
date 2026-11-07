@@ -306,7 +306,7 @@ umask 077
 umask 022
 
 say "Starting the stack"
-mkdir -p signup-data && chown 1000:1000 signup-data   # the account service runs as uid 1000 (node)
+mkdir -p signup-data && { chown 1000:1000 signup-data 2>/dev/null || warn "Not root: the account service may be unable to write signup-data"; }   # it runs as uid 1000 (node)
 # First run: Stalwart (and its stores) only. The account service mounts .admin-credentials, and Docker would
 # create a missing file as an empty directory; the full stack starts once bootstrap has written it.
 if [ -f .admin-credentials ]; then dc up -d; else dc up -d stalwart; fi
