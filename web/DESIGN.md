@@ -5,14 +5,15 @@ misaligned, every action where the hand expects it. These rules are binding for 
 
 ## Principles
 
-1. **Reading is the product.** Messages, subjects and dialog titles use the reading serif (Newsreader). Everything
-   else is interface and uses Geist (tabular figures, clear at 13px). Addresses, keys and codes use Geist Mono.
-   Never mix faces inside one control. **Headings and the wordmark are always roman: no italics in headings, ever.**
-   Italic is only for emphasis inside running text.
-2. **Letter paper, one ink.** Neutrals are warm paper (OKLCH hue 85, near-zero chroma), never the cool slate greys of
-   generic dashboards, and never pure black or white (except behind HTML email and QR codes: `--white`).
-   Ultramarine ink (`--accent`) means "you can act here" or "this is new". It is never decoration. Gold is reserved
-   for stars; green only for privacy protections; red only for errors and destructive confirmations.
+1. **One typeface, tuned by size.** Google Sans Flex (open source, OFL) for everything: interface, subjects and messages,
+   like Gmail. Its optical-size axis adjusts letter shapes to the size, so small labels stay clear and headings stay
+   crisp. Geist Mono for addresses, keys and codes. A serif (Newsreader) for messages is a per-device setting.
+   **Headings are never italic.** Sizes scale with Settings → Text size (and with browser zoom): every font size is
+   `calc(<px> * var(--scale))`.
+2. **Clean by default, one blue.** Theme "Clean": white panes floating on a cool, very light canvas, Gmail-style blue
+   (`--accent`) for "you can act here" or "this is new". "Paper" (warm off-white) is an option. Dark is neutral
+   charcoal. Compose is a soft tonal button so Send stays the one strong blue button. Gold only for stars, green
+   only for privacy protections, red only for errors and destructive confirmations.
    **Unread is weight plus a dot, never a coloured stripe on the row edge.**
 3. **Every pane has one left edge.** Each pane defines a gutter (`--gutter-*`). Titles, search, rows, toolbars and
    body text all start on it. Icon-only toolbars are *optically* aligned: the icon, not the button, sits on the edge.
@@ -34,9 +35,9 @@ misaligned, every action where the hand expects it. These rules are binding for 
    Exceptions: 2px gaps inside dense lists and 6px icon-to-label gaps (optical, not layout).
 8. **Radius has three steps.** `--r-sm` 6px for inputs and chips, `--r-md` 10px for cards and menus, `--r-lg` 14px
    for sheets and dialogs, plus `--r-full` for pills and circles.
-9. **Type has six sizes** (`--t-xs` 12 meta · `--t-sm` 13 secondary · `--t-md` 14 body UI · `--t-read` 17 reading ·
-   `--t-h2` 24 · `--t-h1` 30 headings), plus 15 for large buttons and pane titles, 20 for dialog titles and 23 for
-   the wordmark. Weights 400/500/600/700.
+9. **Type has six sizes** (`--t-xs` 12 meta · `--t-sm` 13 secondary · `--t-md` 14 body UI · `--t-read` 15 reading
+   (17 in serif) · `--t-h2` 22 · `--t-h1` 28), plus 15 for large buttons and pane titles, 20 for dialog titles and 22 for
+   the wordmark; all × `--scale`. Density (Settings) sets list row padding (`--row-pad`). Weights 400/500/600/700.
 10. **Contrast and reach.** Text meets WCAG AA (4.5:1; 3:1 for large text and icons) in light *and* dark. On
     phones, tap targets are at least 36px (`md`); `sm` controls are for pointer layouts only. HTML email always
     renders on `--white` (senders design for white), in both themes.

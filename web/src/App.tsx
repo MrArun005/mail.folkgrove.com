@@ -4,11 +4,12 @@ import { Jmap, JmapError, SESSION_EXPIRED } from './jmap';
 import { Mail } from './Mail';
 import { DialogHost } from './Dialog';
 import { forgetSession, Session, signedInAccounts, signIn } from './oauth';
-import { applyTheme, savedTheme } from './Settings';
+import { applyDisplayPrefs, applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
 
 applyTheme(savedTheme());
+applyDisplayPrefs();
 
 export default function App() {
   const [client, setClient] = useState<Jmap | null>(null);

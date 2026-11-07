@@ -18,6 +18,22 @@ export function applyTheme(t: Theme) {
 }
 export const savedTheme = (): Theme => { try { return (localStorage.getItem('om:theme') as Theme) || 'system'; } catch { return 'system'; } };
 
+/** Display preferences, per device (like light/dark): each one is a data-* attribute on <html> read by styles.css. */
+export const DISPLAY = {
+  palette: { label: 'Theme', options: [['clean', 'Clean'], ['paper', 'Paper']] },
+  text: { label: 'Text size', options: [['small', 'Small'], ['default', 'Default'], ['large', 'Large'], ['larger', 'Larger']] },
+  density: { label: 'Density', options: [['comfortable', 'Comfortable'], ['default', 'Default'], ['compact', 'Compact']] },
+  reading: { label: 'Message font', options: [['sans', 'Sans'], ['serif', 'Serif']] },
+} as const;
+export type DisplayKey = keyof typeof DISPLAY;
+const DEFAULTS: Record<DisplayKey, string> = { palette: 'clean', text: 'default', density: 'default', reading: 'sans' };
+export const displayPref = (k: DisplayKey) => { try { return localStorage.getItem(`om:${k}`) || DEFAULTS[k]; } catch { return DEFAULTS[k]; } };
+export function setDisplayPref(k: DisplayKey, v: string) {
+  if (v === DEFAULTS[k]) document.documentElement.removeAttribute(`data-${k}`); else document.documentElement.setAttribute(`data-${k}`, v);
+  try { localStorage.setItem(`om:${k}`, v); } catch { /* lasts this session only */ }
+}
+export const applyDisplayPrefs = () => (Object.keys(DISPLAY) as DisplayKey[]).forEach((k) => setDisplayPref(k, displayPref(k)));
+
 const dateOnly = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
 
 export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFoldersChanged, onIdentitiesChanged }: {
@@ -30,6 +46,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
   const [sigReply, setSigReply] = useState<string | undefined>();
   const [vac, setVac] = useState<Vacation | null>(null);
   const [theme, setTheme] = useState<Theme>(savedTheme());
+  const [display, setDisplay] = useState(() => Object.fromEntries((Object.keys(DISPLAY) as DisplayKey[]).map((k) => [k, displayPref(k)])) as Record<DisplayKey, string>);
   const [notify, setNotifyState] = useState(notifyOn());
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -141,7 +158,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
 
         <section>
           <h3>Appearance</h3>
-          <div className="segmented" role="radiogroup" aria-label="Theme">
+          <div className="segmented" role="radiogroup" aria-label="Light or dark">
             {(['system', 'light', 'dark'] as const).map((t) => (
               <label key={t} className={theme === t ? 'on' : ''}>
                 <input type="radio" name="theme" value={t} checked={theme === t} onChange={() => { setTheme(t); applyTheme(t); }} />
@@ -149,6 +166,19 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
               </label>
             ))}
           </div>
+          {(Object.keys(DISPLAY) as DisplayKey[]).map((k) => (
+            <div key={k} className="pref-row">
+              <span className="pref-label">{DISPLAY[k].label}</span>
+              <div className="segmented" role="radiogroup" aria-label={DISPLAY[k].label}>
+                {DISPLAY[k].options.map(([v, t]) => (
+                  <label key={v} className={display[k] === v ? 'on' : ''}>
+                    <input type="radio" name={k} value={v} checked={display[k] === v} onChange={() => { setDisplayPref(k, v); setDisplay({ ...display, [k]: v }); }} />{t}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+          <p className="fine">Saved on this device. Your browser’s zoom (⌘ +/−) works too.</p>
         </section>
 
         {error && <p className="error" role="alert">{error}</p>}
