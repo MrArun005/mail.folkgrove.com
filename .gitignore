@@ -1,0 +1,5 @@
+node_modules/
+dist/
+deploy/.dev-admin.json
+.playwright-mcp/
+.DS_Store

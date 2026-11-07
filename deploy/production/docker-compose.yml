@@ -1,0 +1,65 @@
+# Production stack: Stalwart (mail) + Caddy (HTTPS, web client). Set up with ./install.sh,
+# which writes .env next to this file. Don't run this by hand before install.sh has run once.
+#
+# TLS, in one place:
+# - Caddy owns ports 80/443 and gets the Let's Encrypt certificate for MAIL_HOSTNAME
+#   (plus mta-sts./autoconfig./autodiscover. of the mail domain).
+# - Stalwart needs the same certificate for SMTP (25/587 STARTTLS, 465) and IMAPS (993).
+#   Its own ACME can't work here: its default TLS-ALPN-01 challenge needs port 443, which
+#   Caddy holds. So `install.sh --refresh-certs` copies Caddy's certificate into Stalwart
+#   (/etc/stalwart/tls) and tells Stalwart to reload it. A daily cron job runs it, so
+#   Caddy's renewals reach Stalwart within a day (Let's Encrypt renews ~30 days early).
+#   This is the approach in Stalwart's own Caddy guide.
+#
+# ponytail: IPv4-only container networking. Docker forwards inbound IPv6 through a
+# userland proxy, which hides the sender's real IP from Stalwart (breaking SPF checks
+# on inbound mail), so don't publish an AAAA record for the mail host. See docs/self-hosting.md.
+name: postwren
+
+services:
+  stalwart:
+    image: stalwartlabs/stalwart:v1.0.3
+    init: true
+    restart: unless-stopped
+    environment:
+      # The URL people type in the browser; Stalwart's admin sign-in checks it.
+      STALWART_PUBLIC_URL: ${PUBLIC_URL}
+      # Smarthost password (only used if a relay is configured). Stalwart reads it from
+      # the environment so it is never stored in the database.
+      RELAY_PASSWORD: ${RELAY_PASSWORD:-}
+    ports:
+      - "${SMTP_PORT:-25}:25"               # inbound mail (STARTTLS)
+      - "${SUBMISSIONS_PORT:-465}:465"      # mail apps sending, implicit TLS
+      - "${SUBMISSION_PORT:-587}:587"       # mail apps sending, STARTTLS (listener added by install.sh)
+      - "${IMAPS_PORT:-993}:993"            # mail apps reading
+      # Plain-HTTP admin/API port, for install.sh and an SSH tunnel only. Never expose it:
+      # it trusts X-Forwarded-For (set so rate limits see real client IPs behind Caddy).
+      - "127.0.0.1:${ADMIN_PORT:-8080}:8080"
+    volumes:
+      - stalwart-etc:/etc/stalwart          # config.json + copied TLS certificate
+      - stalwart-data:/var/lib/stalwart     # all mail, accounts, settings, DKIM keys
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on: [stalwart]
+    environment:
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME}
+      MAIL_DOMAIN: ${MAIL_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+      CADDY_CERT_ISSUER: ${CADDY_CERT_ISSUER:-acme}
+    ports:
+      - "${HTTP_PORT:-80}:80"               # ACME HTTP-01 + redirect to HTTPS
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"        # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${WEB_DIST:-../../web/dist}:/srv:ro
+      - caddy-data:/data                    # certificates + ACME account
+      - caddy-config:/config
+
+volumes:
+  stalwart-etc:
+  stalwart-data:
+  caddy-data:
+  caddy-config:

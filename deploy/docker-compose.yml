@@ -1,0 +1,20 @@
+# Local dev mail server. Not for production.
+# First run: node deploy/dev-setup.mjs  (bootstraps, creates a test user, seeds mail)
+services:
+  stalwart:
+    image: stalwartlabs/stalwart:v1.0.3
+    container_name: openmail-stalwart
+    environment:
+      # ponytail: fixed dev-only admin credential; never use this in production
+      STALWART_RECOVERY_ADMIN: admin:devadmin
+    ports:
+      - "8080:8080"   # HTTP: JMAP + admin UI (bootstrap/dev)
+      - "1465:465"    # SMTP submission (TLS)
+      - "2525:25"     # SMTP inbound
+      - "1993:993"    # IMAPS, for testing with Thunderbird
+    volumes:
+      - stalwart-etc:/etc/stalwart
+      - stalwart-data:/var/lib/stalwart
+volumes:
+  stalwart-etc:
+  stalwart-data:

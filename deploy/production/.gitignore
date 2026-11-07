@@ -1,0 +1,9 @@
+.env
+.admin-credentials
+dns-records.tsv
+backups/
+backup-recipient.txt
+.env.before-restore
+.admin-credentials.before-restore
+.backup.*/
+.restore.*/

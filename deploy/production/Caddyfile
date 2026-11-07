@@ -1,0 +1,35 @@
+# Caddy: HTTPS for the mail host, serves the web client and proxies everything else to Stalwart.
+# Values come from .env (see docker-compose.yml).
+{
+	email {$ACME_EMAIL}
+	# "acme" = Let's Encrypt in production; install.sh --local-test sets "internal" (Caddy's own CA).
+	cert_issuer {$CADDY_CERT_ISSUER}
+}
+
+{$MAIL_HOSTNAME} {
+	encode zstd gzip
+
+	# The web client is a single page at "/" with hashed files under /assets/.
+	handle / {
+		root * /srv
+		rewrite * /index.html
+		header Cache-Control "no-cache"
+		file_server
+	}
+	handle /assets/* {
+		root * /srv
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# Everything else is Stalwart: /jmap, /.well-known/*, /admin, /api, /auth, /dav, autoconfig, ...
+	handle {
+		reverse_proxy stalwart:8080
+	}
+}
+
+# Discovery hosts from Stalwart's suggested DNS zone (all CNAMEs to the mail host).
+# Caddy keeps retrying certificates for names whose DNS isn't set up yet; that's harmless.
+mta-sts.{$MAIL_DOMAIN}, autoconfig.{$MAIL_DOMAIN}, autodiscover.{$MAIL_DOMAIN}, ua-auto-config.{$MAIL_DOMAIN} {
+	reverse_proxy stalwart:8080
+}

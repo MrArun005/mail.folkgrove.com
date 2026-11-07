@@ -1,0 +1,70 @@
+// @vitest-environment happy-dom
+import { expect, it } from 'vitest';
+import type { EmailFull } from './jmap';
+import { cleanHtml, draftFor, htmlToText, parseAddresses, textToHtml } from './mailutil';
+
+it('parses address lists and flags junk', () => {
+  expect(parseAddresses('Ann Lee <ann@x.org>, bob@y.org; "Cee" <c@z.io>, nope, ')).toEqual({
+    list: [{ name: 'Ann Lee', email: 'ann@x.org' }, { name: null, email: 'bob@y.org' }, { name: 'Cee', email: 'c@z.io' }],
+    invalid: ['nope'],
+  });
+});
+
+it('cleanHtml keeps formatting, drops anything active or tracking', () => {
+  const dirty = `<p style="color:red" onclick="x()">Hi <b>there</b> <a href="javascript:alert(1)">bad</a> <a href="https://ok.org" target="_top">ok</a></p>
+    <script>alert(1)</script><img src="https://t.example/pixel.gif" onerror="x()"><iframe src="https://evil"></iframe>
+    <table><tr><td>cell</td></tr></table><style>body{display:none}</style>`;
+  const out = cleanHtml(dirty);
+  expect(out).toContain('<p>Hi <b>there</b> <a>bad</a> <a href="https://ok.org" rel="noopener noreferrer">ok</a></p>');
+  expect(out).toContain('cell'); // unknown tags unwrapped, text kept
+  for (const bad of ['script', 'onclick', 'onerror', 'javascript:', 'img', 'iframe', 'style', 'target']) expect(out).not.toContain(bad);
+});
+
+it('htmlToText makes a readable plain-text alternative', () => {
+  expect(htmlToText('<p>Hello <b>Ann</b></p><ul><li>one</li><li>two</li></ul><blockquote><p>old line</p></blockquote>'))
+    .toBe('Hello Ann\n\n- one\n\n- two\n\n> old line');
+  expect(htmlToText(textToHtml('a < b\nnext'))).toBe('a < b\nnext');
+});
+
+const mail = (over: Partial<EmailFull>): EmailFull => ({
+  id: '1', threadId: 't', subject: 'Lunch', preview: '', receivedAt: '2026-11-07T12:00:00Z', keywords: {}, hasAttachment: false,
+  from: [{ name: 'Carol', email: 'carol@x.org' }], to: [{ name: null, email: 'me@o.test' }, { name: null, email: 'dan@x.org' }],
+  cc: [{ name: null, email: 'eve@x.org' }], replyTo: null, messageId: ['m1@x'], inReplyTo: null, references: ['m0@x'],
+  mailboxIds: {}, attachments: [], unsubscribe: null, html: null, text: 'hi <there>', ...over,
+});
+
+it('reply goes to the sender, threads correctly and quotes (escaped)', () => {
+  const d = draftFor('reply', mail({}), 'me@o.test');
+  expect(d.to).toEqual([{ name: 'Carol', email: 'carol@x.org' }]);
+  expect(d.cc).toEqual([]);
+  expect(d.subject).toBe('Re: Lunch');
+  expect(d.inReplyTo).toEqual(['m1@x']);
+  expect(d.references).toEqual(['m0@x', 'm1@x']);
+  expect(d.html).toContain('<blockquote><div>hi &#60;there&#62;</div></blockquote>');
+});
+
+it('reply all adds everyone except me, without duplicates', () => {
+  const d = draftFor('replyAll', mail({ cc: [{ name: null, email: 'eve@x.org' }, { name: null, email: 'CAROL@x.org' }] }), 'ME@o.test');
+  expect(d.to.map((a) => a.email)).toEqual(['carol@x.org']);
+  expect(d.cc.map((a) => a.email)).toEqual(['dan@x.org', 'eve@x.org']);
+});
+
+it('replying to my own sent message goes to its recipients; Re: is not doubled', () => {
+  const d = draftFor('reply', mail({ from: [{ name: null, email: 'me@o.test' }], subject: 'RE: Lunch' }), 'me@o.test');
+  expect(d.to.map((a) => a.email)).toEqual(['dan@x.org']);
+  expect(d.subject).toBe('RE: Lunch');
+});
+
+it('replying to a note to self goes back to me', () => {
+  const d = draftFor('reply', mail({ from: [{ name: null, email: 'me@o.test' }], to: [{ name: null, email: 'me@o.test' }], cc: [] }), 'me@o.test');
+  expect(d.to).toEqual([{ name: null, email: 'me@o.test' }]);
+});
+
+it('forward has no recipients, carries the original and its files', () => {
+  const file = { blobId: 'b', name: 'a.pdf', type: 'application/pdf', size: 3, disposition: 'attachment' };
+  const d = draftFor('forward', mail({ attachments: [file, { ...file, blobId: 'i', disposition: 'inline', cid: 'x' }] }), 'me@o.test');
+  expect(d.to).toEqual([]);
+  expect(d.subject).toBe('Fwd: Lunch');
+  expect(d.html).toContain('From: Carol &#60;carol@x.org&#62;');
+  expect(d.attachments.map((a) => a.blobId)).toEqual(['b']);
+});
