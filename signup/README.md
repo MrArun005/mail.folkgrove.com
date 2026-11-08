@@ -48,6 +48,9 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `ABUSE_LIMIT_HITS` | `10` | Messages a sending limit may refuse for one account in an hour; one more suspends its sending. |
 | `ABUSE_BOUNCES` | `20` | Hard bounces of one account's mail in an hour; one more suspends its sending. |
 | `INACTIVE_MONTHS` | `12` with sign-up on, else off | Months without sign-in before an account is due for blocking (reminders 60, 30 and 7 days before). `0` = off. Needs `EVENTS_URL`, and `SYSTEM_SMTP_USER` to send reminders. |
+| `ARF_MAILBOX` | `abuse` | The team mailbox (a Stalwart group, which `install.sh` creates) read every 5 minutes for [spam complaints](#spam-complaints-arf-reports); the service also keeps the `ADMINS` in it. `off` = not read. Runs with `EVENTS_URL`. |
+| `ARF_LIMIT`, `ARF_WINDOW_HOURS` | `5`, `24` | Genuine complaints about one account within the window that suspend its sending (only an admin can lift it). |
+| `ARF_REPORTERS` | | Comma-separated feedback-loop senders to trust: domains (the report must still pass DKIM/DMARC for them) and IP addresses (enough by themselves). Empty: no report counts automatically (they stay in abuse@ for an admin). Set it once you've joined the loops, e.g. `yahoo.com,microsoft.com`. |
 
 Docker:
 
@@ -158,7 +161,7 @@ The web app's `/admin` screen calls these. Each request must carry the admin's o
 | `GET overview` | Counts: user accounts, messages waiting in the queue, blocked IPs, accounts on new-account limits, messages held as spam (`null` when holding is off) |
 | `GET users?q=` | Up to 200 user accounts by name; `q` matches whole words (Stalwart's text search). Each: email, created, storage used and limit, live alias count, enabled, server admin, on new-account limits (`x:Account`) |
 | `POST users` `{name, quotaBytes?, description?}` | Creates `name@DOMAIN` with a generated password, returned once. `quotaBytes` 0 = no limit; omitted = `QUOTA_BYTES` |
-| `PATCH users/:id` `{enabled?, sending?, quotaBytes?, resetPassword?}` | `sending: false` pauses sending only (permissions `emailSend` and `jmapEmailSubmissionCreate` taken away: SMTP sign-in and web-app sending are refused, reading mail works); `true` lets them send again. Disable/enable sign-in (removes the `authenticate` permission: sign-in, sending and existing sessions stop; mail still arrives), set the storage limit (`null` = none), or replace the main password with a generated one (returned once; signs them out everywhere; app passwords stay) |
+| `PATCH users/:id` `{enabled?, sending?, quotaBytes?, resetPassword?}` | `sending: false` pauses sending only (permissions `emailSend` and `jmapEmailSubmissionCreate` taken away: SMTP sign-in and web-app sending are refused, reading mail works); `true` lets them send again. Disable/enable sign-in (removes the `authenticate` permission: sign-in, sending and existing sessions stop; mail still arrives, except that disabling an account `GET inactive` lists as due also [refuses its mail](#mail-to-blocked-inactive-accounts); enabling accepts it again), set the storage limit (`null` = none), or replace the main password with a generated one (returned once; signs them out everywhere; app passwords stay) |
 | `DELETE users/:id` | Deletes the account and its mail. Its username and aliases are retired (`RETIRED_FILE`), never given out again |
 | `GET blocked`, `DELETE blocked/:id` | IPs Stalwart blocked (reason, when, until) and unblock (`x:BlockedIp`) |
 | `GET new-accounts`, `POST new-accounts {address}`, `DELETE new-accounts/:id` | The stricter new-account sending tier: `x:MemoryLookupKey` entries in namespace `new-accounts`, key = full address |
@@ -168,7 +171,7 @@ The web app's `/admin` screen calls these. Each request must carry the admin's o
 | `GET domains` | Users' own domains: owner (null once that account was deleted), status, address count, added, last checked |
 | `PATCH users/:id` `{sending}` | `false` suspends sending (reason "An administrator suspended sending."; the person can't lift it), `true` allows it again. Each user in `GET users` has `sending` |
 | `GET suspended` | Accounts with sending suspended: email, reason, since, by (admin name, or null = automatic), suspensions in the last 7 days |
-| `GET inactive` | Accounts the daily job reminded or found due (`due: true`), with last sign-in (null = none since tracking began, `since`) and whether sign-in is on. Nothing is blocked or deleted automatically: disable or delete them with the requests above |
+| `GET inactive` | Accounts the daily job reminded or found due (`due: true`), with last sign-in (null = none since tracking began, `since`), whether sign-in is on, and `refusingMail`. Nothing is blocked or deleted automatically: disable (which then refuses their mail) or delete them with the requests above |
 
 Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) and the caller's own account can't be changed or deleted here; names in `ADMINS` are also reserved at sign-up. Delivered or bounced mail leaves the queue; Stalwart's delivery history (`x:Trace`) needs its Enterprise edition, so it isn't shown.
 
@@ -263,7 +266,29 @@ Docs: [quotas](https://stalw.art/docs/auth/authorization/quotas/), [MtaInboundTh
   - `queue.authenticated-message-queued` `{from, to, queueId}` and `delivery.dsn-perm-fail` `{queueId, from, to, details}`: mail a signed-in account sent, and its hard bounces.
   Refusals count only for the account signed in to that SMTP session (or JMAP), and bounces only for mail an account queued itself, so mail forged with someone's address on port 25 can't get them suspended.
 - **Suspending sending, not reading**: `permissions: {"@type": "Merge", disabledPermissions: {emailSend, jmapEmailSubmissionCreate, calendarSchedulingSend}}`. `emailSend` alone stops SMTP submission (`550 5.7.1`) but **not** JMAP `EmailSubmission/set` (that needs `jmapEmailSubmissionCreate`, answered `forbidden`). Reading, flagging and IMAP keep working. Other custom permissions (e.g. a disabled sign-in) are kept.
-- **Not used**: `disabledPermissions.emailReceive` did not refuse mail at `RCPT TO`, so "refuse new mail to a blocked inactive account" isn't automated.
+- **Not used**: `disabledPermissions.emailReceive` did not refuse mail at `RCPT TO`; a RCPT-stage Sieve script does (below).
 - **Banned IPs**: with `clientIpSource: xForwardedFor` (production behind Caddy), a banned client address still got a normal answer from `/api/auth` and `/jmap` when the proxy's connection wasn't banned; Stalwart's bans act on direct connections (IMAP, SMTP). A failed sign-in from a banned address gets `{"type": "failure"}`, the same as a wrong password, so the web app asks `/api/blocked` after any failure and then says the block is temporary. (A ban of the connecting address itself wasn't tried: on the dev server that would lock out everyone.)
 
 Thresholds are per hour, fixed windows, in memory (`ABUSE_LIMIT_HITS`, `ABUSE_BOUNCES`). Suspension history (last 20 per account) and last sign-ins are in `STATE_FILE` and are dropped by the daily job once the account is deleted. The daily job also sends the inactive-account reminders (system mailer) and lists due accounts in the admin console; it never blocks or deletes. Sign-ins only count from the day tracking began (`since` in the file), so nobody is due before 12 months after that. Every suspension and unblock is logged with its reason.
+
+### Mail to blocked inactive accounts
+
+When an admin disables an account the daily job lists as due (the console's "Disable" on the inactive list), the service also adds every address of the account (main address, aliases, and each `name+*@domain` as a glob) to the `x:MemoryLookupKey` namespace `inactive-accounts`. `install.sh` (and `dev-setup.mjs`) point Stalwart's RCPT stage at a system Sieve script for those recipients:
+
+- `x:SieveSystemScript` `{name: "openmail-inactive", isActive: true, contents: 'require "reject"; reject "550 5.2.1 This mailbox is inactive and no longer receives mail.";'}`. A reason that starts with a code is sent as is; without one Stalwart answers `503 5.5.3`.
+- `x:MtaStageRcpt.script` = `{match: {0: {if: "key_exists('inactive-accounts', rcpt)", then: "'openmail-inactive'"}}, else: "false"}` (`rcpt` is lowercased; `+tag` addresses need the glob key).
+- Lookup keys are read into memory: after a change the service runs `x:Action` `ReloadLookupStores` (`ReloadSettings` doesn't pick them up; verified on 1.0.3).
+
+Senders from outside get `550 5.2.1` at `RCPT TO`, as do mail apps on this server. Enabling the account (or deleting it) removes the keys. Known limit: a message sent from the web app (JMAP) to a refused address is dropped without a bounce on 1.0.3.
+
+### Spam complaints (ARF reports)
+
+`arf.mjs`. Feedback loops (Yahoo CFL, Microsoft JMRP, …) send an ARF report (RFC 5965, `multipart/report; report-type=feedback-report`) when someone marks our mail as spam; register `abuse@DOMAIN` with them. `install.sh` makes `abuse@` a team mailbox (Stalwart group, alias `postmaster@`, first mailbox as member); the service adds the `ADMINS` to it, so they read it in the web app. Every 5 minutes it reads new messages there as admin over JMAP (`Email/query` on the group's account id, download the raw message) and flags each one it has looked at with the keyword `$openmail-arf-seen`.
+
+A report counts against an account only when:
+
+1. **the reporter is trusted**: Stalwart's own lines (the topmost `Received`, and the first `Authentication-Results` below it naming the same host) show DMARC pass for the report's `From` domain or an aligned DKIM pass; with `ARF_REPORTERS`, that domain must be listed, or the connecting IP is. Mail one of our users submitted has no such `Received` line but carries our DKIM signature above any it wrote, so it never counts.
+2. **the reported message left this server**: it carries our DKIM signature (`d=DOMAIN`) or a `Message-ID` in our domain;
+3. **the sender is ours**: `Original-Mail-From`, else the original's `Return-Path`, else its `From`, on `DOMAIN` (aliases count for their account).
+
+Each reported message counts once. `ARF_LIMIT` complaints within `ARF_WINDOW_HOURS` suspend sending with `by: "spam complaints"`, so only an admin can lift it (`PATCH users/:id {sending: true}`, which also clears the count). Complaints are kept in `STATE_FILE`. Known limits: one level of MIME (base64 decoded, quoted-printable not); accounts on users' own domains aren't matched; a listed IP is trusted for any report, so list only the loops' own addresses.

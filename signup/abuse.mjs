@@ -55,7 +55,7 @@ export const parseEvents = (text) => JSON.parse(text.replace(/"(spanId|queueId)"
 function loadState(file) {
   const s = file && existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
   s.since ??= Date.now(); // when tracking started: nobody counts as inactive from before this
-  s.seen ??= {}; s.suspensions ??= {}; s.inactive ??= {};
+  s.seen ??= {}; s.suspensions ??= {}; s.inactive ??= {}; s.complaints ??= {};
   let timer = null;
   const write = () => { timer = null; writeFileSync(file + '.tmp', JSON.stringify(s)); renameSync(file + '.tmp', file); };
   Object.defineProperty(s, 'save', { value: () => { if (file && !timer) (timer = setTimeout(write, 2000)).unref(); } });
@@ -126,6 +126,7 @@ export function abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, i
     const key = lower(a.emailAddress), cur = state.suspensions[key]?.at(-1);
     if (cur && !cur.liftedAt) Object.assign(cur, { liftedAt: Date.now(), liftedBy: by });
     for (const l of [hits, bounces]) l.hits.delete(key); // a fresh start, not an instant re-suspension
+    delete state.complaints[key];
     state.save();
     console.log(`abuse: sending allowed again for ${key} (${by === 'self' ? 'by the account itself' : `by ${by}`})`);
   }
@@ -139,6 +140,49 @@ export function abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, i
       if (!isProtected(a)) await suspendAccount(a, reason);
     } catch (e) { console.error(`abuse: suspending ${address} failed:`, e.message, e.detail ? JSON.stringify(e.detail) : ''); }
     finally { busy.delete(address); }
+  }
+
+  // ── Spam complaints (arf.mjs finds them in the abuse@ mailbox and checks they're genuine) ──
+  /** One complaint about mail the address sent. Too many in the window suspend sending until an admin lifts it. */
+  async function complaint(address, messageId, now = Date.now()) {
+    const a = await findAccount(lower(address));
+    if (!a) return 'unknown';
+    const key = lower(a.emailAddress), hours = cfg.arfWindowHours ?? 24, limit = cfg.arfLimit ?? 5;
+    const list = (state.complaints[key] ?? []).filter((c) => now - c.at < hours * 3600e3);
+    if (messageId && list.some((c) => c.mid === messageId)) return 'duplicate'; // one message, one complaint
+    list.push({ at: now, ...(messageId && { mid: messageId }) });
+    state.complaints[key] = list.slice(-100);
+    state.save();
+    if (list.length < limit || isProtected(a)) return 'counted';
+    // "spam complaints" as the one who did it: the person can't lift it themselves, only an admin (selfUnblock).
+    await suspendAccount(a, `${list.length} people reported mail from this account as spam within ${hours} hours.`, 'spam complaints');
+    return 'suspended';
+  }
+
+  // ── Mail to a blocked inactive account is refused ──
+  // install.sh points Stalwart's RCPT stage at a system Sieve script that answers "550 5.2.1 This mailbox is
+  // inactive" for any recipient in this lookup list: each address of the account, and its +tag form (a glob).
+  const INACTIVE = 'inactive-accounts';
+  async function refusedKeys() {
+    const { ids } = await jmap([['x:MemoryLookupKey/query', { filter: { namespace: INACTIVE } }, 'q']]);
+    return ids.length ? (await jmap([['x:MemoryLookupKey/get', { ids }, 'g']])).list.filter((k) => k.namespace === INACTIVE) : [];
+  }
+  /** Refuse (on) or accept again (off) mail to every address of an account (fetched with PROPS). */
+  async function refuseMail(a, on) {
+    const names = new Map((await jmap([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).list.map((d) => [d.id, d.name]));
+    const addrs = [a.emailAddress, ...Object.values(a.aliases ?? {}).filter((x) => names.has(x.domainId)).map((x) => `${x.name}@${names.get(x.domainId)}`)].map(lower);
+    const want = new Set(addrs.flatMap((x) => [x, x.replace('@', '+*@')]));
+    const have = await refusedKeys();
+    const args = on
+      ? { create: Object.fromEntries([...want].filter((k) => !have.some((h) => h.key === k)).map((k, i) => [`k${i}`, { namespace: INACTIVE, key: k, isGlobPattern: k.includes('*') }])) }
+      : { destroy: have.filter((h) => want.has(h.key)).map((h) => h.id) };
+    if (!Object.keys(args.create ?? {}).length && !args.destroy?.length) return;
+    const r = await jmap([['x:MemoryLookupKey/set', args, 's']]);
+    const bad = r.notCreated ?? r.notDestroyed;
+    if (bad && Object.keys(bad).length) throw Object.assign(new Error('lookup keys refused'), { detail: Object.values(bad)[0] });
+    // Stalwart reads lookup keys into memory: without this the change only shows after a restart (verified on 1.0.3).
+    await jmap([['x:Action/set', { create: { a: { '@type': 'ReloadLookupStores' } } }, 'a']]);
+    console.log(`inactive: mail to ${lower(a.emailAddress)} is ${on ? 'refused' : 'accepted again'}`);
   }
 
   // ── Events from Stalwart ──
@@ -188,7 +232,7 @@ export function abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, i
     const accounts = await getAccounts(ids), out = [];
     // Deleted accounts leave nothing behind here (a day later at most). Only from a complete list.
     const live = new Set(accounts.map((a) => lower(a.emailAddress)));
-    if (ids.length && ids.length === total && accounts.length === ids.length) for (const map of [state.seen, state.suspensions, state.inactive]) for (const k of Object.keys(map)) if (!live.has(k)) delete map[k];
+    if (ids.length && ids.length === total && accounts.length === ids.length) for (const map of [state.seen, state.suspensions, state.inactive, state.complaints]) for (const k of Object.keys(map)) if (!live.has(k)) delete map[k];
     for (const a of months ? accounts : []) {
       const key = lower(a.emailAddress);
       if (isProtected(a)) continue;
@@ -297,5 +341,5 @@ export function abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, i
     await liftAccount(a, 'self');
     return send(res, 200, { ok: true, suspended: false }), true;
   };
-  return Object.assign(handle, { state, suspendAccount, liftAccount, inactiveJob, onEvent, ensureHook, hookKey, sendingOff });
+  return Object.assign(handle, { state, suspendAccount, liftAccount, inactiveJob, onEvent, ensureHook, hookKey, sendingOff, complaint, refuseMail, refusedKeys });
 }

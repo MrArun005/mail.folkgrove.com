@@ -55,6 +55,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   const admins = new Set(cfg.admins ?? []);
   // Admin rights go by name, so admin names can never be signed up for, and the console can't touch admin accounts.
   cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins];
+  const reloadLookups = () => jmap([['x:Action/set', { create: { r: { '@type': 'ReloadLookupStores' } } }, 'r']]);
   const isAdmin = (a) => a.roles?.['@type'] !== 'User' || admins.has(String(a.name).toLowerCase());
   const caller = callerOf({ cfg, jmap, getDomainId });
   const badAuth = new RateLimiter(20, 15 * 60e3); // failed sign-ins per network, as for /api/aliases
@@ -145,6 +146,11 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       }
       if (!Object.keys(patch).length) return typeof body.sending === 'boolean' && abuse ? { user: userView(a) } : [400, 'nothing', 'Nothing to change.'];
       await set('x:Account', { update: { [id]: patch } });
+      // Blocking an account that is due under the inactive-account policy also refuses its mail (abuse.mjs);
+      // enabling any account accepts its mail again.
+      const email = String(a.emailAddress).toLowerCase();
+      if (body.enabled === false && abuse?.state.inactive[email]?.dueAt) await abuse.refuseMail(a, true);
+      if (body.enabled === true && abuse) await abuse.refuseMail(a, false);
       return { user: userView(await account(id)), ...(secret && { password: secret }) };
     },
 
@@ -156,6 +162,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       if (isHeld(a.permissions)) return [409, 'on_hold', 'This account is on legal hold. Release the hold first (Retention).'];
       await retireNames({ cfg, jmap }, id, a.name); // no recycling: the name and its aliases stay taken
       await set('x:Account', { destroy: [id] });
+      await abuse?.refuseMail(a, false); // the address no longer exists anyway; don't keep its keys
       forgetFiles(cfg, id); // its shared files went with it; so do their links
       const stale = (await newTier()).filter((k) => k.key.toLowerCase() === String(a.emailAddress).toLowerCase()).map((k) => k.id);
       if (stale.length) await set('x:MemoryLookupKey', { destroy: stale });
@@ -228,9 +235,10 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       const st = abuse?.state ?? { inactive: {}, seen: {}, since: Date.now() };
       const recs = Object.entries(st.inactive);
       const live = new Map((await get('x:Account', [...new Set(recs.map(([, r]) => r.id))], USER_PROPS)).map((a) => [a.id, a]));
+      const refused = new Set(abuse ? (await abuse.refusedKeys()).map((k) => k.key) : []);
       return { months: cfg.inactiveMonths ?? 0, since: new Date(st.since).toISOString(), accounts: recs.filter(([, r]) => live.has(r.id)).map(([email, r]) => ({
         id: r.id, email, lastSeen: st.seen[email] ? new Date(st.seen[email]).toISOString() : null, reminded: r.reminded ?? null,
-        due: !!r.dueAt, enabled: userView(live.get(r.id)).enabled })) };
+        due: !!r.dueAt, enabled: userView(live.get(r.id)).enabled, refusingMail: refused.has(email) })) };
     },
 
     'GET blocked': async () => {
@@ -249,12 +257,14 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       const tier = await newTier();
       if (tier.some((k) => k.key.toLowerCase() === full)) return { address: full };
       await set('x:MemoryLookupKey', { create: { k: { namespace: NEW, key: full, isGlobPattern: false } } });
+      await reloadLookups(); // Stalwart only sees lookup-key changes after this
       return { address: full };
     },
     'DELETE new-accounts/:id': async (_req, _url, id) => {
       const [k] = await get('x:MemoryLookupKey', [id]);
       if (!k || k.namespace !== NEW) return [404, 'not_found', 'That entry no longer exists.']; // only ever this namespace
       await set('x:MemoryLookupKey', { destroy: [id] });
+      await reloadLookups();
       return {};
     },
 

@@ -10,6 +10,7 @@ import { abuseRoutes, selfUnblock, inactiveStep, signed, parseEvents, SEND } fro
 import { RateLimiter, Invites } from '../lib.mjs';
 import { createApp } from '../server.mjs';
 import { sendMail } from '../mailer.mjs';
+import { connect } from 'node:net';
 
 const DAY = 86400e3, now = Date.parse('2026-11-08T12:00:00Z');
 
@@ -182,4 +183,77 @@ test('live: throttle refusals → suspended → self-unblock once → admin need
   const ia = (await call('/api/admin/inactive', 'GET', undefined, asBoss)).accounts.find((x) => x.email === email);
   assert.deepEqual([ia.due, ia.enabled, ia.id], [true, true, id]);
   assert.ok(!app.abuse.state.inactive[`${boss}@openmail.test`]); // admins are never listed
+});
+
+/** The dev MX's whole answer to RCPT TO for this address, e.g. "550 5.2.1 This mailbox is inactive ...". */
+function rcptReply(addr) {
+  return new Promise((resolve, reject) => {
+    const s = connect(Number(process.env.SMTP_PORT || 2525), 'localhost'); let buf = '', step = 0;
+    const cmds = ['EHLO example.org', 'MAIL FROM:<t@example.org>', `RCPT TO:<${addr}>`, 'QUIT'];
+    s.on('data', (d) => {
+      buf += d;
+      const lines = buf.split('\r\n'); buf = lines.pop();
+      for (const l of lines) if (/^\d{3} /.test(l)) { if (step === 3) { resolve(l); s.end(); return; } s.write(cmds[step++] + '\r\n'); }
+    });
+    s.on('error', reject);
+  });
+}
+
+test('live: blocking a due inactive account refuses its mail at RCPT; enabling it accepts mail again', { skip, timeout: 60_000 }, async (t) => {
+  const text = readFileSync(ADMIN_FILE, 'utf8').trim();
+  const admin = text.startsWith('{') ? JSON.parse(text) : { user: text.slice(0, text.indexOf(':')), pass: text.slice(text.indexOf(':') + 1) };
+  const auth = 'Basic ' + Buffer.from(`${admin.user}:${admin.pass}`).toString('base64');
+  const jmap = async (methodCalls) => (await (await fetch(`${STALWART}/jmap/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: auth },
+    body: JSON.stringify({ using: ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap'], methodCalls }) })).json()).methodResponses[0][1];
+  const reload = () => jmap([['x:Action/set', { create: { a: { '@type': 'ReloadSettings' } } }, 'a']]);
+  // What install.sh (and dev-setup) configure; set up here if this server doesn't have it yet, and put back after.
+  const rcpt = (await jmap([['x:MtaStageRcpt/get', { ids: ['singleton'], properties: ['script'] }, 'r']])).list[0].script;
+  const script = (await jmap([['x:SieveSystemScript/query', { filter: { name: 'openmail-inactive' } }, 'q']])).ids[0];
+  const madeScript = !script && (await jmap([['x:SieveSystemScript/set', { create: { s: { name: 'openmail-inactive', isActive: true,
+    contents: 'require "reject";\nreject "550 5.2.1 This mailbox is inactive and no longer receives mail.";\n' } } }, 's']])).created.s.id;
+  const setRcpt = !JSON.stringify(rcpt).includes('inactive-accounts');
+  if (setRcpt) await jmap([['x:MtaStageRcpt/set', { update: { singleton: { script: { match: { 0: { if: "key_exists('inactive-accounts', rcpt)", then: "'openmail-inactive'" } }, else: 'false' } } } }, 'r']]);
+  await reload();
+
+  const domainId = (await jmap([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).list.find((d) => d.name === 'openmail.test').id;
+  const tag = Math.random().toString(36).slice(2, 8), pass = `throwaway pass ${tag} river`;
+  const name = `t-arf-idle-${tag}`, boss = `t-arf-boss-${tag}`, email = `${name}@openmail.test`;
+  const mk = async (n, extra = {}) => (await jmap([['x:Account/set', { create: { n: { '@type': 'User', name: n, domainId, credentials: { 0: { '@type': 'Password', secret: pass } }, ...extra } } }, 'c']])).created.n.id;
+  const id = await mk(name, { aliases: { 0: { name: `${name}-alias`, domainId, enable: true } } }), bossId = await mk(boss);
+  const cfg = { stalwartUrl: STALWART, admin, domain: 'openmail.test', inviteRequired: false, invites: new Invites({ text: '' }), turnstileSecret: null,
+    quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], allowBasicAuth: true, admins: [boss], signupEnabled: false };
+  const app = createApp(cfg);
+  await new Promise((r) => app.listen(0, '127.0.0.1', r));
+  t.after(async () => {
+    app.close();
+    await jmap([['x:Account/set', { destroy: [id, bossId] }, 'x']]).catch(() => {});
+    if (setRcpt) await jmap([['x:MtaStageRcpt/set', { update: { singleton: { script: rcpt } } }, 'r']]).catch(() => {});
+    if (madeScript) await jmap([['x:SieveSystemScript/set', { destroy: [madeScript] }, 's']]).catch(() => {});
+    await reload().catch(() => {});
+  });
+  const call = (path, method = 'GET', body) => fetch(`http://127.0.0.1:${app.address().port}${path}`, { method, body: body && JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from(`${boss}@openmail.test:${pass}`).toString('base64') } }).then(async (r) => ({ status: r.status, ...(await r.json()) }));
+
+  assert.match(await rcptReply(email), /^250 /);
+  // Disabling an account that isn't due under the policy only stops sign-in, as before.
+  assert.equal((await call(`/api/admin/users/${id}`, 'PATCH', { enabled: false })).ok, true);
+  assert.match(await rcptReply(email), /^250 /);
+  assert.equal((await call(`/api/admin/users/${id}`, 'PATCH', { enabled: true })).ok, true);
+
+  // Due (the daily job's verdict), then the console's "Disable": every address of it is refused, +tags too.
+  app.abuse.state.inactive[email] = { id, at: Date.now(), dueAt: Date.now() };
+  assert.equal((await call(`/api/admin/users/${id}`, 'PATCH', { enabled: false })).ok, true);
+  for (const a of [email, `${name}+news@openmail.test`, `${name}-alias@openmail.test`, email.toUpperCase()])
+    assert.match(await rcptReply(a), /^550 5\.2\.1 This mailbox is inactive/, a);
+  assert.match(await rcptReply(`${boss}@openmail.test`), /^250 /); // nobody else
+  assert.equal((await call('/api/admin/inactive')).accounts.find((x) => x.email === email).refusingMail, true);
+
+  // Undo: enabling it accepts mail again.
+  assert.equal((await call(`/api/admin/users/${id}`, 'PATCH', { enabled: true })).ok, true);
+  for (const a of [email, `${name}+news@openmail.test`, `${name}-alias@openmail.test`]) assert.match(await rcptReply(a), /^250 /, a);
+  assert.equal((await call('/api/admin/inactive')).accounts.find((x) => x.email === email).refusingMail, false);
+  // Deleting a blocked account leaves no keys behind.
+  await call(`/api/admin/users/${id}`, 'PATCH', { enabled: false });
+  assert.equal((await call(`/api/admin/users/${id}`, 'DELETE')).ok, true);
+  assert.ok(!(await app.abuse.refusedKeys()).some((k) => k.key.startsWith(name)));
 });

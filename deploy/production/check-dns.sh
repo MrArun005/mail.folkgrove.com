@@ -34,6 +34,12 @@ done < dns-records.tsv
 got=$(dig +short +time=3 "@$RESOLVER" -x "$SERVER_IP")
 if [ "$got" = "$MAIL_HOSTNAME." ]; then pass "PTR $SERVER_IP"; else fail "PTR $SERVER_IP (set it in your VPS provider's panel)" "$MAIL_HOSTNAME." "$got"; fi
 
+# Optional: openpgpkey.<domain> lets other mail apps find users' encryption keys (Web Key Directory).
+got=$(lookup "openpgpkey.$MAIL_DOMAIN" CNAME)
+if [ -z "$got" ]; then printf '\033[33mNOTE\033[0m  CNAME openpgpkey.%s (optional): not set, so other mail apps can'"'"'t find your users'"'"' encryption keys\n' "$MAIL_DOMAIN"
+elif [ "${got%.}" = "$MAIL_HOSTNAME" ]; then pass "CNAME openpgpkey.$MAIL_DOMAIN"
+else fail "CNAME openpgpkey.$MAIL_DOMAIN (optional, but wrong)" "$MAIL_HOSTNAME." "$got"; fi
+
 # Not DNS, but the other thing that silently breaks sending.
 if [ -z "${RELAY_HOST:-}" ]; then
   if timeout 5 bash -c '</dev/tcp/gmail-smtp-in.l.google.com/25' 2>/dev/null; then pass "outgoing port 25 is open"
