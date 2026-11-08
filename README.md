@@ -38,6 +38,18 @@ docs/                self-hosting guide
 PLAN.md, PARITY.md   roadmap; feature-by-feature plan to beat Zoho Mail and Gmail
 ```
 
+## Languages
+
+The interface is in 11 languages (Settings → Appearance → Language). Strings live in `web/src/i18n/`: `en.ts` is the source of truth, every other language is a file of the same keys, and `t('key', { vars })` picks the one on screen. Plurals use `{ one, other }` (plus whichever forms the language has: `zero`, `two`, `few`, `many`).
+
+To add a language:
+
+1. Copy a short catalog such as `es.ts` to `<code>.ts` (a BCP 47 tag, e.g. `it` or `zh-TW`) and translate the values. Leave out a key and English shows instead; a misspelled key is a type error.
+2. Add it to `LANGUAGES` (its name in its own language) and `LOAD` in `web/src/i18n/index.ts`. Right-to-left languages also go in `RTL`.
+3. `cd web && npx tsc --noEmit -p . && npm test`: the tests check that every key exists in English and that the `{vars}` match. A `// review:` comment marks a string a native speaker should check.
+
+New interface text goes into `en.ts` as a key, never straight into JSX: a test fails on English left in JSX text or in `title`, `label`, `placeholder` and `aria-label` (exceptions go in `ALLOWED` in `web/src/i18n/i18n.test.ts`). Styles use logical properties (`margin-inline-start`, not `margin-left`) so right-to-left layouts follow.
+
 ## Apps
 
 The web app installs as an app from the browser (Settings → App). It gets an unread badge, Compose/Inbox shortcuts, “Share to OpenMail” and email-link handling. `apps/` has thin native shells that ask for your server's address once and then open its web app. Desktop (Electron, `apps/desktop`) builds and runs on macOS and opens `mailto:` links. iOS and Android (Capacitor, `apps/mobile`) are generated but not built yet. Build steps, sign-in and what native push needs: [apps/README.md](apps/README.md).
