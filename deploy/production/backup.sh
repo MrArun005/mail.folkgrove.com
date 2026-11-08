@@ -21,7 +21,10 @@ set -euo pipefail
 cd "$(dirname "$0")"
 KEEP=14
 die() { echo "ERROR: $*" >&2; exit 1; }
-command -v age >/dev/null || die "age is required: apt install age"
+if ! command -v age >/dev/null; then # Ubuntu/Debian as root: install it; anywhere else, say how
+  if [ "$(id -u)" = 0 ] && command -v apt-get >/dev/null; then apt-get install -y -qq age >/dev/null || die "Couldn't install age"
+  else die "age is required: apt install age"; fi
+fi
 dc() { docker compose "$@"; }
 # Runs a shell in a one-off Stalwart container that has the data volumes mounted (not the running one).
 in_volumes() { dc run --rm --no-deps -T -u 0 --entrypoint sh stalwart -c "$1"; }
@@ -33,7 +36,12 @@ case ${1:-} in
   --recipient)
     [[ ${2:-} == age1* ]] || die "Give the public key from age-keygen (starts with age1)"
     echo "$2" > backup-recipient.txt
-    echo "Saved. Backups will be encrypted to $2" ;;
+    echo "Saved. Backups will be encrypted to $2"
+    # Nightly at 03:30, unless a schedule already exists.
+    if [ -w /etc/cron.d ] && [ ! -f /etc/cron.d/openmail-backup ]; then
+      echo "30 3 * * * root $PWD/backup.sh >> /var/log/openmail-backup.log 2>&1" > /etc/cron.d/openmail-backup
+      echo "Nightly backup scheduled (03:30, /etc/cron.d/openmail-backup). Copy backups/ off this server too."
+    fi ;;
 
   --restore)
     file=${2:-}; [ "${3:-}" = --identity ] && key=${4:-} || key=""

@@ -246,6 +246,7 @@ Backups are encrypted with [age](https://age-encryption.org) to a key that lives
 3. Schedule a nightly backup:
 
    ```sh
+   # ./backup.sh --recipient already did this when run as root; by hand:
    echo "30 3 * * * root $PWD/backup.sh >> /var/log/openmail-backup.log 2>&1" | sudo tee /etc/cron.d/openmail-backup
    ```
 

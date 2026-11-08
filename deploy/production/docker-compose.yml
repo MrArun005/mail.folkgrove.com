@@ -56,6 +56,7 @@ services:
       - "${HTTPS_PORT:-443}:443/udp"        # HTTP/3
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./webmail.caddy:/etc/caddy/webmail.caddy:ro
       - ${WEB_DIST:-../../web/dist}:/srv:ro
       - caddy-data:/data                    # certificates + ACME account
       - caddy-config:/config

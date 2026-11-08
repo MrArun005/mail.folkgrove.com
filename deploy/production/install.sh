@@ -28,6 +28,8 @@ Usage: ./install.sh [options]
   --domain D            mail domain, the part after @ (e.g. example.com)
   --hostname H          server name (e.g. mx.example.com); webmail lives at https://H
   --email E             your email for Let's Encrypt expiry notices
+  --webmail-host H      an easier address for webmail (e.g. mail.example.com); it redirects to the mail host
+  --admins NAMES        who may use the admin console at /admin (comma-separated; default: the first mailbox)
   --user NAME           first mailbox: NAME@domain (also receives postmaster@)
   --password P          its password (default: ask, or generate one with --yes)
   --relay HOST:PORT     send outgoing mail through this smarthost (e.g. smtp-relay.brevo.com:587)
@@ -68,6 +70,8 @@ while [ $# -gt 0 ]; do
   case $1 in
     --domain) MAIL_DOMAIN=$2; shift ;;
     --hostname) MAIL_HOSTNAME=$2; shift ;;
+    --webmail-host) WEBMAIL_HOST=$2; shift ;;
+    --admins) ADMINS=$2; shift ;;
     --email) ACME_EMAIL=$2; shift ;;
     --user) USER_NAME=$2; shift ;;
     --password) USER_PASS=$2; shift ;;
@@ -168,12 +172,12 @@ refresh_certs() { # copy Caddy's cert for the mail host into Stalwart, register 
 print_dns() { # build the record list from Stalwart's suggested zone, save it for check-dns.sh, print it
   local zone
   zone=$(api '[["x:Domain/get",{"ids":null,"properties":["name","dnsZoneFile"]},"d"]]')
-  printf '%s' "$zone" | DOMAIN=$MAIL_DOMAIN HOST=$MAIL_HOSTNAME IP=$SERVER_IP RELAY_SPF=${RELAY_SPF:-} python3 -c '
+  printf '%s' "$zone" | DOMAIN=$MAIL_DOMAIN HOST=$MAIL_HOSTNAME IP=$SERVER_IP RELAY_SPF=${RELAY_SPF:-} WEBMAIL=${WEBMAIL_HOST:-} python3 -c '
 import json, os, re, sys
 env = os.environ
 d = next(x for x in json.load(sys.stdin)["methodResponses"][0][1]["list"] if x["name"] == env["DOMAIN"])
 text = re.sub(r"\(\s*(.*?)\s*\)", lambda m: " ".join(m.group(1).split()), d["dnsZoneFile"], flags=re.S)
-rows = [(env["HOST"] + ".", "A", env["IP"])]
+rows = [(env["HOST"] + ".", "A", env["IP"])] + ([(env["WEBMAIL"] + ".", "CNAME", env["HOST"] + ".")] if env.get("WEBMAIL") else [])
 for line in text.splitlines():
     name, _, rtype, value = (line.split(None, 3) + [""] * 4)[:4]
     if not rtype:
@@ -347,10 +351,12 @@ if [ -n "${OIDC_ISSUER:-}" ]; then
   OIDC_NAME=${OIDC_NAME:-your organisation} OIDC_CLAIM=${OIDC_CLAIM:-email}
   RECOVERY_ADMIN=${RECOVERY_ADMIN:-admin:$(python3 -c 'import secrets; print(secrets.token_hex(24))')}
 fi
+# The admin console's admins: --admins, or else the first mailbox given with --user (kept in .env from then on).
+[ -z "${ADMINS:-}" ] && [ -n "$USER_NAME" ] && ADMINS=$USER_NAME
 say "Writing $HERE/.env"
 umask 077
 {
-  for v in COMPOSE_PROJECT_NAME MAIL_DOMAIN MAIL_HOSTNAME ACME_EMAIL PUBLIC_URL WEB_DIST \
+  for v in COMPOSE_PROJECT_NAME MAIL_DOMAIN MAIL_HOSTNAME WEBMAIL_HOST ADMINS ACME_EMAIL PUBLIC_URL WEB_DIST \
            RELAY_HOST RELAY_PORT RELAY_USER RELAY_PASSWORD RELAY_SPF SERVER_IP CADDY_CERT_ISSUER \
            ADMIN_PORT HTTP_PORT HTTPS_PORT SMTP_PORT SUBMISSIONS_PORT SUBMISSION_PORT IMAPS_PORT \
            MONITORING ALERT_EMAIL HOSTED COMPOSE_FILE PG_PASSWORD S3_SECRET \
@@ -364,6 +370,11 @@ say "Starting the stack"
 mkdir -p signup-data && { chown 1000:1000 signup-data 2>/dev/null || warn "Not root: the account service may be unable to write signup-data"; }   # it runs as uid 1000 (node)
 # First run: Stalwart (and its stores) only. The account service mounts .admin-credentials, and Docker would
 # create a missing file as an empty directory; the full stack starts once bootstrap has written it.
+# Optional easier webmail address (--webmail-host mail.example.com): Caddy redirects it to the mail host, where
+# sign-in is registered. The file always exists (empty without the option), since the Caddyfile imports it.
+if [ -n "${WEBMAIL_HOST:-}" ]; then
+  printf '%s {\n\tredir https://%s{uri} permanent\n}\n' "$WEBMAIL_HOST" "$MAIL_HOSTNAME" > webmail.caddy
+else : > webmail.caddy; fi
 # The account service is built from this checkout: rebuild it every run, or an update (git pull) would keep the old
 # image (compose only builds when no image exists). Seconds: it just copies the files.
 dc build -q signup >/dev/null

@@ -65,3 +65,6 @@ openpgpkey.{$MAIL_DOMAIN} {
 mta-sts.{$MAIL_DOMAIN}, autoconfig.{$MAIL_DOMAIN}, autodiscover.{$MAIL_DOMAIN}, ua-auto-config.{$MAIL_DOMAIN} {
 	reverse_proxy stalwart:8080
 }
+
+# --webmail-host: an easier webmail address that redirects here (install.sh writes this file; empty without it).
+import webmail.caddy
