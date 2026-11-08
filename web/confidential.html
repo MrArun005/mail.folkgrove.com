@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Confidential message viewer. Scripts and data only from this server; the message is shown as text, never
+         as HTML. ponytail: 'unsafe-inline' styles because the dev server injects CSS that way; nothing untrusted is
+         ever put into the page except through textContent. frame-ancestors can't be set here: Caddy sends it. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <title>OpenMail</title>
+  </head>
+  <body>
+    <main id="root" class="confidential" aria-live="polite"></main>
+    <script type="module" src="/src/confidentialView.ts"></script>
+  </body>
+</html>

@@ -65,7 +65,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Tracking pixels removed | ⬜ | ✅ | Removed even after "Load images", and the sender is named |
 | Link tracking parameters stripped | ⬜ | ✅ | utm_*, fbclid, gclid, … |
 | Hostile HTML isolation | ✅ | ✅ | Sandboxed frame + strict CSP, tested |
-| 2FA / passkeys | ✅ | ✅ | Settings → Security: fresh sign-in → security token in memory only; QR enrolment with the code checked before saving; app passwords limited to IMAP/SMTP/POP/DAV (a leaked one can't change the password or 2FA); password change. Passkeys later |
+| 2FA / passkeys | ✅ | ✅ | Settings → Security: fresh sign-in → security token in memory only; QR enrolment with the code checked before saving; app passwords limited to IMAP/SMTP/POP/DAV (a leaked one can't change the password or 2FA); password change. Passkeys: not possible on Stalwart 1.0.3 (no WebAuthn credential type or sign-in route; checked 2026-11-08), see below |
 | OAuth sign-in (no stored password) | ✅ | ✅ | PKCE, rotating refresh token, revoked at sign-out |
 | End-to-end encryption | 🟡 (S/MIME) | ✅ | OpenPGP (PGP/MIME, signed + encrypted; works with Proton, Thunderbird, GnuPG). Keys found by WKD, Autocrypt (only from authenticated senders) or import; a changed key is held back until you choose; signatures checked in the reader. Our users' keys published by WKD + Autocrypt. Private key stays in the browser. Subject not hidden yet |
 | Encryption at rest | ✅ | ✅ | Per user, to *their own* key (Stalwart PGP/MIME): the server can't read stored mail. Decrypted in the browser; search can't see bodies; S/MIME keys accepted but read in another app |
@@ -125,6 +125,9 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 | AI (summarise, smart reply) | ✅ | ✅ | Summaries, smart replies and writing help, all on this device; nothing goes to an AI company |
 | Offline mail | ✅ | ✅ | On trusted devices: saved lists and conversations, an outbox that sends when you're back online |
 | Large files as links | ✅ | ✅ | Over 25 MB: a link to your own storage, expiring in 7 or 30 days or never |
+| Confidential mode | ✅ | ✅ | Encrypted in your browser (AES-256-GCM); recipients get a link with the key after “#”, which never reaches a server, so ours stores only ciphertext. Expires in 1, 7 or 30 days; optional passcode shared another way, mixed into the key (PBKDF2). Revoke from Sent, or in Settings → Shared files. Viewer: a static page with a strict CSP, no third-party requests, not indexed, text only. Honest limits: the link (and key) is in the email, so whoever reads that email can open it unless there's a passcode; anyone holding the link can try passcodes offline; recipients can copy or screenshot; the subject isn't hidden; no attachments; the draft is on the server while you write |
+| Ask your inbox | ✅ (paid) | ✅ | ⌘K, type a question: the browser's on-device model picks search terms (plain keywords if it can't), our normal server search finds the newest 20 matches (Junk left out), and the same model answers from those only, citing messages you can open. Hidden without an on-device model; nothing but the search leaves the device; hidden HTML text is dropped first. Limits: ~1,000 characters of each message, newest matches rather than best; encrypted mail isn't searchable |
+| Passkeys | ✅ | ⬜ | Stalwart 1.0.3 has no WebAuthn: account credentials are Password, AppPassword and ApiKey only, and `/api/auth` has no passkey request. Needs Stalwart support (a credential type holding public keys, a challenge/assertion step in `/api/auth` that issues the same OAuth code). The account service could verify passkeys itself, but it would then have to sign people in with admin rights, a weaker design, so it isn't done |
 
 ## Score today
 

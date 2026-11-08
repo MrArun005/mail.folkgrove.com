@@ -5,6 +5,7 @@ import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
 import { Button } from './Button';
 import { Icon } from './icons';
 import { displayName, fileLinks, fileSize, formatAddresses, type ReplyMode } from './mailutil';
+import { ConfidentialSent } from './Confidential';
 import { canSuggestReplies, canSummarize, canTranslate, languageName, suggestReplies, summarize, translate, visibleText } from './ai';
 import { buildSrcdoc } from './safeHtml';
 import { span, type CalEvent } from './calendar';
@@ -188,6 +189,7 @@ function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onRecei
       )}
       <Invitation client={client} m={m} onRsvp={onRsvp} />
       <SecureBanner me={me} m={m} {...secure} />
+      {sender?.email.toLowerCase() === me.toLowerCase() && <ConfidentialSent client={client} body={`${shown.html ?? ''} ${shown.text ?? ''}`} />}
       {m.receiptTo?.length && !m.keywords.$mdnsent && m.from?.[0]?.email.toLowerCase() !== me.toLowerCase() ? (
         <p className="banner banner--info">
           <Icon name="receipt" size={16} />

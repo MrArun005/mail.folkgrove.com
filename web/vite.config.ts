@@ -6,6 +6,8 @@ const stalwart = process.env.JMAP_URL ?? 'http://localhost:8080';
 const signup = process.env.SIGNUP_URL ?? 'http://localhost:3000';
 export default defineConfig({
   plugins: [react()],
+  // Two pages: the app, and the confidential-message viewer (no app code beyond i18n and styles).
+  build: { rollupOptions: { input: { main: 'index.html', confidential: 'confidential.html' } } },
   // Same paths the production reverse proxy sends to the mail server: JMAP, OAuth and its sign-in page.
   server: {
     proxy: {

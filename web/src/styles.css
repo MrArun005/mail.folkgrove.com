@@ -158,6 +158,18 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 .login .fine, .login .error { margin-top: calc(-1 * var(--s2)); }
 .login .fine:last-child { margin-top: 0; }
 
+/* Confidential message viewer (/confidential.html) and the compose bar. */
+.confidential { min-height: 100%; padding: var(--s6) var(--s4); background: var(--rail); }
+.confidential-card { display: grid; gap: var(--s4); padding: var(--s8); background: var(--paper); border-radius: var(--r-lg); box-shadow: var(--lift); }
+.confidential-card h1 { font: 500 var(--t-h2)/1.25 var(--ui); overflow-wrap: anywhere; }
+.confidential-card .letter { max-width: none; }
+.confidential-card form { display: grid; gap: var(--s3); max-width: 400px; }
+.confidential-card label { display: grid; gap: 6px; color: var(--ink-2); font-weight: 500; }
+.confidential-bar { margin: 0 var(--s4) var(--s3); flex: none; }
+.confidential-bar .input--sm { width: 200px; max-width: 100%; }
+.confidential-honest { flex-basis: 100%; }
+@media (max-width: 600px) { .confidential-card { padding: var(--s5); } .confidential-bar .input--sm { flex: 1 1 100%; width: auto; } }
+
 /* ═══ Layout: rail | list | reader (full width) ════════ */
 .app { display: grid; grid-template-columns: var(--rail-w) minmax(320px, var(--list-w)) 1fr; height: 100%; }
 
@@ -400,6 +412,14 @@ a.chip:hover { background: var(--hover); border-color: var(--muted); }
 .palette li[aria-selected="true"] { background: var(--accent-wash); color: var(--ink); }
 .palette li kbd { margin-inline-start: auto; }
 .palette li.none { color: var(--muted); cursor: default; }
+.palette #cmd-ask span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Ask your inbox (Ask.tsx): the answer, then the messages it cites. */
+.ask { display: grid; gap: var(--s3); padding: var(--s4) var(--s5); max-height: 60vh; overflow: auto; }
+.ask-answer { font-size: var(--t-read); line-height: 1.55; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.palette .ask-sources { padding: 0; max-height: none; overflow: visible; }
+.palette .ask-sources li { display: block; height: auto; padding: 0; }
+.ask-sources .menu-item { width: 100%; height: auto; min-height: var(--h-md); padding-block: var(--s2); white-space: normal; text-align: start; flex-wrap: wrap; row-gap: 2px; }
+.ask-note { font-size: var(--t-xs); }
 
 .settings section { display: grid; gap: var(--s3); padding: var(--s5) 0; border-bottom: 1px solid var(--rule); }
 .settings h3 { font-size: calc(15px * var(--scale)); font-weight: 600; }
