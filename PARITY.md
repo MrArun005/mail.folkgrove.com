@@ -4,7 +4,7 @@
 and openness. Then close the gap to Gmail.
 
 Status key: ✅ done · 🟡 partial · ⬜ planned. "Better" means a concrete advantage over Zoho, not a tie.
-Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
+Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 
 ## 1. Reading and triage
 
@@ -24,7 +24,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Print | ✅ | ✅ | Prints with trackers removed |
 | Read receipts (request) | ✅ | ✅ | Request from compose; when asked, you choose Send or Ignore (standard MDN), never automatic |
 | Translate | ✅ (Zia) | ✅ | On this device (browser's built-in model): the message never leaves your computer |
-| Inbox categories (Updates / Promotions) | 🟡 | ✅ | Primary / Updates, sorted on the server as mail arrives; one switch in Settings |
+| Inbox categories (Updates / Promotions) | 🟡 | ✅ | Primary, Promotions, Social, Updates, Forums, sorted on the server as mail arrives (every device agrees); Settings picks the tabs |
 
 ## 2. Writing
 
@@ -128,6 +128,10 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 | Confidential mode | ✅ | ✅ | Encrypted in your browser (AES-256-GCM); recipients get a link with the key after “#”, which never reaches a server, so ours stores only ciphertext. Expires in 1, 7 or 30 days; optional passcode shared another way, mixed into the key (PBKDF2). Revoke from Sent, or in Settings → Shared files. Viewer: a static page with a strict CSP, no third-party requests, not indexed, text only. Honest limits: the link (and key) is in the email, so whoever reads that email can open it unless there's a passcode; anyone holding the link can try passcodes offline; recipients can copy or screenshot; the subject isn't hidden; no attachments; the draft is on the server while you write |
 | Ask your inbox | ✅ (paid) | ✅ | ⌘K, type a question: the browser's on-device model picks search terms (plain keywords if it can't), our normal server search finds the newest 20 matches (Junk left out), and the same model answers from those only, citing messages you can open. Hidden without an on-device model; nothing but the search leaves the device; hidden HTML text is dropped first. Limits: ~1,000 characters of each message, newest matches rather than best; encrypted mail isn't searchable |
 | Passkeys | ✅ | ⬜ | Stalwart 1.0.3 has no WebAuthn: account credentials are Password, AppPassword and ApiKey only, and `/api/auth` has no passkey request. Needs Stalwart support (a credential type holding public keys, a challenge/assertion step in `/api/auth` that issues the same OAuth code). The account service could verify passkeys itself, but it would then have to sign people in with admin rights, a weaker design, so it isn't done |
+| Promotions / Social / Forums tabs | ✅ | ✅ | Server-side Sieve on list headers, `Precedence`, known social networks; no ML, so borderline mail can land one tab off |
+| Package, flight, order, booking cards | ✅ | ✅ | From the sender's schema.org data, read on this device; https links only, shown by their real host; “Purchases & trips” search chip |
+| Add to calendar from email | ✅ | ✅ | From a card or a date in the text (“Friday 14 Dec at 3pm”), prefilled in your calendar; English phrasing, month names in every language |
+| Verified senders, brand logos, “be careful” | ✅ | ✅ | Mark on DMARC pass; warning when a big brand's name comes on unverified mail; BIMI logos fetched and cleaned by our server (the brand never sees you read it). No VMC check (Gmail's blue tick) |
 
 ## Score today
 

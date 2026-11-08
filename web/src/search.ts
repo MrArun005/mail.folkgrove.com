@@ -32,6 +32,7 @@ function condition(op: string, v: string, boxes: Mailbox[]): Filter | null {
       if (k === 'unread') return { notKeyword: '$seen' };
       if (k === 'read') return { hasKeyword: '$seen' };
       if (k === 'starred') return { hasKeyword: '$flagged' };
+      if (k === 'purchase' || k === 'purchases') return { hasKeyword: '$purchase' }; // set on delivery (rules.ts PURCHASE)
       return null;
     }
     case 'in': {

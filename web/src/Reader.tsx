@@ -13,6 +13,7 @@ import type { PartStat } from './ics';
 import { Menu, TimeChoices } from './Menu';
 import { isCryptoPart, SecureBanner, useSecureMail } from './Encryption';
 import { locale, t } from './i18n';
+import { BimiLogo, BrandWarning, SmartCards, VerifiedMark } from './SmartCards';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
 export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task';
@@ -163,10 +164,10 @@ function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onRecei
     <section className="message">
       <header onClick={onFold} className={onFold ? 'foldable' : ''}>
         <span className="avatar" aria-hidden="true" style={{ '--h': hue(sender?.email ?? '') } as React.CSSProperties}>
-          {displayName(sender).slice(0, 1).toUpperCase()}
+          {displayName(sender).slice(0, 1).toUpperCase()}<BimiLogo m={m} me={me} inJunk={inJunk} />
         </span>
         <div className="addr">
-          <span className="who">{displayName(sender, me)}{sender?.name && <span className="email"> {sender.email}</span>}</span>
+          <span className="who">{displayName(sender, me)}<VerifiedMark m={m} me={me} />{sender?.name && <span className="email"> {sender.email}</span>}</span>
           <span className="to">{t(m.cc?.length ? 'reader.toCc' : 'reader.to', { to: formatAddresses(m.to) || t('reader.undisclosed'), cc: formatAddresses(m.cc) })}</span>
         </div>
         <span className="meta-right">
@@ -188,6 +189,8 @@ function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onRecei
         </div>
       )}
       <Invitation client={client} m={m} onRsvp={onRsvp} />
+      <BrandWarning m={m} me={me} />
+      <SmartCards client={client} m={m} html={shown.html} text={plain} hasInvite={m.attachments.some((a) => /text\/calendar/i.test(a.type) || /\.ics$/i.test(a.name ?? ''))} />
       <SecureBanner me={me} m={m} {...secure} />
       {sender?.email.toLowerCase() === me.toLowerCase() && <ConfidentialSent client={client} body={`${shown.html ?? ''} ${shown.text ?? ''}`} />}
       {m.receiptTo?.length && !m.keywords.$mdnsent && m.from?.[0]?.email.toLowerCase() !== me.toLowerCase() ? (

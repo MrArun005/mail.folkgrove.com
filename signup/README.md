@@ -232,6 +232,14 @@ The test `test/hold.test.mjs` sets up its own hook (for its throwaway sender onl
 
 Serves users' OpenPGP public keys (the ones they uploaded in Settings → Security, Stalwart `x:PublicKey`) so other mail apps can encrypt to them: `/.well-known/openpgpkey/hu/<hash>?l=<local>` (direct) and `/.well-known/openpgpkey/<domain>/hu/<hash>?l=<local>` (advanced, on `openpgpkey.<domain>`), plus an empty `policy`. Binary key, `Access-Control-Allow-Origin: *`, 60 lookups a minute per network. Only keys made out to the address asked about; requests without `?l=` get 404.
 
+### `GET /api/bimi/<domain>` (brand logos)
+
+The sender's brand logo for the web client's avatar (BIMI). Looks up `default._bimi.<domain>` (then the last two labels),
+requires a DMARC policy of `quarantine` or `reject` at `pct=100`, fetches the `l=` https SVG (32 KB at most, public
+addresses only, no redirects), keeps only SVG Tiny PS shapes (no scripts, styles, images or external references) and
+serves it as `image/svg+xml` with a sandboxing CSP. 404 when there's no logo. Answers are cached for a day (no logo:
+an hour); fresh lookups are limited to 30 a minute per network. The client only asks for mail whose DMARC passed.
+
 ### `GET /healthz`
 
 `200 {"ok": true}`

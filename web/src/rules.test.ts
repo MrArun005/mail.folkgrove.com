@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { parseRules, toSieve, validateRule, type Rule } from './rules';
+import { categorize, parseRules, toSieve, validateRule, type Rule } from './rules';
 
 const rules: Rule[] = [
   { id: '1', from: 'news@shop.example', action: 'move', folder: 'Shopping' },
@@ -11,12 +11,12 @@ const rules: Rule[] = [
 
 it('compiles rules to Sieve with escaping and stops after moves', () => {
   const s = toSieve({ rules, vacation: { enabled: false }, categories: false }, { trash: 'Deleted Items', junk: 'Junk Mail' });
-  expect(s).toContain('require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational", "spamtest"];');
+  expect(s).toContain('require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational", "spamtest", "body"];');
   expect(s).toContain('if allof(address :contains "from" "news@shop.example") { fileinto :create "Shopping"; stop; }');
   expect(s).toContain('if allof(address :contains "from" "spammer.example") { fileinto "Junk Mail"; addflag "\\\\Seen"; stop; }');
   expect(s).toContain('if allof(address :contains ["to", "cc"] "billing@", header :contains "subject" "invoice \\"Q4\\"") { addflag "\\\\Flagged"; }');
   expect(s).toContain('redirect :copy "me@phone.example";');
-  expect(s.match(/^if /gm)).toHaveLength(4);
+  expect(s.match(/^if /gm)).toHaveLength(5); // the four rules and the purchases mark
 });
 
 it('round-trips the rules through the script', () => {
@@ -55,7 +55,26 @@ it('Block sender matches the exact address only', () => {
 it('sorts newsletters and automated senders into Updates unless turned off', () => {
   const on = toSieve({ rules: [], vacation: { enabled: false } }, { trash: 'T', junk: 'J' });
   expect(on).toContain('if anyof(exists "list-unsubscribe", exists "list-id", address :localpart :contains "from" ["noreply", "no-reply", "donotreply", "notifications", "mailer-daemon"]) { addflag "$updates"; }');
+  expect(on).not.toContain('$promotions'); // saved before the other tabs existed: only Updates
   expect(toSieve({ rules: [], vacation: { enabled: false }, categories: false }, { trash: 'T', junk: 'J' })).not.toContain('$updates');
+});
+
+it('sorts into the chosen tabs, one per message, and marks purchases either way', () => {
+  const s = toSieve({ rules: [], vacation: { enabled: false }, tabs: ['updates', 'social', 'promotions'] }, { trash: 'T', junk: 'J' });
+  expect(s).toMatch(/^if address :domain :matches "from" \[.*"\*\.facebookmail\.com".*\] \{ addflag "\$social"; \}\nelsif allof\(not hasflag "\$purchase", .*\{ addflag "\$promotions"; \}\nelsif anyof\(exists "list-unsubscribe".*\$updates/m);
+  expect(s).not.toContain('$forums');
+  expect(s).toContain('"body"];');
+  expect(toSieve({ rules: [], vacation: { enabled: false }, categories: false }, { trash: 'T', junk: 'J' })).toContain('addflag "$purchase"');
+});
+
+it('sorts old mail the way the server rule does', () => {
+  const all = ['promotions', 'social', 'updates', 'forums'] as const;
+  expect(categorize({ from: 'x@mail.linkedin.com', listUnsubscribe: '<u>' }, all)).toBe('social');
+  expect(categorize({ from: 'x@lists.example.org', listId: '<dev.example.org>', listPost: '<mailto:dev@example.org>' }, all)).toBe('forums');
+  expect(categorize({ from: 'deals@shop.example', precedence: 'bulk' }, all)).toBe('promotions');
+  expect(categorize({ from: 'noreply@bank.example', listUnsubscribe: '<u>' }, all)).toBe('updates');
+  expect(categorize({ from: 'deals@shop.example', listUnsubscribe: '<u>' }, ['updates'])).toBe('updates'); // tab off: falls through
+  expect(categorize({ from: 'ann@example.org' }, all)).toBeNull();
 });
 
 it('Screener holds unknown senders after your own filters', () => {

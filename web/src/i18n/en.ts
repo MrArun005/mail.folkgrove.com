@@ -1537,4 +1537,51 @@ export const en = {
   'admin.notSince': 'Not since {date}',
   'admin.dueBlocking': 'Due for blocking',
   'admin.reminded': { one: 'Reminded ({count} day before)', other: 'Reminded ({count} days before)' },
+  // ── Inbox smarts: tabs, purchase and travel cards, add to calendar, verified senders ──
+  // context: inbox tab for marketing mail (Gmail calls it Promotions)
+  'smarts.promotions': 'Promotions',
+  // context: inbox tab for mail from social networks
+  'smarts.social': 'Social',
+  // context: inbox tab for discussion lists and forums
+  'smarts.forums': 'Forums',
+  // context: search filter chip: receipts, deliveries, flights and hotel bookings
+  'smarts.chipPurchases': 'Purchases & trips',
+  'smarts.sortLabel': 'Sort newsletters, notifications and social mail into tabs',
+  'smarts.tabsLegend': 'Tabs next to Primary',
+  'smarts.tabsNote': 'People’s messages stay in Primary. Sorting happens on the server as mail arrives, so every device shows the same tabs.',
+  // {count}: messages already in the Inbox that were sorted into tabs
+  'smarts.tabsMoved': { one: 'On. {count} message sorted into a tab.', other: 'On. {count} messages sorted into tabs.' },
+  'smarts.package': 'Package',
+  // {carrier}: a delivery company, e.g. UPS
+  'smarts.packageFrom': 'Package from {carrier}',
+  'smarts.flight': 'Flight',
+  'smarts.order': 'Order',
+  // context: a hotel or holiday-rental booking
+  'smarts.stay': 'Stay',
+  'smarts.event': 'Event',
+  // context: what was shipped in a package
+  'smarts.item': 'Item',
+  'smarts.tracking': 'Tracking number',
+  'smarts.arrives': 'Arrives',
+  'smarts.orderNumber': 'Order number',
+  'smarts.total': 'Total',
+  'smarts.departs': 'Departs',
+  'smarts.confirmation': 'Confirmation',
+  'smarts.checkIn': 'Check-in',
+  'smarts.checkOut': 'Check-out',
+  'smarts.where': 'Where',
+  'smarts.starts': 'Starts',
+  // {host}: a web address, e.g. www.ups.com
+  'smarts.trackOn': 'Track on {host}',
+  // {host}: a web address, e.g. www.shop.example
+  'smarts.openOn': 'Open on {host}',
+  'smarts.addToCalendar': 'Add to calendar',
+  // {when}: a date and maybe a time, e.g. 'Fri, Dec 14, 3:00 PM'
+  'smarts.mentions': 'This message mentions {when}.',
+  'smarts.added': 'Added to your calendar.',
+  // {domain}: the sender’s domain, e.g. example.com. DMARC is a standard name; keep it
+  'smarts.verifiedTitle': 'Verified sender: {domain} confirmed this message is theirs (DMARC)',
+  'smarts.careful': 'Be careful with this message.',
+  // {brand}: a company name, e.g. PayPal; {email}: the sender’s address
+  'smarts.carefulBody': 'The sender’s name says {brand}, but it couldn’t be verified as coming from them (it’s from {email}). Don’t click its links or share passwords or payment details.',
 } satisfies Record<string, string | { other: string; one?: string }>;

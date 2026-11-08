@@ -75,7 +75,7 @@ export async function peerKeys(): Promise<PeerKey[]> {
  * a genuinely signed message can't add their own key header to it.
  */
 export function senderAuthenticated(from: string, ar: string | null | undefined, ownDomain: string,
-  opts: { received?: string | null; dkim?: string[]; needHeader?: string } = {}): boolean {
+  opts: { received?: string | null; dkim?: string[]; needHeader?: string; /** only a DMARC pass counts (verified-sender mark) */ dmarcOnly?: boolean } = {}): boolean {
   const domain = from.slice(from.lastIndexOf('@') + 1).toLowerCase();
   if (!ar) return domain === ownDomain.toLowerCase();
   const authserv = ar.split(';')[0].trim().toLowerCase();
@@ -89,6 +89,7 @@ export function senderAuthenticated(from: string, ar: string | null | undefined,
     return { dmarc: /^\s*dmarc=pass\b/i.test(v) && aligned(prop('header.from')), dkim: dkim ? (prop('header.d') ?? prop('header.i')) : undefined,
       s: dkim ? prop('header.s') : undefined, b: dkim ? prop('header.b') : undefined };
   });
+  if (opts.dmarcOnly) return passes.some((p) => p.dmarc);
   if (!opts.needHeader) return passes.some((p) => p.dmarc || aligned(p.dkim));
   // The signatures that verified result can be: same d=, and the same selector and b= prefix where the result names
   // them. Every one of them must cover the header, so a second, forged signature claiming it can't vouch for it.

@@ -1,5 +1,5 @@
 // Minimal JMAP client (RFC 8620 core, 8621 mail + submission). Talks to Stalwart directly; we have no backend.
-import { SCRIPT_NAME, UPDATES } from './rules';
+import { categorize, SCRIPT_NAME, TABS, tabKeyword, UPDATES, type Tab } from './rules';
 import { boxName, serverText, t } from './i18n';
 import { isOffline, offlineStore } from './offline';
 import type { CalEvent } from './calendar';
@@ -329,7 +329,7 @@ export class Jmap {
   async arrivedSince(inboxId: string, since: string): Promise<EmailSummary[]> {
     const [, r] = await this.call([
       ['Email/query', { accountId: this.accountId, sort: [{ property: 'receivedAt', isAscending: false }], limit: 5,
-        filter: { operator: 'AND', conditions: [{ inMailbox: inboxId }, { after: since }, { notKeyword: '$seen' }, { notKeyword: UPDATES }] } }, 'q'],
+        filter: { operator: 'AND', conditions: [{ inMailbox: inboxId }, { after: since }, { notKeyword: '$seen' }, ...TABS.map((k) => ({ notKeyword: tabKeyword(k) }))] } }, 'q'],
       ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: SUMMARY }, 'g'],
     ]);
     return r.list;
@@ -936,17 +936,21 @@ export class Jmap {
    * One-time backfill for Inbox categories: tag recent newsletters/notifications already in the Inbox with $updates
    * (new mail is tagged on delivery by the Sieve rule). Same test as the rule. Returns how many were tagged.
    */
-  async tagUpdates(inboxId: string, limit = 500): Promise<number> {
+  async tagUpdates(inboxId: string, tabs: readonly Tab[] = ['updates'], limit = 500): Promise<number> {
     const [, r] = await this.call([
-      ['Email/query', { accountId: this.accountId, filter: { inMailbox: inboxId, notKeyword: UPDATES }, sort: [{ property: 'receivedAt', isAscending: false }], limit }, 'q'],
+      ['Email/query', { accountId: this.accountId, filter: { operator: 'AND', conditions: [{ inMailbox: inboxId }, ...TABS.map((k) => ({ notKeyword: tabKeyword(k) }))] },
+        sort: [{ property: 'receivedAt', isAscending: false }], limit }, 'q'],
       ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' },
-        properties: ['from', 'header:List-Unsubscribe', 'header:List-Id'] }, 'g'], // raw form: works for any header
+        properties: ['from', 'header:List-Unsubscribe', 'header:List-Id', 'header:List-Post', 'header:Precedence', 'header:X-Mailman-Version'] }, 'g'], // raw form: works for any header
     ]);
-    const automated = /^(noreply|no-reply|donotreply|notifications|mailer-daemon)/i;
-    const ids = (r.list as any[]).filter((e) => e['header:List-Unsubscribe'] || e['header:List-Id']
-      || e.from?.some((a: Address) => automated.test(a.email.split('@')[0]))).map((e) => e.id);
-    if (ids.length) await this.call([['Email/set', { accountId: this.accountId, update: Object.fromEntries(ids.map((id) => [id, { [`keywords/${UPDATES}`]: true }])) }, 't']]);
-    return ids.length;
+    const update: Record<string, Record<string, boolean>> = {};
+    for (const e of r.list as any[]) {
+      const k = categorize({ from: e.from?.[0]?.email ?? '', listId: e['header:List-Id'], listUnsubscribe: e['header:List-Unsubscribe'],
+        listPost: e['header:List-Post'], precedence: e['header:Precedence'], mailman: e['header:X-Mailman-Version'] }, tabs);
+      if (k) update[e.id] = { [`keywords/${tabKeyword(k)}`]: true };
+    }
+    if (Object.keys(update).length) await this.call([['Email/set', { accountId: this.accountId, update }, 't']]);
+    return Object.keys(update).length;
   }
 
   /**
