@@ -844,7 +844,7 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .banner--warn .grow { flex-basis: 100%; } /* the action goes under the explanation */
 
 /* A long account address shrinks (ellipsis) instead of pushing the footer icons out of the rail. */
-.me .menu > * { min-width: 0; max-width: 100%; }
+.me .menu > .btn { min-width: 0; max-width: 100%; } /* the trigger only: the popup list keeps its own width */
 .me .menu .btn { overflow: hidden; }
 
 /* Settings on phones: folder rows (Share, rename, delete…) and display choices wrap instead of scrolling sideways. */
@@ -862,3 +862,7 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .subject, .preview, .snippet, .who, .from, .addr, .email, .nav-item .name, .saved-item .name { unicode-bidi: plaintext; text-align: left; }
 /* …but they line up with the interface (plaintext would otherwise align each one by its own direction). */
 [dir="rtl"] :is(.subject, .preview, .snippet, .who, .from, .addr, .email, .nav-item .name, .saved-item .name) { text-align: right; }
+
+/* The account menu opens inside the rail (which scrolls, so it clips anything wider): rail width, long addresses cut. */
+.rail .me .menu-list { min-width: 0; width: calc(var(--rail-w) - 2 * var(--s3)); max-width: calc(var(--rail-w) - 2 * var(--s3)); }
+.rail .me .menu-list [role="menuitem"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
