@@ -1478,6 +1478,10 @@ export default {
   'admin.noSuspended': '送信が停止されているアカウントはありません。',
   // {who}: who suspended sending
   'admin.byWho': '停止した人：{who}',
+  'admin.byComplaints': "スパムの苦情を受けたため。解除できるのは管理者のみです",
+  'admin.byHold': "複数のメッセージが迷惑メールとして保留されたため。解除できるのは管理者のみです",
+  'admin.refusingMail': "新着メールを拒否中",
+  'admin.disableInactiveRefuses': "アカウントを再び有効にするまで（[ユーザー] タブ）、ログインも送信もできず、届く新着メールは非アクティブなメールボックスとして拒否されます。何も削除されません。",
   'admin.inactiveTitle': '非アクティブなアカウント',
   // {count}: months without signing in; {since}: a date
   'admin.inactiveHelp': {

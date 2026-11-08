@@ -1481,6 +1481,10 @@ export default {
   'admin.noSuspended': 'Bei keinem Konto ist das Senden gesperrt.',
   // {who}: who suspended sending
   'admin.byWho': 'von {who}',
+  'admin.byComplaints': "nach Spam-Beschwerden; nur ein Admin kann das aufheben",
+  'admin.byHold': "nachdem mehrere Nachrichten als Spam zurückgehalten wurden; nur ein Admin kann das aufheben",
+  'admin.refusingMail': "Neue E-Mails werden abgelehnt",
+  'admin.disableInactiveRefuses': "Die Person kann sich nicht anmelden oder senden, und neue E-Mails an sie werden als inaktives Postfach abgelehnt, bis Sie das Konto wieder aktivieren (Tab Nutzer). Es wird nichts gelöscht.",
   'admin.inactiveTitle': 'Inaktive Konten',
   // {count}: months without signing in; {since}: a date
   'admin.inactiveHelp': {

@@ -1479,6 +1479,10 @@ export const en = {
   'admin.noSuspended': 'No account has sending suspended.',
   // {who}: who suspended sending
   'admin.byWho': 'by {who}',
+  'admin.byComplaints': 'after spam complaints; only an admin can lift it',
+  'admin.byHold': 'after several messages were held as spam; only an admin can lift it',
+  'admin.refusingMail': 'Refusing new mail',
+  'admin.disableInactiveRefuses': 'They can’t sign in or send, and new mail to them is refused as an inactive mailbox, until you enable the account again (Users tab). Nothing is deleted.',
   'admin.inactiveTitle': 'Inactive accounts',
   // {count}: months without signing in; {since}: a date
   'admin.inactiveHelp': {

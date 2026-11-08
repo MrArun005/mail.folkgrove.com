@@ -1481,6 +1481,10 @@ export default {
   'admin.noSuspended': 'ಯಾವ ಖಾತೆಯ ಕಳುಹಿಸುವಿಕೆಯೂ ಅಮಾನತಾಗಿಲ್ಲ.',
   // {who}: who suspended sending
   'admin.byWho': '{who} ಅವರಿಂದ',
+  'admin.byComplaints': "ಸ್ಪ್ಯಾಮ್ ದೂರುಗಳ ನಂತರ; ಇದನ್ನು ನಿರ್ವಾಹಕರು ಮಾತ್ರ ತೆಗೆಯಬಹುದು",
+  'admin.byHold': "ಹಲವು ಸಂದೇಶಗಳನ್ನು ಸ್ಪ್ಯಾಮ್ ಎಂದು ತಡೆಹಿಡಿದ ನಂತರ; ಇದನ್ನು ನಿರ್ವಾಹಕರು ಮಾತ್ರ ತೆಗೆಯಬಹುದು",
+  'admin.refusingMail': "ಹೊಸ ಮೇಲ್ ತಿರಸ್ಕರಿಸಲಾಗುತ್ತಿದೆ",
+  'admin.disableInactiveRefuses': "ನೀವು ಖಾತೆಯನ್ನು ಮತ್ತೆ ಸಕ್ರಿಯಗೊಳಿಸುವವರೆಗೆ (ಬಳಕೆದಾರರು ಟ್ಯಾಬ್) ಅವರು ಸೈನ್ ಇನ್ ಮಾಡಲು ಅಥವಾ ಕಳುಹಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ, ಮತ್ತು ಅವರಿಗೆ ಬರುವ ಹೊಸ ಮೇಲ್ ನಿಷ್ಕ್ರಿಯ ಮೇಲ್‌ಬಾಕ್ಸ್ ಎಂದು ತಿರಸ್ಕರಿಸಲಾಗುತ್ತದೆ. ಏನನ್ನೂ ಅಳಿಸಲಾಗುವುದಿಲ್ಲ.",
   'admin.inactiveTitle': 'ನಿಷ್ಕ್ರಿಯ ಖಾತೆಗಳು',
   // {count}: months without signing in; {since}: a date
   'admin.inactiveHelp': {

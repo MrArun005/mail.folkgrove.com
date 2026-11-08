@@ -1489,6 +1489,10 @@ export default {
   'admin.noSuspended': 'لا يوجد حساب معلَّق الإرسال.',
   // {who}: who suspended sending
   'admin.byWho': 'بواسطة {who}',
+  'admin.byComplaints': "بعد شكاوى البريد العشوائي؛ لا يرفعه إلا المشرف",
+  'admin.byHold': "بعد احتجاز عدة رسائل كبريد عشوائي؛ لا يرفعه إلا المشرف",
+  'admin.refusingMail': "يرفض البريد الجديد",
+  'admin.disableInactiveRefuses': "لن يتمكن من تسجيل الدخول أو الإرسال، وسيُرفض البريد الجديد الموجه إليه كصندوق بريد غير نشط، حتى تعيد تفعيل الحساب (علامة تبويب المستخدمين). لا يُحذف شيء.",
   'admin.inactiveTitle': 'الحسابات غير النشطة',
   // {count}: months without signing in; {since}: a date
   'admin.inactiveHelp': {

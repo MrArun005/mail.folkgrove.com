@@ -419,7 +419,7 @@ function Suspended({ client }: { client: Jmap }) {
             {data.suspended.map((x) => (
               <tr key={x.id}>
                 <td data-label={t('admin.colAccount')}><b>{x.email}</b></td>
-                <td data-label={t('admin.colWhy')}>{x.reason}{x.by && <span className="fine"> · {t('admin.byWho', { who: x.by })}</span>}</td>
+                <td data-label={t('admin.colWhy')}>{x.reason}{x.by && <span className="fine"> · {x.by === 'spam complaints' ? t('admin.byComplaints') : x.by === 'spam hold' ? t('admin.byHold') : t('admin.byWho', { who: x.by })}</span>}</td>
                 <td data-label={t('admin.colSince')}>{when(x.at)}</td>
                 <td data-label={t('admin.colThisWeek')} className="n">{x.times}×</td>
                 <td className="acts"><Button size="sm" onClick={() => act(() => client.admin(`users/${x.id}`, 'PATCH', { sending: true }), reload)}>{t('admin.allowSending')}</Button></td>
@@ -433,7 +433,7 @@ function Suspended({ client }: { client: Jmap }) {
 }
 
 function Inactive({ client }: { client: Jmap }) {
-  const { data, error, reload } = useLoad(() => client.admin<{ months: number; since: string; accounts: { id: string; email: string; lastSeen: string | null; reminded: number | null; due: boolean; enabled: boolean }[] }>('inactive'));
+  const { data, error, reload } = useLoad(() => client.admin<{ months: number; since: string; accounts: { id: string; email: string; lastSeen: string | null; reminded: number | null; due: boolean; enabled: boolean; refusingMail?: boolean }[] }>('inactive'));
   const list = data ? [...data.accounts].sort((a, b) => Number(b.due) - Number(a.due) || (a.reminded ?? 0) - (b.reminded ?? 0)) : [];
   return (
     <section>
@@ -453,9 +453,10 @@ function Inactive({ client }: { client: Jmap }) {
                 <td data-label={t('admin.colStatus')}>
                   {x.due ? <span className="pill pill--warn">{t('admin.dueBlocking')}</span> : <span className="pill">{t('admin.reminded', { count: x.reminded ?? 0 })}</span>}
                   {!x.enabled && <span className="pill">{t('admin.disabled')}</span>}
+                  {x.refusingMail && <span className="pill pill--warn">{t('admin.refusingMail')}</span>}
                 </td>
                 <td className="acts">{x.due && x.enabled && <Button size="sm" variant="quiet" onClick={async () => {
-                  if (await confirmIt({ title: t('admin.disableTitle', { email: x.email }), body: t('admin.disableInactiveBody'), confirm: t('admin.disable'), danger: true }))
+                  if (await confirmIt({ title: t('admin.disableTitle', { email: x.email }), body: t('admin.disableInactiveRefuses'), confirm: t('admin.disable'), danger: true }))
                     await act(() => client.admin(`users/${x.id}`, 'PATCH', { enabled: false }), reload);
                 }}>{t('admin.disable')}</Button>}</td>
               </tr>

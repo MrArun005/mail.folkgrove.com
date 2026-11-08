@@ -1476,6 +1476,10 @@ export default {
   'admin.noSuspended': '没有帐号的发送功能被暂停。',
   // {who}: who suspended sending
   'admin.byWho': '操作者：{who}',
+  'admin.byComplaints': "因垃圾邮件投诉；只有管理员可以解除",
+  'admin.byHold': "因多封邮件被作为垃圾邮件暂扣；只有管理员可以解除",
+  'admin.refusingMail': "正在拒收新邮件",
+  'admin.disableInactiveRefuses': "在你重新启用该帐号（“用户”标签页）之前，对方无法登录或发送邮件，发给对方的新邮件会因邮箱不活跃而被拒收。不会删除任何内容。",
   'admin.inactiveTitle': '不活跃的帐号',
   // {count}: months without signing in; {since}: a date
   'admin.inactiveHelp': {

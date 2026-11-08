@@ -1480,6 +1480,10 @@ export default {
   'admin.noSuspended': 'Ninguna cuenta tiene el envío suspendido.',
   // {who}: who suspended sending
   'admin.byWho': 'por {who}',
+  'admin.byComplaints': "tras quejas de spam; solo un administrador puede levantarlo",
+  'admin.byHold': "tras retener varios mensajes como spam; solo un administrador puede levantarlo",
+  'admin.refusingMail': "Rechazando correo nuevo",
+  'admin.disableInactiveRefuses': "No podrá iniciar sesión ni enviar, y el correo nuevo dirigido a esta cuenta se rechazará como buzón inactivo, hasta que vuelvas a habilitar la cuenta (pestaña Usuarios). No se elimina nada.",
   'admin.inactiveTitle': 'Cuentas inactivas',
   // {count}: months without signing in; {since}: a date
   'admin.inactiveHelp': {

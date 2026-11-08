@@ -1480,6 +1480,10 @@ export default {
   'admin.noSuspended': 'किसी खाते का भेजना निलंबित नहीं है।',
   // {who}: who suspended sending
   'admin.byWho': '{who} द्वारा',
+  'admin.byComplaints': "स्पैम शिकायतों के बाद; इसे केवल एडमिन हटा सकते हैं",
+  'admin.byHold': "कई संदेश स्पैम के रूप में रोके जाने के बाद; इसे केवल एडमिन हटा सकते हैं",
+  'admin.refusingMail': "नए मेल अस्वीकार हो रहे हैं",
+  'admin.disableInactiveRefuses': "वे साइन इन या मेल नहीं भेज पाएंगे, और उनके लिए आने वाले नए मेल निष्क्रिय मेलबॉक्स के रूप में अस्वीकार होंगे, जब तक आप खाता फिर से चालू नहीं करते (उपयोगकर्ता टैब)। कुछ भी मिटाया नहीं जाता।",
   'admin.inactiveTitle': 'निष्क्रिय खाते',
   // {count}: months without signing in; {since}: a date
   'admin.inactiveHelp': {
