@@ -125,6 +125,12 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 | AI (summarise, smart reply) | ✅ | ✅ | Summaries, smart replies and writing help, all on this device; nothing goes to an AI company |
 | Offline mail | ✅ | ✅ | On trusted devices: saved lists and conversations, an outbox that sends when you're back online |
 | Large files as links | ✅ | ✅ | Over 25 MB: a link to your own storage, expiring in 7 or 30 days or never |
+| Smart Compose | ✅ | ✅ | Grey next words, Tab accepts; the browser's on-device model, nothing leaves the device; off by default (Settings) |
+| Several drafts, pop-out | ✅ | ✅ | Bars along the bottom, each autosaving; pop out to its own window and back; Esc minimizes; one full-screen draft on phones |
+| Emoji reactions | ✅ | ✅ | Standard RFC 9078 (works with Thunderbird and others); chips under the message; other mail apps see the emoji as a tiny reply |
+| Rich toolbar (colour, size, emoji, table, image size) | ✅ | ✅ | Pasted pictures go into the text; image sizes are small / medium / original (no drag handles) |
+| Contact groups as recipients | ✅ | ✅ | Standard vCard/JSContact groups (sync with CardDAV apps); a group expands to its people in To/Cc/Bcc |
+| Help me schedule | ✅ | ✅ | 3–5 free times from your own calendar (weekdays 9–17) as a list; replies don't create events yet |
 
 ## Score today
 

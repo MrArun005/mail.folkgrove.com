@@ -208,7 +208,7 @@ export function draftFromEmail(e: EmailFull): Draft {
     id: e.id, to: e.to ?? [], cc: e.cc ?? [], bcc: e.bcc ?? [], subject: e.subject ?? '',
     from: e.from?.[0]?.email,
     html: e.html ? cleanHtml(e.html) : textToHtml(e.text ?? ''), text: e.text ?? '',
-    attachments: e.attachments.filter((a: Attachment) => a.disposition !== 'inline'),
+    attachments: e.attachments.filter((a: Attachment) => a.disposition !== 'inline' || embedded(e).includes(a)), // pictures in the text stay
     inReplyTo: e.inReplyTo ?? undefined, references: e.references ?? undefined, // a resumed reply stays in its thread
   };
 }

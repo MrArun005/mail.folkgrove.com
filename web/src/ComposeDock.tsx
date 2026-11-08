@@ -3,23 +3,45 @@
 // window closes without sending, the draft comes back here as a bar. Phones keep one full-screen compose (styles.css).
 import { useEffect, useRef, useState } from 'react';
 import { Compose, type ComposeApi, type RecipientGroup } from './Compose';
-import type { Address, Draft, Jmap } from './jmap';
+import type { Address, Draft, EmailFull, Jmap, Mailbox } from './jmap';
 import { draftFromEmail, type Signature } from './mailutil';
 
 type Win = { key: number; draft: Draft; min?: boolean; id?: string };
 type Msg = { om: 'draft'; id: string } | { om: 'done' } | { om: 'send'; d: Draft; sendAt?: string };
 let seq = 0;
 const POP = new URLSearchParams(location.search).get('compose');
-/** This window is a popped-out compose window. */
-export const isPopout = !!POP;
+
+// Handing a draft to the new window: the URL carries a one-time token, never a message id. The id waits under that
+// token in sessionStorage, which the browser copies into a window this tab opens; the new window takes it out
+// once. A crafted ?compose= link (or a reload) opens nothing.
+const slot = (token: string) => `om:popout:${token}`;
+export function handOver(id: string, store: Storage = sessionStorage): string {
+  const token = crypto.randomUUID();
+  store.setItem(slot(token), id);
+  return token;
+}
+export function takeHandOver(token: string | null, store: Storage = sessionStorage): string | null {
+  if (!token || !/^[0-9a-f-]{36}$/.test(token)) return null;
+  const id = store.getItem(slot(token));
+  store.removeItem(slot(token));
+  return id;
+}
+/** Only your own unsent drafts open in compose: a received message must never be edited and sent on from here. */
+export const isOwnDraft = (e: EmailFull, boxes: Mailbox[]) => !!e.keywords.$draft && boxes.some((b) => b.role === 'drafts' && e.mailboxIds[b.id]);
 
 export function useComposeWindows(client: Jmap, opts: { send: (d: Draft, sendAt?: Date) => void; blocked: () => void }) {
   const [wins, setWins] = useState<Win[]>([]);
   const latest = useRef(opts); latest.current = opts;
 
-  // In a popped-out window: open its draft.
+  /** A draft by id, only if it really is one of your drafts. */
+  const loadDraft = async (id: string) => {
+    const [e, boxes] = await Promise.all([client.email(id), client.mailboxes()]);
+    return e && isOwnDraft(e, boxes) ? e : null;
+  };
+  // In a popped-out window: open the draft handed over by the window that opened it.
   useEffect(() => {
-    if (POP) client.email(POP).then((e) => e && setWins([{ key: ++seq, draft: draftFromEmail(e), id: e.id }]), () => {});
+    const id = takeHandOver(POP);
+    if (id) loadDraft(id).then((e) => e && setWins([{ key: ++seq, draft: draftFromEmail(e), id: e.id }]), () => {});
   }, [client]);
 
   /** Open a draft, or bring it up if it's open already. Others fold to bars when there's no room beside it. */
@@ -36,7 +58,9 @@ export function useComposeWindows(client: Jmap, opts: { send: (d: Draft, sendAt?
   const remove = (key: number) => setWins((ws) => ws.filter((w) => w.key !== key));
 
   function popOut(key: number, id: string) {
-    const w = window.open(`${location.pathname}?compose=${encodeURIComponent(id)}`, `compose-${key}`, 'popup,width=760,height=700');
+    const token = handOver(id);
+    const w = window.open(`${location.pathname}?compose=${token}`, `compose-${key}`, 'popup,width=760,height=700');
+    sessionStorage.removeItem(slot(token)); // the new window has its own copy
     if (!w) return latest.current.blocked();
     remove(key);
     let last = id, done = false;
@@ -53,7 +77,7 @@ export function useComposeWindows(client: Jmap, opts: { send: (d: Draft, sendAt?
       if (!w.closed) return;
       clearInterval(timer); removeEventListener('message', onMsg);
       if (done) return;
-      const e = await client.email(last).catch(() => null);
+      const e = await loadDraft(last).catch(() => null);
       if (e) setWins((ws) => [...ws, { key: ++seq, draft: draftFromEmail(e), id: e.id, min: true }]);
     }, 700);
   }

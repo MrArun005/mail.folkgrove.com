@@ -899,3 +899,5 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
   .compose-dock > .compose:not(:last-child), .compose.min { display: none; }
   .not-mobile { display: none; }
 }
+/* Room for the schedule and formatting-bar buttons next to the others. */
+@media (min-width: 861px) { .compose:not(.min):not(.popped) { width: min(720px, calc(100vw - var(--s8))); } }

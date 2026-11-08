@@ -93,7 +93,11 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
   };
   /** Colour and size as inline styles (cleanHtml keeps those); bold and the rest stay plain tags. */
   const styled = (cmd: string, arg: string) => { restore(); exec('styleWithCSS', 'true'); exec(cmd, arg); exec('styleWithCSS', 'false'); changed(); };
-  const insertHtml = (html: string) => { restore(); exec('insertHTML', html); changed(); };
+  const insertHtml = (html: string) => {
+    restore(); exec('insertHTML', html);
+    editor.current!.querySelectorAll<HTMLElement>('table:not([style])').forEach((tb) => { tb.style.borderCollapse = 'collapse'; }); // insertHTML drops it
+    changed();
+  };
   const insertText = (text: string) => { restore(); exec('insertText', text); changed(); };
   /** A pasted picture goes into the text (an inline cid: image), shown at once and uploaded behind it. */
   const blobUrls = useRef<string[]>([]);
