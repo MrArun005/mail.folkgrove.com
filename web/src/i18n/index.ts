@@ -95,3 +95,9 @@ export function serverText(code: string | undefined, message: string): string {
   const k = `server.${code}` as Key;
   return k in en ? t(k) : message;
 }
+
+/** A folder's name on screen: the server's own folders (by role) in your language, folders you made as you named them. */
+export const boxName = (b: { role?: string | null; name: string }) => {
+  const k = `folder.${b.role}` as Key;
+  return b.role && k in en ? t(k) : b.name;
+};

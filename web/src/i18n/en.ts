@@ -26,7 +26,27 @@ export const en = {
   'common.off': 'Off',
   'common.couldntSave': 'Couldn’t save: {error}',
   'common.couldntChange': 'Couldn’t change this: {error}',
+  'common.messages': { one: '{count} message', other: '{count} messages' },
   'common.serverError': 'The server returned an error ({status})',
+
+  // Folder names the server creates (by role) and the app's own views. Folders people make keep their own names.
+  'folder.inbox': 'Inbox',
+  'folder.drafts': 'Drafts',
+  'folder.sent': 'Sent',
+  'folder.archive': 'Archive',
+  'folder.junk': 'Junk',
+  'folder.trash': 'Trash',
+  'folder.snoozed': 'Snoozed',
+  'folder.starred': 'Starred',
+  'folder.scheduled': 'Scheduled',
+  'folder.subscriptions': 'Subscriptions',
+  'folder.contacts': 'Contacts',
+  'folder.calendar': 'Calendar',
+  'folder.tasks': 'Tasks',
+  'folder.notes': 'Notes',
+  'folder.important': 'Important',
+  'folder.screener': 'Screener',
+  'folder.updates': 'Updates',
 
   // Settings → Display → Language
   'lang.label': 'Language',
