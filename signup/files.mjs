@@ -3,7 +3,7 @@
 // Stalwart's own upload limits (50 MB per upload and per hour for a user) are for attachments; this service uploads
 // with admin rights, which they don't apply to, so it enforces its own: MAX_FILE_BYTES and FILES_QUOTA_BYTES.
 //
-//   POST   /api/files?name=&expires=7|30|0   raw body (Content-Length required) → 201 { file }
+//   POST   /api/files?name=&expires=1|7|30|0 raw body (Content-Length required) → 201 { file }
 //   GET    /api/files                        the caller's links
 //   DELETE /api/files/:id                    revoke: the link stops working and the file is deleted
 //   GET    /f/:id                            public download, always as an attachment, never rendered
@@ -80,8 +80,9 @@ export function fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ip
     if (!Number.isSafeInteger(size) || size <= 0) return fail(res, 411, 'length_required', 'Send the file with its size (Content-Length).');
     const max = cfg.maxFileBytes ?? 2 * 1024 ** 3;
     if (size > max) return fail(res, 413, 'too_large', `Files can be at most ${Math.round(max / 1e6)} MB.`);
-    const days = { 7: 7, 30: 30, 0: 0 }[url.searchParams.get('expires') ?? '30'];
-    if (days === undefined) return fail(res, 400, 'bad_expiry', 'Choose 7 days, 30 days or never.');
+    // 1 day: confidential messages (web/src/confidential.ts), stored here as ciphertext.
+    const days = { 1: 1, 7: 7, 30: 30, 0: 0 }[url.searchParams.get('expires') ?? '30'];
+    if (days === undefined) return fail(res, 400, 'bad_expiry', 'Choose 1, 7 or 30 days, or never.');
     const name = cleanName(url.searchParams.get('name'));
     const wait = uploads.take(who.id);
     if (wait) return fail(res, 429, 'rate_limited', 'You’ve uploaded a lot of files recently. Try again in a little while.', { retryAfter: wait });

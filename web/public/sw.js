@@ -23,7 +23,10 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin || /^\/(jmap|api|\.well-known)/.test(url.pathname)) return;
   if (e.request.mode === 'navigate') {
     // Network first for the page, so updates arrive; cached shell when offline.
-    e.respondWith(fetch(e.request).then((r) => { caches.open(SHELL).then((c) => c.put('/', r.clone())); return r; }).catch(() => caches.match('/')));
+    // Only the app's own page is the shell: a download (/f/…) or the confidential viewer must never replace it.
+    const shell = url.pathname === '/' || url.pathname === '/admin';
+    e.respondWith(fetch(e.request).then((r) => { if (shell && r.ok) caches.open(SHELL).then((c) => c.put('/', r.clone())); return r; })
+      .catch(() => (shell ? caches.match('/') : Response.error())));
     return;
   }
   // Hashed assets never change: cache first.

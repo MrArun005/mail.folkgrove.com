@@ -8,6 +8,7 @@ import { Jmap, UNDO_SECONDS, type SharedAccount, type Attachment, type Contact, 
 import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, fileSize, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode, type Signature } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
+import { canAsk } from './ai';
 import { SubscriptionsList } from './Subscriptions';
 import { ContactList, ContactPanel, fullName } from './Contacts';
 import { CalendarView } from './CalendarView';
@@ -948,7 +949,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         </div>
       )}
 
-      {overlay === 'palette' && <Palette commands={commands} onClose={() => setOverlay(null)} />}
+      {overlay === 'palette' && <Palette commands={commands} onClose={() => setOverlay(null)} ask={canAsk() ? { client, open: (tid) => openRef.current(tid) } : undefined} />}
       {overlay === 'settings' && (!opened || ownBoxes) && <Settings client={own} boxes={ownBoxes ?? boxes} prefillRule={rulePrefill}
         onClose={() => { setOverlay(null); setRulePrefill(undefined); reloadCategories(); }} onFoldersChanged={refresh} onIdentitiesChanged={loadIdentity} onAccountDeleted={onLogout}
         onSaved={(m) => { setOverlay(null); setRulePrefill(undefined); say({ text: m }); loadIdentity(); reloadCategories(); }} />}

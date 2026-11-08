@@ -674,7 +674,7 @@ export class Jmap {
   // ── Large-file links (the account service, signup/files.mjs) ──
 
   /** Upload a file that's too big to attach into your own storage; returns its download link. */
-  async shareFile(file: File, expiresDays: 7 | 30 | 0): Promise<SharedFile> {
+  async shareFile(file: File, expiresDays: 1 | 7 | 30 | 0): Promise<SharedFile> {
     const r = await this.fetch(`${this.base}/api/files?name=${encodeURIComponent(file.name)}&expires=${expiresDays}`,
       { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
     if (r.status === 404 || r.status === 502) throw new JmapError(t('jmap.noFileLinks'));

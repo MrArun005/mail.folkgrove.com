@@ -9,6 +9,8 @@ import { canRewrite, rewrite, type RewriteStyle } from './ai';
 import { Menu, TimeChoices } from './Menu';
 import { ensureUnlocked, useRecipientKeys } from './Encryption';
 import { t } from './i18n';
+import { confidentialUrl, seal } from './seal';
+import { ConfidentialBar, confidentialHtml, type ConfidentialDays } from './Confidential';
 
 export interface ComposeApi {
   upload: (f: File) => Promise<Attachment>;
@@ -20,7 +22,7 @@ export interface ComposeApi {
   saveTemplate: (d: Draft) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
   /** Large files go to the sender's storage as a download link (absent: the server can't, so they're attached). */
-  share?: (f: File, expiresDays: 7 | 30 | 0) => Promise<SharedFile>;
+  share?: (f: File, expiresDays: 1 | 7 | 30 | 0) => Promise<SharedFile>;
   /** Biggest attachment the server takes (session maxSizeUpload). */
   maxUpload?: number;
 }
@@ -52,6 +54,9 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
   const [receipt, setReceipt] = useState(!!initial.receipt);
   const [followUp, setFollowUp] = useState<number | undefined>(initial.followUpDays);
   const [encrypt, setEncrypt] = useState(!!initial.encrypt);
+  // ponytail: "Send confidentially" lives in this window only; a draft reopened later is a normal message again.
+  const [confidential, setConfidential] = useState<ConfidentialDays | null>(null);
+  const [passcode, setPasscode] = useState('');
   // ponytail: your key is kept under the account's main address (identities[0]), which is its sign-in name.
   const me = identities[0]?.email ?? '';
   const keys = useRecipientKeys([to, showCc ? cc : '', showBcc ? bcc : ''], me);
@@ -213,7 +218,21 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
     if (!files.length && !fileLinks(editor.current!.innerHTML, location.origin).length && /\battach(ed|ment|ing)\b/i.test(text.split('\n> ')[0]) && !(await confirmIt({ title: t('compose.forgotTitle'), body: t('compose.forgotBody'), confirm: t('compose.sendAnyway') }))) return;
     if (!subject.trim() && !(await confirmIt({ title: t('compose.noSubjectTitle'), body: t('compose.noSubjectBody'), confirm: t('compose.sendAnyway') }))) return;
     await saving.current;
-    onSend(snapshot(), sendAt);
+    let d = snapshot();
+    if (confidential && api.share) {
+      // Encrypted here, stored as ciphertext; recipients get only the link (the key rides after "#").
+      // ponytail: Undo (or a failed send) brings back this link version, not the text; the text is still behind the
+      // link. The expiry clock starts now, also for scheduled sends.
+      if (d.attachments.length) return setError(t('confidential.noFiles'));
+      setStatus(t('confidential.sealing'));
+      try {
+        const { blob, key } = await seal({ subject: d.subject, sent: (sendAt ?? new Date()).toISOString(), text: d.text }, passcode);
+        const f = await api.share(new File([blob], `${t('confidential.fileName')}.bin`, { type: 'application/octet-stream' }), confidential);
+        const html = confidentialHtml(confidentialUrl(new URL(f.url).origin, f.id, key, !!passcode.trim()), f.expires, !!passcode.trim());
+        d = { ...d, html, text: htmlToText(html) };
+      } catch (e) { setStatus(''); return setError(t('confidential.couldntSeal', { error: (e as Error).message })); }
+    }
+    onSend(d, sendAt);
   }
 
   async function link() {
@@ -286,6 +305,8 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
           if (html) exec('insertHTML', cleanHtml(html)); else exec('insertText', e.clipboardData.getData('text/plain'));
         }} />
 
+      {confidential && <ConfidentialBar days={confidential} passcode={passcode} onPasscode={setPasscode} onOff={() => setConfidential(null)} />}
+
       {(files.some((f) => !f.cid) || uploading > 0) && (
         <ul className="chips" aria-label={t('compose.attachments')}>
           {files.filter((f) => !f.cid).map((f) => ( /* embedded images live in the text, not here */
@@ -300,7 +321,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
 
       <footer>
         <span className="split">
-          <Button variant="primary" onClick={() => send()} title={t('compose.sendTitle', { mod })}>{encrypt ? t('compose.sendEncrypted') : t('compose.send')}</Button>
+          <Button variant="primary" onClick={() => send()} title={t('compose.sendTitle', { mod })}>{encrypt ? t('compose.sendEncrypted') : confidential ? t('confidential.send') : t('compose.send')}</Button>
           <Menu label={t('compose.scheduleSend')} up button={<Button variant="primary" icon="clock" label={t('compose.scheduleSend')} />}>
             {(close) => <><p className="menu-title">{t('compose.scheduleSend')}</p><TimeChoices verb={t('compose.schedule')} close={close} onPick={(d) => send(d)} /></>}
           </Menu>
@@ -318,7 +339,22 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
             onClick={() => { setReceipt(!receipt); changed(); }} />
           {keys.mine && <Button variant="quiet" icon="lock" pressed={encrypt} disabled={!encrypt && !keys.ready}
             label={encrypt ? t('compose.encryptOn') : keys.ready ? t('compose.encrypt') : keys.missing.length ? t('compose.cantEncrypt', { list: keys.missing.join(', ') }) : t('compose.encryptLooking')}
-            onClick={() => { setEncrypt(!encrypt); changed(); }} />}
+            onClick={() => { setEncrypt(!encrypt); setConfidential(null); changed(); }} />}
+          {api.share && (
+            <Menu label={t('confidential.compose')} up align="right" button={<Button variant="quiet" icon="shield" pressed={!!confidential}
+              label={confidential ? t('confidential.composeOn', { count: confidential }) : t('confidential.compose')} />}>
+              {(close) => <>
+                <p className="menu-title">{t('confidential.linkWorksFor')}</p>
+                {([1, 7, 30] as const).map((d) => (
+                  <button key={d} className="menu-item" role="menuitem" aria-checked={confidential === d} onClick={() => { close(); setConfidential(d); setEncrypt(false); }}>
+                    <Icon name={confidential === d ? 'check' : 'clock'} size={16} /><span className="grow">{t('compose.days', { count: d })}</span>
+                  </button>
+                ))}
+                {confidential && <button className="menu-item menu-sep" role="menuitem" onClick={() => { close(); setConfidential(null); }}><Icon name="close" size={16} />{t('confidential.turnOff')}</button>}
+                <p className="menu-note">{t('confidential.menuNote')}</p>
+              </>}
+            </Menu>
+          )}
           <Menu label={t('compose.templates')} up align="right" button={<Button variant="quiet" icon="templates" label={t('compose.templates')} />}>
             {(close) => <TemplatesMenu api={api} close={close}
               onInsert={(tpl) => {
