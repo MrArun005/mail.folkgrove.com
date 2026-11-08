@@ -24,6 +24,8 @@ export interface ScriptData {
   vacation: Vacation;
   /** Sort newsletters and notifications into Updates (keyword $updates), Gmail-style. On unless turned off. */
   categories?: boolean;
+  /** Which tabs show next to Primary (with categories on). Missing: only Updates (saved before the other tabs). */
+  tabs?: Tab[];
   savedSearches?: { name: string; query: string }[];
   /** Named signatures; sigNew/sigReply pick one by name ('' = none, missing = the first). */
   signatures?: { name: string; text: string }[];
@@ -38,10 +40,46 @@ export const SCREENER = 'Screener';
 const isAddress = (a: string) => /^[^\s@"\\]+@[^\s@"\\]+\.[^\s@"\\]+$/.test(a);
 export const UPDATES = '$updates';
 
+/** Inbox tabs next to Primary, in the order shown. Each is a keyword the server's Sieve script sets on delivery. */
+export const TABS = ['promotions', 'social', 'updates', 'forums'] as const;
+export type Tab = typeof TABS[number];
+export const tabKeyword = (k: Tab) => `$${k}`;
+export const TAB_LABEL = { primary: 'mail.primary', promotions: 'smarts.promotions', social: 'smarts.social', updates: 'folder.updates',
+  forums: 'smarts.forums' } as const satisfies Record<string, Key>;
+/** What a new account gets (Gmail's default set, plus Updates, which we had first). */
+export const DEFAULT_TABS: Tab[] = ['promotions', 'social', 'updates'];
+/** Receipts, deliveries and bookings: mail carrying schema.org order/travel data. The "Purchases & trips" search. */
+export const PURCHASE = '$purchase';
+// ponytail: a fixed list of the big social networks; a sender not on it is sorted by its list headers instead.
+const SOCIAL = ['facebook.com', 'facebookmail.com', 'instagram.com', 'linkedin.com', 'twitter.com', 'x.com', 'pinterest.com',
+  'tiktok.com', 'reddit.com', 'redditmail.com', 'snapchat.com', 'tumblr.com', 'quora.com', 'youtube.com', 'discord.com',
+  'nextdoor.com', 'meetup.com', 'threads.net', 'bsky.app', 'strava.com', 'whatsapp.com', 'mastodon.social'];
+const AUTOMATED = ['noreply', 'no-reply', 'donotreply', 'notifications', 'mailer-daemon'];
+const FORUM_LISTS = ['googlegroups.com', 'groups.io'];
+const PURCHASE_MARKS = ['ParcelDelivery', 'FlightReservation', 'LodgingReservation', 'EventReservation', 'schema.org/Order', '"Order"'];
+// First match wins, in this order (a social network's digest has list headers too).
+const SORT_ORDER = ['social', 'forums', 'promotions', 'updates'] as const;
+
+/** The headers the sorting looks at, for mail that arrived before the rule did. */
+export interface CategoryHeaders { from: string; listId?: string | null; listUnsubscribe?: string | null; listPost?: string | null; precedence?: string | null; mailman?: string | null }
+/** The same decision as the Sieve rule in toSieve (except the purchase check, which reads the body on the server). */
+export function categorize(h: CategoryHeaders, tabs: readonly Tab[]): Tab | null {
+  const at = h.from.lastIndexOf('@'), domain = h.from.slice(at + 1).toLowerCase(), local = h.from.slice(0, Math.max(at, 0)).toLowerCase();
+  const prec = (h.precedence ?? '').trim().toLowerCase(), automated = AUTOMATED.some((a) => local.includes(a));
+  const tests: Record<Tab, boolean> = {
+    social: SOCIAL.some((d) => domain === d || domain.endsWith('.' + d)),
+    forums: !!h.listPost || !!h.mailman || prec === 'list' || FORUM_LISTS.some((d) => (h.listId ?? '').toLowerCase().includes(d)),
+    promotions: (prec === 'bulk' || !!h.listUnsubscribe) && !automated,
+    updates: !!h.listUnsubscribe || !!h.listId || automated,
+  };
+  return SORT_ORDER.find((k) => tabs.includes(k) && tests[k]) ?? null;
+}
+
 export const SCRIPT_NAME = 'openmail';
 const MARK = '# openmail-rules: ';
 
 const q = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+const list = (a: readonly string[]) => `[${a.map(q).join(', ')}]`;
 
 type Tr = (k: Key, v?: Vars) => string;
 /** The script is data, not interface: its comments stay English whatever language is on screen. */
@@ -67,11 +105,23 @@ export function validateRule(r: Rule): string | null {
 /** Folder names on this server for the delete and block actions. Blocked mail goes to Junk, never silently lost. */
 export function toSieve(data: ScriptData, folders: { trash: string; junk: string }): string {
   const { rules, vacation } = data;
-  const lines = [MARK + JSON.stringify(data), 'require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational", "spamtest"];', ''];
+  const lines = [MARK + JSON.stringify(data), 'require ["fileinto", "imap4flags", "mailbox", "copy", "vacation", "date", "relational", "spamtest", "body"];', ''];
+  // Before the tabs: a receipt with an unsubscribe link is still a receipt (Updates), not an advert.
+  lines.push('# Purchases and trips: orders, deliveries and bookings that carry schema.org data',
+    `if body :content "text/html" :contains ${list(PURCHASE_MARKS)} { addflag ${q(PURCHASE)}; }`, '');
   if (data.categories !== false) {
-    // Mailing lists, newsletters and automated senders go to the Updates tab; people stay in Primary.
-    lines.push('# Inbox categories: newsletters and notifications → Updates',
-      `if anyof(exists "list-unsubscribe", exists "list-id", address :localpart :contains "from" ["noreply", "no-reply", "donotreply", "notifications", "mailer-daemon"]) { addflag ${q(UPDATES)}; }`, '');
+    // One tab per message, first match wins; a tab that's switched off lets its mail fall through to the next one.
+    // People stay in Primary. ponytail: header heuristics, no learning; Gmail's model sorts the borderline cases better.
+    const tabs = data.tabs ?? ['updates'];
+    const tests: Record<Tab, string> = {
+      social: `address :domain :matches "from" ${list(SOCIAL.flatMap((d) => [d, `*.${d}`]))}`,
+      forums: `anyof(exists "list-post", exists "x-mailman-version", header :is "precedence" "list", header :contains "list-id" ${list(FORUM_LISTS)})`,
+      promotions: `allof(not hasflag ${q(PURCHASE)}, anyof(header :is "precedence" "bulk", exists "list-unsubscribe"), not address :localpart :contains "from" ${list(AUTOMATED)})`,
+      updates: `anyof(exists "list-unsubscribe", exists "list-id", address :localpart :contains "from" ${list(AUTOMATED)})`,
+    };
+    const on = SORT_ORDER.filter((k) => tabs.includes(k));
+    if (on.length) lines.push('# Inbox categories: social networks, discussion lists, marketing, other automated mail',
+      on.map((k, i) => `${i ? 'elsif' : 'if'} ${tests[k]} { addflag ${q(tabKeyword(k))}; }`).join('\n'), '');
   }
   // Order: blocks first (no auto-reply to blocked senders), then the out-of-office reply, then everything else.
   const ordered = [...rules.filter((r) => r.action === 'block'), ...rules.filter((r) => r.action !== 'block')];

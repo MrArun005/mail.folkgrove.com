@@ -18,6 +18,7 @@ import { abuseRoutes } from './abuse.mjs';
 import { holdRoutes } from './hold.mjs';
 import { arfJob } from './arf.mjs';
 import { wkdRoutes } from './wkd.mjs';
+import { bimiRoutes } from './bimi.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
@@ -325,6 +326,7 @@ export function createApp(cfg) {
   // Re-check every claimed domain's TXT record every 6 hours (a missing one pauses the domain after 7 days).
   if (domains) setInterval(() => domains.recheckAll().catch((e) => console.error('domains:', e.message)), 6 * 3600e3).unref();
   const wkd = wkdRoutes({ cfg, jmap, getDomainId, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const bimi = bimiRoutes({ RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const sharing = sharingRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter });
   const mailJmap = (calls) => jmap(calls, ['urn:ietf:params:jmap:mail']); // retention reads and destroys mail
   const retention = retentionRoutes({ cfg, jmap: mailJmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)), store: retentionStore });
@@ -358,6 +360,7 @@ export function createApp(cfg) {
       // Called by Stalwart only (not under /api/, so the proxy never forwards it), with the hook secret.
       if (url.pathname === '/internal/outbound-hook' && req.method === 'POST' && hold) return await hold.hook(req, res);
       if (url.pathname.startsWith('/.well-known/openpgpkey/') && await wkd(req, res, url)) return;
+      if (url.pathname.startsWith('/api/bimi/') && await bimi(req, res, url)) return;
       if (cfg.signupEnabled !== false) {
         if (url.pathname === '/api/signup' && req.method === 'POST') return await signup(req, res);
         if (url.pathname === '/api/username-available' && req.method === 'GET') return await available(req, res, url);

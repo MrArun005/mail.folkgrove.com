@@ -17,7 +17,7 @@ import { Reader, shortDate, type Action, type MoreAction } from './Reader';
 import { TaskList } from './Tasks';
 import { NotesView } from './Notes';
 import { addRule, loadScript, saveScript } from './Filters';
-import { SCREENER, UPDATES, type Rule, type ScriptData } from './rules';
+import { DEFAULT_TABS, SCREENER, TAB_LABEL, tabKeyword, TABS, type Rule, type ScriptData, type Tab } from './rules';
 import { enablePush, notifyOn, showMail } from './notify';
 import { setBadge, takeLaunch } from './launch';
 import { offlineStore } from './offline';
@@ -79,8 +79,9 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const key = (k: string) => `${client.scope}:${k}`;
   const [boxes, setBoxes] = useState<Mailbox[]>(() => cache.get(key('boxes')) ?? []);
   const [view, setView] = useState<string | null>(startView ?? null); // mailbox id or virtual folder; null = Inbox
-  const [tab, setTab] = useState<'primary' | 'updates'>('primary'); // Inbox categories
+  const [tab, setTab] = useState<'primary' | Tab>('primary'); // Inbox categories
   const [categories, setCategories] = useState(true);
+  const [tabs, setTabs] = useState<Tab[]>(() => cache.get(key('tabs')) ?? ['updates']); // which tabs show next to Primary (cached: no flash of two tabs)
   const [subs, setSubs] = useState<Subscription[] | null>(null);
   const [saved, setSaved] = useState<{ name: string; query: string }[]>([]);
   const [people, setPeople] = useState<Contact[] | null>(null);
@@ -179,14 +180,15 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       if (box === CALENDAR || box === TASKS || box === NOTES) return; // these load their own data
       const isInbox = b.find((x) => x.id === box)?.role === 'inbox';
       const filter: Filter = query ? parseSearch(query, b) : box === STARRED ? { hasKeyword: '$flagged' }
-        : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box }, tab === 'updates' ? { hasKeyword: UPDATES } : { notKeyword: UPDATES }] }
+        : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box },
+          ...(tab === 'primary' ? tabs.map((k) => ({ notKeyword: tabKeyword(k) })) : [{ hasKeyword: tabKeyword(tab) }])] }
         : { inMailbox: box };
       const l = await client.threads(filter, limit.current + 1); // one extra tells us whether there's more
       setHasMore(l.length > limit.current);
       let page = l.slice(0, limit.current);
       // Priority Inbox (Primary only): unread mail from people you write to comes first, under its own label.
       let top = 0;
-      if (isInbox && !query && (!categories || tab !== 'updates')) {
+      if (isInbox && !query && (!categories || tab === 'primary')) {
         const imp = (e: EmailSummary) => !e.keywords.$seen && !!e.from?.some((a) => correspondents.current.has(a.email.toLowerCase()));
         const first = page.filter(imp);
         top = first.length;
@@ -196,7 +198,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       setList(page);
       if (!query) cache.set(key(listKey(box)), page.slice(0, PAGE));
     } catch (e) { say({ text: e instanceof Error ? e.message : String(e) }); }
-  }, [client, view, query, tab, categories]);
+  }, [client, view, query, tab, categories, tabs]);
 
   useEffect(() => {
     setList(query ? null : cache.get(key(listKey(view ?? inbox))));
@@ -261,21 +263,26 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const [sigData, setSigData] = useState<Pick<ScriptData, 'signatures' | 'sigNew' | 'sigReply'>>({});
   // Accounts from before named signatures: the identity's one signature is the only one.
   const signatures: Signature[] = sigData.signatures ?? (identity?.textSignature?.trim() ? [{ name: t('mail.signature'), text: identity.textSignature }] : []);
-  const reloadCategories = () => loadScript(client).then(({ data }) => { setCategories(data.categories !== false); setSigData(data); }, () => {});
+  const showTabs = (data: ScriptData) => {
+    const on = TABS.filter((k) => (data.tabs ?? ['updates']).includes(k));
+    setCategories(data.categories !== false); setTabs(on); cache.set(key('tabs'), on); setTab((x) => (x === 'primary' || on.includes(x) ? x : 'primary'));
+  };
+  const reloadCategories = () => loadScript(client).then(({ data }) => { showTabs(data); setSigData(data); }, () => {});
 
   // Inbox categories: install the server rule (and tag existing mail) the first time this account opens the app.
   useEffect(() => {
     (async () => {
       try {
         const { data } = await loadScript(client);
-        setCategories(data.categories !== false);
+        showTabs(data);
         setSaved(data.savedSearches ?? []);
         setSigData(data);
         if (data.categories !== undefined) return;
         const b = await client.mailboxes();
-        await saveScript(client, b, (d) => ({ ...d, categories: d.categories ?? true }));
+        await saveScript(client, b, (d) => ({ ...d, categories: d.categories ?? true, tabs: d.tabs ?? DEFAULT_TABS }));
+        showTabs({ ...data, categories: true, tabs: DEFAULT_TABS });
         const inboxId = b.find((x) => x.role === 'inbox')?.id;
-        if (inboxId && await client.tagUpdates(inboxId)) refreshRef.current();
+        if (inboxId && await client.tagUpdates(inboxId, DEFAULT_TABS)) refreshRef.current();
       } catch { /* categories are a nicety: the inbox still works without them */ }
     })();
   }, [client]);
@@ -835,10 +842,10 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
               {query && !saved.some((x) => x.query === query) && <Button variant="link" onClick={saveSearch}>{t('mail.saveSearch')}</Button>}</div>}
         {role === 'inbox' && categories && !selected.size && (
           <div className="tabs" role="tablist" aria-label={t('mail.inboxCategories')}>
-            {(['primary', 'updates'] as const).map((k) => (
+            {(['primary', ...tabs] as const).map((k) => (
               <button key={k} role="tab" aria-selected={tab === k} className={`tab${tab === k ? ' on' : ''}`}
                 onClick={() => { setTab(k); setThreadId(null); }}>
-                <Icon name={k === 'primary' ? 'inbox' : 'tag'} size={16} />{t(k === 'primary' ? 'mail.primary' : 'folder.updates')}
+                <Icon name={TAB_ICON[k]} size={16} />{t(TAB_LABEL[k])}
               </button>
             ))}
           </div>
@@ -972,13 +979,15 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   );
 }
 
+const TAB_ICON = { primary: 'inbox', promotions: 'tag', social: 'person', updates: 'bell', forums: 'replyAll' } as const;
+
 /** Gmail-style one-click filters under the search box, plus "From <person>" for a name being typed. */
 function SearchChips({ query, contacts, onChange }: { query: string; contacts: Address[]; onChange: (q: string) => void }) {
   const week = new Date(Date.now() - 7 * 86400e3).toISOString().slice(0, 10);
   const chips: [string, string, RegExp][] = [
     [t('mail.chipUnread'), 'is:unread', /(^|\s)is:unread\b/], [t('folder.starred'), 'is:starred', /(^|\s)is:starred\b/],
     [t('mail.chipAttachment'), 'has:attachment', /(^|\s)has:attach\w*/], [t('mail.chipLastWeek'), `after:${week}`, /(^|\s)after:\S+/],
-    [t('folder.sent'), 'in:sent', /(^|\s)in:sent\b/],
+    [t('folder.sent'), 'in:sent', /(^|\s)in:sent\b/], [t('smarts.chipPurchases'), 'is:purchase', /(^|\s)is:purchases?\b/],
   ];
   const toggle = (token: string, re: RegExp) => onChange(re.test(query) ? query.replace(re, ' ').replace(/\s+/g, ' ').trim() : `${query.trim()} ${token}`.trim());
   // The last word, if it's plain text, may be the start of a name: offer people who match.

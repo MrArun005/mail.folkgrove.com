@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { RetentionSection } from './Retention';
 import type { Jmap, Mailbox } from './jmap';
 import { FiltersSection, FoldersSection, loadScript, saveScript } from './Filters';
-import type { Rule, Vacation } from './rules';
+import { TAB_LABEL, TABS, type Rule, type Tab, type Vacation } from './rules';
 import { Button } from './Button';
 import { SecuritySection } from './Security';
 import { AddressesSection } from './Addresses';
@@ -222,26 +222,37 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
   );
 }
 
-/** Inbox categories on/off. Saves immediately (it's a server rule), and tags existing mail when turned on. */
+/** Inbox categories on/off, and which tabs show. Saves immediately (it's a server rule), and tags existing mail. */
 function CategoriesSection({ client, boxes }: { client: Jmap; boxes: Mailbox[] }) {
   const [on, setOn] = useState<boolean | null>(null);
+  const [tabs, setTabs] = useState<Tab[]>(['updates']);
   const [note, setNote] = useState('');
-  useEffect(() => { loadScript(client).then(({ data }) => setOn(data.categories !== false), () => setOn(true)); }, [client]);
-  async function toggle(next: boolean) {
-    setOn(next); setNote(t('common.saving'));
+  useEffect(() => { loadScript(client).then(({ data }) => { setOn(data.categories !== false); setTabs(data.tabs ?? ['updates']); }, () => setOn(true)); }, [client]);
+  async function save(next: boolean, nextTabs: Tab[]) {
+    const was = { on, tabs };
+    setOn(next); setTabs(nextTabs); setNote(t('common.saving'));
     try {
-      await saveScript(client, boxes, (d) => ({ ...d, categories: next }));
+      await saveScript(client, boxes, (d) => ({ ...d, categories: next, tabs: nextTabs }));
       const inbox = boxes.find((b) => b.role === 'inbox')?.id;
-      const n = next && inbox ? await client.tagUpdates(inbox) : 0;
-      setNote(next ? (n ? t('settings.categoriesMoved', { count: n }) : t('settings.categoriesOn')) : t('settings.categoriesOff'));
-    } catch (e) { setOn(!next); setNote(t('common.couldntChange', { error: (e as Error).message })); }
+      const n = next && inbox ? await client.tagUpdates(inbox, nextTabs) : 0;
+      setNote(next ? (n ? t('smarts.tabsMoved', { count: n }) : t('settings.categoriesOn')) : t('settings.categoriesOff'));
+    } catch (e) { setOn(was.on); setTabs(was.tabs); setNote(t('common.couldntChange', { error: (e as Error).message })); }
   }
   return (
     <section>
       <h3>{t('settings.inbox')}</h3>
       <label className="inline"><input type="checkbox" className="check" checked={!!on} disabled={on === null}
-        onChange={(e) => toggle(e.target.checked)} />{t('settings.categoriesLabel')}</label>
-      <p className="fine">{note || t('settings.categoriesNote')}</p>
+        onChange={(e) => save(e.target.checked, tabs)} />{t('smarts.sortLabel')}</label>
+      {on && (
+        <fieldset className="tab-picker">
+          <legend>{t('smarts.tabsLegend')}</legend>
+          {TABS.map((k) => (
+            <label key={k} className="inline"><input type="checkbox" className="check" checked={tabs.includes(k)}
+              onChange={(e) => save(true, TABS.filter((x) => (x === k ? e.target.checked : tabs.includes(x))))} />{t(TAB_LABEL[k])}</label>
+          ))}
+        </fieldset>
+      )}
+      <p className="fine">{note || t('smarts.tabsNote')}</p>
     </section>
   );
 }

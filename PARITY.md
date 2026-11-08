@@ -4,7 +4,7 @@
 and openness. Then close the gap to Gmail.
 
 Status key: ✅ done · 🟡 partial · ⬜ planned. "Better" means a concrete advantage over Zoho, not a tie.
-Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
+Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 
 ## 1. Reading and triage
 
@@ -24,7 +24,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-07.
 | Print | ✅ | ✅ | Prints with trackers removed |
 | Read receipts (request) | ✅ | ✅ | Request from compose; when asked, you choose Send or Ignore (standard MDN), never automatic |
 | Translate | ✅ (Zia) | ✅ | On this device (browser's built-in model): the message never leaves your computer |
-| Inbox categories (Updates / Promotions) | 🟡 | ✅ | Primary / Updates, sorted on the server as mail arrives; one switch in Settings |
+| Inbox categories (Updates / Promotions) | 🟡 | ✅ | Primary, Promotions, Social, Updates, Forums, sorted on the server as mail arrives (every device agrees); Settings picks the tabs |
 
 ## 2. Writing
 
@@ -125,6 +125,10 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 | AI (summarise, smart reply) | ✅ | ✅ | Summaries, smart replies and writing help, all on this device; nothing goes to an AI company |
 | Offline mail | ✅ | ✅ | On trusted devices: saved lists and conversations, an outbox that sends when you're back online |
 | Large files as links | ✅ | ✅ | Over 25 MB: a link to your own storage, expiring in 7 or 30 days or never |
+| Promotions / Social / Forums tabs | ✅ | ✅ | Server-side Sieve on list headers, `Precedence`, known social networks; no ML, so borderline mail can land one tab off |
+| Package, flight, order, booking cards | ✅ | ✅ | From the sender's schema.org data, read on this device; https links only, shown by their real host; “Purchases & trips” search chip |
+| Add to calendar from email | ✅ | ✅ | From a card or a date in the text (“Friday 14 Dec at 3pm”), prefilled in your calendar; English phrasing, month names in every language |
+| Verified senders, brand logos, “be careful” | ✅ | ✅ | Mark on DMARC pass; warning when a big brand's name comes on unverified mail; BIMI logos fetched and cleaned by our server (the brand never sees you read it). No VMC check (Gmail's blue tick) |
 
 ## Score today
 
