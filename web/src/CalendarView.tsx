@@ -102,7 +102,7 @@ export function CalendarView({ client, say }: { client: Jmap; say: (text: string
                 const { start, end } = span(p.event);
                 return (
                   <button key={p.event.id} className={`cal-event${p.height < 45 ? ' short' : ''}`} onClick={() => setEditing(p.event)}
-                    style={{ top: p.top * HOUR / 60, height: p.height * HOUR / 60 - 2, left: `calc(${(p.col / p.cols) * 100}% + 2px)`, width: `calc(${100 / p.cols}% - 4px)` }}>
+                    style={{ top: p.top * HOUR / 60, height: p.height * HOUR / 60 - 2, insetInlineStart: `calc(${(p.col / p.cols) * 100}% + 2px)`, width: `calc(${100 / p.cols}% - 4px)` }}>
                     <span className="t">{p.event.title || t('calendar.untitled')}</span>
                     <span className="w">{timeLabel(start)} – {timeLabel(end)}{p.event.location ? `, ${p.event.location}` : ''}</span>
                   </button>

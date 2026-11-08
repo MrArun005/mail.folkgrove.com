@@ -51,10 +51,12 @@ const paths = {
 } as const;
 
 export type IconName = keyof typeof paths;
+/** Icons that point along the reading direction: mirrored in right-to-left languages (styles.css, .icon-dir). */
+const DIRECTIONAL = new Set<IconName>(['back', 'next', 'reply', 'replyAll', 'forward', 'sent', 'logout']);
 
 export function Icon({ name, size = 18, filled = false, className }: { name: IconName; size?: number; filled?: boolean; className?: string }) {
   return (
-    <svg className={className} width={size} height={size} viewBox="0 0 20 20" fill={filled ? 'currentColor' : 'none'} stroke="currentColor"
+    <svg className={DIRECTIONAL.has(name) ? `icon-dir ${className ?? ''}`.trim() : className} width={size} height={size} viewBox="0 0 20 20" fill={filled ? 'currentColor' : 'none'} stroke="currentColor"
       strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={paths[name]} />
     </svg>
