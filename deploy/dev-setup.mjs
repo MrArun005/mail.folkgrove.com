@@ -28,11 +28,20 @@ async function jmap(auth, methodCalls, using = ['urn:ietf:params:jmap:core', 'ur
 const basic = ({ user, pass }) => 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
 
 async function waitForServer() {
-  for (let i = 0; i < 60; i++) {
-    try { await fetch(`${BASE}/.well-known/jmap`, { redirect: 'manual' }); return; } catch {}
-    await sleep(1000);
-  }
-  throw new Error('Stalwart did not come up on :8080 (docker logs openmail-stalwart)');
+  // A connection to a container that's still starting can hang without keeping Node busy, and Node then exits
+  // (code 13, "unsettled top-level await"). So: a live timer while waiting, and each try gets 3 s at most.
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    for (let i = 0; i < 60; i++) {
+      const ok = await Promise.race([
+        fetch(`${BASE}/.well-known/jmap`, { redirect: 'manual' }).then(() => true, () => false),
+        sleep(3000).then(() => false),
+      ]);
+      if (ok) return;
+      await sleep(1000);
+    }
+    throw new Error('Stalwart did not come up on :8080 (docker logs openmail-stalwart)');
+  } finally { clearInterval(keepAlive); }
 }
 
 if (process.argv.includes('--reset')) {
