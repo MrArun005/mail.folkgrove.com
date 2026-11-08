@@ -53,8 +53,11 @@
     const form = document.querySelector('form'), input = form.server, error = form.querySelector('.error'), button = form.querySelector('button');
 
     // Open the server's web app. "tried" tells a load failure (the shell comes back here) from a fresh launch.
-    function go(origin) {
+    async function go(origin) {
       set(sessionStorage, 'om:tried', '1');
+      // Mobile apps: only this server (and this page) may load inside the app; other links open in the browser
+      // (ServerLockPlugin, Android and iOS). The desktop app does the same in its own main.js.
+      await window.Capacitor?.registerPlugin?.('ServerLock')?.set({ origin }).catch(() => {});
       location.replace(origin + '/' + (q.get('mailto') ? '?mailto=' + encodeURIComponent(q.get('mailto')) : ''));
     }
 

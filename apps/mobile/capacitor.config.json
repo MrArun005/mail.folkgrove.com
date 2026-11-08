@@ -4,10 +4,18 @@
   "webDir": "../shell",
   "appendUserAgent": "OpenMailApp",
   "server": {
-    "allowNavigation": ["*"],
+    "allowNavigation": [
+      "*"
+    ],
     "errorPath": "index.html"
   },
   "plugins": {
-    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] }
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    }
   }
 }

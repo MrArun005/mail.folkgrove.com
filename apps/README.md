@@ -88,10 +88,10 @@ Also open: store listings (Google Play $25 once, App Store $99/yr), signing keys
 and profiles), the splash screen (Capacitor's default), and native "Share to OpenMail" (Android intent filter / iOS
 share extension; the installed PWA on Android already has it).
 
-## Known security gap (mobile)
+## Links stay out of the app (mobile)
 
-`apps/mobile/capacitor.config.json` allows navigation to any address (`allowNavigation: ["*"]`), because the server is
-chosen at first launch. A link that opens inside the app instead of the browser can therefore load any site in the app's
-web view. Before publishing: a small native plugin that keeps only the saved server's origin in the web view and sends
-every other address to the system browser (Android `shouldOverrideUrlLoading`, iOS `decidePolicyFor`), or a build fixed
-to one server with `allowNavigation` set to it.
+`allowNavigation: ["*"]` lets Capacitor load the server chosen at first launch, whatever it is. What may actually load
+inside the app is decided by `ServerLockPlugin` (Android `ServerLockPlugin.java`, iOS `ServerLockPlugin.swift`,
+registered in `MainActivity` / `MainViewController`): the app's own first-run page and that one server; every other web
+address opens in the phone's browser. The first-run page tells it the server (`ServerLock.set`). Written against
+Capacitor 8's plugin API; not yet run on a device (no Android SDK or full Xcode on the build machine).
