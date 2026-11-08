@@ -2,7 +2,9 @@ import { Fragment, Component, useCallback, useEffect, useMemo, useRef, useState,
 import { SendingBlocked } from './Sending';
 import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
-import { Compose, type ComposeApi } from './Compose';
+import type { ComposeApi } from './Compose';
+import { ComposeDock, useComposeWindows } from './ComposeDock';
+import { reactionDraft } from './reactions';
 import { Icon, roleIcon } from './icons';
 import { Jmap, UNDO_SECONDS, type SharedAccount, type Attachment, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
 import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, fileSize, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode, type Signature } from './mailutil';
@@ -10,7 +12,7 @@ import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { canAsk } from './ai';
 import { SubscriptionsList } from './Subscriptions';
-import { ContactList, ContactPanel, fullName } from './Contacts';
+import { ContactList, ContactPanel, fullName, groupAddresses } from './Contacts';
 import { CalendarView } from './CalendarView';
 import { localZone } from './calendar';
 import type { PartStat } from './ics';
@@ -87,7 +89,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const [saved, setSaved] = useState<{ name: string; query: string }[]>([]);
   const [people, setPeople] = useState<Contact[] | null>(null);
   const [personId, setPersonId] = useState<string | null>(null);
-  const [editingPerson, setEditingPerson] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<boolean | 'group'>(false);
   const [query, setQuery] = useState('');
   const [list, setList] = useState<EmailSummary[] | null>(null);
   /** Priority Inbox: how many rows at the top are "Important and unread" (from people you write to). */
@@ -98,7 +100,6 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<EmailFull[] | null>(null);
   const [readerError, setReaderError] = useState('');
-  const [compose, setCompose] = useState<Draft | null>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [overlay, setOverlay] = useState<'help' | 'settings' | 'palette' | null>(null);
   const [threadVersion, setThreadVersion] = useState(0); // bump to reload the open conversation
@@ -248,9 +249,11 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   }, [client]);
 
   // Autocomplete: address book entries first (they have proper names), then people from recent mail.
+  const [groups, setGroups] = useState<{ name: string; members: Address[] }[]>([]);
   const loadContacts = useCallback(() => Promise.all([client.addressBook().catch(() => [] as Contact[]), client.contacts()]).then(([book, recent]) => {
+    setGroups(book.filter((g) => g.kind === 'group').map((g) => ({ name: fullName(g), members: groupAddresses(g, book) })));
     const seen = new Set<string>();
-    const merged = [...book.flatMap((p) => p.emails.map((email) => ({ name: fullName(p) || null, email }))), ...recent]
+    const merged = [...book.filter((p) => p.kind !== 'group').flatMap((p) => p.emails.map((email) => ({ name: fullName(p) || null, email }))), ...recent]
       .filter((a) => !seen.has(a.email.toLowerCase()) && seen.add(a.email.toLowerCase()));
     setContacts(merged); cache.set(key('contacts'), merged);
   }, () => {}), [client]);
@@ -497,6 +500,9 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
 
   const withSignature = (d: Draft, kind: 'new' | 'reply' = 'new'): Draft =>
     ({ ...d, html: addSignature(d.html, chooseSignature(signatures, kind === 'new' ? sigData.sigNew : sigData.sigReply)) });
+  const windows = useComposeWindows(client, { send: (d, at) => send(d, at), blocked: () => say({ text: t('mail.popupBlocked') }) });
+  const setCompose = windows.open;
+  const compose = windows.expanded;
   const newMessage = () => setCompose(withSignature(EMPTY_DRAFT));
   function reply(mode: ReplyMode, e: EmailFull, text?: string) {
     const d = draftFor(mode, e, client.username, identities.map((i) => i.email));
@@ -515,6 +521,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     deleteTemplate: (id) => client.deleteTemplate(id),
     share: (f, days) => client.shareFile(f, days),
     maxUpload: client.maxUpload,
+    events: opened ? undefined : (from, to) => client.events(from, to),
   };
   // Opened from outside: the Compose shortcut, an email link or "Share to OpenMail" (launch.ts).
   useEffect(() => {
@@ -534,7 +541,6 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   useEffect(() => setBadge(boxes.find((b) => b.role === 'inbox')?.unreadEmails ?? 0), [boxes]);
   useEffect(() => () => setBadge(0), []); // signed out
   function closeCompose(outcome: 'saved' | 'discarded' | 'closed') {
-    setCompose(null);
     if (outcome === 'saved') say({ text: t('mail.draftSaved') });
     if (outcome === 'discarded') say({ text: t('mail.draftDiscarded') });
     refresh();
@@ -567,7 +573,6 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   }
 
   async function send(d: Draft, sendAt?: Date) {
-    setCompose(null);
     if (!navigator.onLine && client.offline) {
       // Offline: keep it in the outbox; it goes when the connection is back (see the 'online' effect).
       const box = (await offlineStore.get<{ d: Draft; sendAt?: string }[]>(`${client.username}:outbox`)) ?? [];
@@ -614,6 +619,14 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       const draft = (await client.thread(s.email.threadId)).find((m) => m.id === s.email.id);
       if (draft) setCompose(draftFromEmail(draft));
       refresh();
+    } catch (e) { fail(e); }
+  }
+
+  /** RFC 9078 reaction: a tiny reply holding the emoji; it shows as a chip under the message. */
+  async function react(m: EmailFull, emoji: string) {
+    try {
+      await client.send(reactionDraft(m, emoji, client.username, identities.map((i) => i.email)), boxes);
+      say({ text: t('mail.reacted', { emoji }) }); setThreadVersion((v) => v + 1);
     } catch (e) { fail(e); }
   }
 
@@ -855,7 +868,8 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
 
         {role === CONTACTS ? (
           <ContactList contacts={people} selected={personId}
-            onSelect={(id) => { setPersonId(id); setEditingPerson(false); }} onNew={() => { setPersonId(null); setEditingPerson(true); }} />
+            onSelect={(id) => { setPersonId(id); setEditingPerson(false); }} onNew={() => { setPersonId(null); setEditingPerson(true); }}
+            onNewGroup={() => { setPersonId(null); setEditingPerson('group'); }} />
         ) : role === SUBSCRIPTIONS ? (
           <SubscriptionsList subs={subs} onDeleteAll={deleteAllFrom}
             onUnsubscribe={(x) => unsubscribe({ from: [x.from], unsubscribe: x.unsubscribe })} />
@@ -922,7 +936,8 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
 
       <section className="reader" aria-label={t('mail.conversation')}>
         {role === CONTACTS
-          ? <ContactPanel contact={people?.find((x) => x.id === personId) ?? null} editing={editingPerson}
+          ? <ContactPanel contact={people?.find((x) => x.id === personId) ?? null} editing={editingPerson} all={people ?? []}
+              onEmailAll={(to) => setCompose(withSignature({ ...EMPTY_DRAFT, to }))}
               onEdit={() => setEditingPerson(true)} onCancel={() => setEditingPerson(false)}
               onSave={async (c) => { const id = await client.saveContact(c); setEditingPerson(false); setPersonId(id); say({ text: t('mail.contactSaved') }); refresh(); loadContacts(); }}
               onDelete={async (c) => {
@@ -936,7 +951,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
                 inTrash={role === 'trash'} inJunk={role === 'junk'}
                 onAction={(a) => act(a, [threadId])} onReply={reply} onBack={() => setThreadId(null)}
                 onSnooze={(d) => act({ snooze: d }, [threadId])} onMoveTo={(id, label) => act({ moveTo: id, label }, [threadId])}
-                onUnsubscribe={unsubscribe} onMore={more} onRsvp={rsvp} onReceipt={receipt}
+                onUnsubscribe={unsubscribe} onMore={more} onRsvp={rsvp} onReceipt={receipt} onReact={opened ? undefined : react}
                 footer={opened?.whole && <TeamComments client={client} threadId={threadId} version={threadVersion} me={own.username} />} />
             </ErrorBoundary>
           : <div className="reader-empty">
@@ -947,7 +962,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
 
       </>}
 
-      {compose && <Compose key={compose.id ?? JSON.stringify(compose).length} initial={compose} contacts={contacts} api={composeApi} signatures={signatures} identities={identities} onSend={send} onClose={closeCompose} />}
+      <ComposeDock windows={windows} contacts={contacts} groups={groups} api={composeApi} signatures={signatures} identities={identities} onSend={send} onClose={closeCompose} />
 
       {toast && (
         <div className="toast" role="status">

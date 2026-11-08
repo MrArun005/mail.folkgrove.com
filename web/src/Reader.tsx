@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { confirmIt, notify } from './Dialog';
 import { createPortal } from 'react-dom';
-import type { Attachment, EmailFull, Jmap, Mailbox } from './jmap';
+import type { Address, Attachment, EmailFull, Jmap, Mailbox } from './jmap';
 import { Button } from './Button';
 import { Icon } from './icons';
 import { displayName, fileLinks, fileSize, formatAddresses, type ReplyMode } from './mailutil';
@@ -14,11 +14,13 @@ import { Menu, TimeChoices } from './Menu';
 import { isCryptoPart, SecureBanner, useSecureMail } from './Encryption';
 import { locale, t } from './i18n';
 import { BimiLogo, BrandWarning, SmartCards, VerifiedMark } from './SmartCards';
+import { groupReactions } from './reactions';
+import { EmojiPicker } from './EmojiPicker';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
 export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task';
 
-export function Reader({ client, me, messages, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt, footer }: {
+export function Reader({ client, me, messages: all, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt, onReact, footer }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
   /** Folders the user created (moving/labelling targets). */
   folders: Mailbox[];
@@ -32,7 +34,15 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   onReceipt: (m: EmailFull, send: boolean) => void;
   /** Shown under the conversation (team comments in a shared mailbox). */
   footer?: ReactNode;
+  /** Send an emoji reaction (RFC 9078) to a message. */
+  onReact?: (m: EmailFull, emoji: string) => void;
 }) {
+  // Reactions show as chips under the message they answer, not as messages of their own.
+  const reactions = useMemo(() => groupReactions(all ?? []), [all]);
+  const messages = useMemo(() => {
+    const ids = new Set((all ?? []).flatMap((m) => m.messageId ?? []));
+    return all?.filter((m) => !(m.reaction && ids.has(m.inReplyTo![0]))) ?? null;
+  }, [all]);
   // Newest message open, older ones folded, like a paper trail. A message that arrives while reading opens too.
   const [open, setOpen] = useState<Set<string>>(new Set());
   const newest = messages?.[messages.length - 1]?.id;
@@ -99,7 +109,8 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
       <h1 className="subject">{last.subject?.replace(/^((re|fwd?|aw|sv)\s*:\s*)+/i, '') || t('reader.noSubject')}</h1>
 
       {messages.map((m) => open.has(m.id)
-        ? <Message key={m.id} client={client} m={m} me={me} inJunk={inJunk} onUnsubscribe={onUnsubscribe} onRsvp={onRsvp} onReceipt={onReceipt} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
+        ? <Message key={m.id} client={client} m={m} me={me} inJunk={inJunk} onUnsubscribe={onUnsubscribe} onRsvp={onRsvp} onReceipt={onReceipt}
+            reactions={reactions.get(m.messageId?.[0] ?? '')} onReact={inJunk ? undefined : onReact} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
         : (
           <button key={m.id} className="folded" onClick={() => setOpen((s) => new Set(s).add(m.id))}>
             <span className="who">{displayName(m.from?.[0], me)}</span>
@@ -120,8 +131,9 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   );
 }
 
-function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onReceipt }: {
+function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onReceipt, reactions, onReact }: {
   client: Jmap; m: EmailFull; me: string; inJunk: boolean; onFold?: () => void; onUnsubscribe: (m: EmailFull) => void;
+  reactions?: Map<string, Address[]>; onReact?: (m: EmailFull, emoji: string) => void;
   onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void>;
   onReceipt: (m: EmailFull, send: boolean) => void;
 }) {
@@ -240,6 +252,19 @@ function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onRecei
             </li>
           ))}
         </ul>
+      )}
+      {(reactions?.size || onReact) && (
+        <div className="reactions">
+          {[...(reactions ?? [])].map(([emoji, who]) => (
+            <span key={emoji} className="reaction-chip" title={t('reader.reactedBy', { emoji, names: who.map((a) => displayName(a, me)).join(', ') })}>
+              {emoji}<span className="who">{who.map((a) => displayName(a, me)).join(', ')}</span></span>
+          ))}
+          {onReact && !!m.messageId?.length && (
+            <Menu label={t('reader.react')} button={<Button variant="quiet" size="sm" icon="emoji" label={t('reader.react')} />}>
+              {(close) => <EmojiPicker close={close} onPick={(e) => onReact(m, e)} />}
+            </Menu>
+          )}
+        </div>
       )}
       {preview && <Preview client={client} a={preview} onClose={() => setPreview(null)} />}
     </section>

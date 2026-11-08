@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from './Button';
-import type { Contact } from './jmap';
+import type { Address, Contact } from './jmap';
 import { parseAddresses } from './mailutil';
 import { t } from './i18n';
 
@@ -13,8 +13,8 @@ const Avatar = ({ c }: { c: Contact }) => (
 );
 
 /** List pane: filter as you type; rows share the conversation list's rhythm. */
-export function ContactList({ contacts, selected, onSelect, onNew }: {
-  contacts: Contact[] | null; selected: string | null; onSelect: (id: string) => void; onNew: () => void;
+export function ContactList({ contacts, selected, onSelect, onNew, onNewGroup }: {
+  contacts: Contact[] | null; selected: string | null; onSelect: (id: string) => void; onNew: () => void; onNewGroup?: () => void;
 }) {
   const [q, setQ] = useState('');
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -24,6 +24,7 @@ export function ContactList({ contacts, selected, onSelect, onNew }: {
       <div className="contacts-tools">
         <input className="input" type="search" placeholder={t('contacts.find')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('contacts.find')} />
         <Button icon="compose" onClick={onNew}>{t('contacts.newButton')}</Button>
+        {onNewGroup && <Button icon="person" label={t('contacts.newGroup')} onClick={onNewGroup} />}
       </div>
       {contacts === null && <div className="rows-loading" aria-busy="true">{[0, 1, 2].map((i) => <span key={i} />)}</div>}
       {contacts?.length === 0 && <p className="empty">{t('contacts.empty')}</p>}
@@ -35,7 +36,7 @@ export function ContactList({ contacts, selected, onSelect, onNew }: {
               <Avatar c={c} />
               <span className="who">
                 <span className="name">{fullName(c) || c.emails[0]}</span>
-                <span className="meta">{[c.org, c.emails[0]].filter(Boolean).join(', ')}</span>
+                <span className="meta">{c.kind === 'group' ? t('contacts.groupOf', { count: c.members?.length ?? 0 }) : [c.org, c.emails[0]].filter(Boolean).join(', ')}</span>
               </span>
             </button>
           </li>
@@ -46,12 +47,18 @@ export function ContactList({ contacts, selected, onSelect, onNew }: {
 }
 
 /** Reader pane: a contact's details, or the editor. */
-export function ContactPanel({ contact, editing, onEdit, onSave, onDelete, onCancel, onEmail }: {
-  contact: Contact | null; editing: boolean;
+export function ContactPanel({ contact, editing, all = [], onEdit, onSave, onDelete, onCancel, onEmail, onEmailAll }: {
+  /** editing 'group': a new group. */
+  contact: Contact | null; editing: boolean | 'group';
+  /** The whole address book (a group's members come from it). */
+  all?: Contact[];
   onEdit: () => void; onSave: (c: Contact) => Promise<void>; onDelete: (c: Contact) => void; onCancel: () => void; onEmail: (c: Contact) => void;
+  onEmailAll?: (to: Address[]) => void;
 }) {
+  if (editing === 'group' || (editing && contact?.kind === 'group')) return <GroupEditor initial={editing === 'group' ? null : contact} all={all} onSave={onSave} onCancel={onCancel} />;
   if (editing) return <ContactEditor initial={contact} onSave={onSave} onCancel={onCancel} />;
   if (!contact) return <div className="reader-empty"><p>{t('contacts.select')}</p></div>;
+  if (contact.kind === 'group') return <GroupView group={contact} all={all} onEdit={onEdit} onDelete={onDelete} onEmailAll={onEmailAll} />;
   return (
     <article className="thread contact">
       <div className="toolbar">
@@ -122,3 +129,71 @@ function ContactEditor({ initial, onSave, onCancel }: { initial: Contact | null;
   );
 }
 
+
+/** Everyone in a group, with an email address, as recipients. */
+export const groupAddresses = (g: Contact, all: Contact[]): Address[] =>
+  (g.members ?? []).map((id) => all.find((c) => c.id === id)).filter((c): c is Contact => !!c?.emails[0]).map((c) => ({ name: fullName(c) || null, email: c.emails[0] }));
+
+function GroupView({ group, all, onEdit, onDelete, onEmailAll }: { group: Contact; all: Contact[]; onEdit: () => void; onDelete: (c: Contact) => void; onEmailAll?: (to: Address[]) => void }) {
+  const people = (group.members ?? []).map((id) => all.find((c) => c.id === id)).filter((c): c is Contact => !!c);
+  const to = groupAddresses(group, all);
+  return (
+    <article className="thread contact">
+      <div className="toolbar">
+        <span className="only-mobile" />
+        <Button variant="quiet" icon="compose" label={t('contacts.editGroup')} onClick={onEdit} />
+        <Button variant="quiet" icon="trash" label={t('contacts.deleteGroup')} onClick={() => onDelete(group)} />
+      </div>
+      <header className="contact-head">
+        <Avatar c={group} />
+        <div>
+          <h1 className="subject">{fullName(group)}</h1>
+          <p className="fine">{t('contacts.groupOf', { count: people.length })}</p>
+        </div>
+      </header>
+      <dl className="contact-fields">
+        {people.map((c) => <div key={c.id}><dt>{fullName(c) || c.emails[0]}</dt><dd>{c.emails[0] ?? t('contacts.noEmail')}</dd></div>)}
+      </dl>
+      {to.length > 0 && onEmailAll && <div className="reply-bar"><Button icon="compose" onClick={() => onEmailAll(to)}>{t('contacts.emailGroup')}</Button></div>}
+    </article>
+  );
+}
+
+/** A group is a name and a set of people from the address book (stored as a JSContact group card). */
+function GroupEditor({ initial, all, onSave, onCancel }: { initial: Contact | null; all: Contact[]; onSave: (c: Contact) => Promise<void>; onCancel: () => void }) {
+  const [name, setName] = useState(initial ? fullName(initial) : '');
+  const [members, setMembers] = useState(() => new Set(initial?.members ?? []));
+  const [q, setQ] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const people = all.filter((c) => c.kind !== 'group' && c.id && words.every((w) => [fullName(c), ...c.emails].join(' ').toLowerCase().includes(w)));
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return setError(t('contacts.needGroupName'));
+    setBusy(true); setError('');
+    try { await onSave({ ...(initial ?? { phones: [], org: '', note: '' }), kind: 'group', given: name.trim(), surname: '', emails: [], members: [...members] }); }
+    catch (err) { setError(t('common.couldntSave', { error: (err as Error).message })); setBusy(false); }
+  }
+  return (
+    <form className="thread contact-form" onSubmit={submit}>
+      <h1 className="subject">{initial ? t('contacts.editGroup') : t('contacts.newGroup')}</h1>
+      <label>{t('contacts.groupName')}<input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
+      <fieldset className="group-members">
+        <legend>{t('contacts.groupOf', { count: members.size })}</legend>
+        <input className="input" type="search" placeholder={t('contacts.find')} aria-label={t('contacts.find')} value={q} onChange={(e) => setQ(e.target.value)} />
+        {!all.some((c) => c.kind !== 'group') && <p className="fine">{t('contacts.groupNeedsPeople')}</p>}
+        {people.map((c) => (
+          <label key={c.id} className="inline"><input type="checkbox" className="check" checked={members.has(c.id!)}
+            onChange={(e) => setMembers((m) => { const n = new Set(m); if (e.target.checked) n.add(c.id!); else n.delete(c.id!); return n; })} />
+            <span>{fullName(c) || c.emails[0]}{c.emails[0] && fullName(c) && <span className="fine"> {c.emails[0]}</span>}</span></label>
+        ))}
+      </fieldset>
+      {error && <p className="error" role="alert">{error}</p>}
+      <footer>
+        <Button onClick={onCancel}>{t('common.cancel')}</Button>
+        <Button type="submit" variant="primary" disabled={busy}>{busy ? t('common.saving') : t('contacts.saveGroup')}</Button>
+      </footer>
+    </form>
+  );
+}

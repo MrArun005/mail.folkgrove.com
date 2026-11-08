@@ -72,3 +72,21 @@ it('invitation times convert from their own time zone', async () => {
   expect(span(invite).start.toISOString()).toBe('2026-11-10T09:30:00.000Z');
   expect(span(invite).end.toISOString()).toBe('2026-11-10T10:30:00.000Z');
 });
+
+it('finds free slots in working hours, spread over days, around busy time', async () => {
+  const { freeSlots } = await import('./calendar');
+  const mon = new Date(2026, 10, 9, 8, 10); // Monday 08:10
+  const busy = [ev('Standup', '2026-11-09T09:00:00', 60), ev('Holiday', '2026-11-10T00:00:00', 1440, true), ev('Offsite', '2026-11-11T00:00:00', 24 * 60)];
+  const slots = freeSlots(busy, mon, { days: 7, minutes: 30, count: 5 }).map((s) => `${toLocal(s.start)}–${toLocal(s.end).slice(11, 16)}`);
+  expect(slots).toEqual([
+    '2026-11-09T10:00:00–10:30', // after the standup
+    '2026-11-09T11:30:00–12:00', // second round: an hour after the first
+    '2026-11-10T09:00:00–09:30', // all-day events don't block
+    '2026-11-12T09:00:00–09:30', // Wednesday is fully busy (a timed 24 h event)
+    '2026-11-13T09:00:00–09:30', // the weekend is skipped
+  ]);
+  // Never in the past, never past the end of the day.
+  const late = freeSlots([], new Date(2026, 10, 9, 16, 40), { days: 1, minutes: 30 });
+  expect(late).toEqual([]);
+  expect(freeSlots([], new Date(2026, 10, 9, 16, 10), { days: 1, minutes: 30 }).map((s) => toLocal(s.start))).toEqual(['2026-11-09T16:30:00']);
+});

@@ -205,7 +205,11 @@ export function trust(m: Pick<EmailFull, 'from' | 'authResults' | 'received'>, m
   const domain = from.email.slice(from.email.lastIndexOf('@') + 1).toLowerCase();
   // The mark means an outside check passed: mail between accounts here (no Authentication-Results) gets none.
   const verified = !!m.authResults?.[0] && senderAuthenticated(from.email, m.authResults[0], me.split('@')[1] ?? '', { received: m.received ?? null, dmarcOnly: true });
-  const claimed = BRANDS.find(([b]) => new RegExp(`(?<![\\p{L}\\d])${esc(b)}(?![\\p{L}\\d])`, 'iu').test(from.name ?? ''));
-  const brand = claimed && !(verified && ownedBy(domain, claimed[1])) ? claimed[0] : null;
+  const own = (me.split('@')[1] ?? '').toLowerCase();
+  const claimed = [...BRANDS, ['OpenMail', [own]] as [string, string[]]]
+    .find(([b]) => new RegExp(`(?<![\\p{L}\\d])${esc(b)}(?![\\p{L}\\d])`, 'iu').test(from.name ?? ''));
+  // "OpenMail" is this server: its own mail (sign-up codes, notices) comes from our domain and has no outside check.
+  const genuine = claimed && (claimed[0] === 'OpenMail' ? domain === own : verified && ownedBy(domain, claimed[1]));
+  const brand = claimed && !genuine ? claimed[0] : null;
   return { domain, verified, brand };
 }

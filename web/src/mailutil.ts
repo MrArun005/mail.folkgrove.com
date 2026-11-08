@@ -54,7 +54,26 @@ export function fileLinks(body: string, origin: string): { url: string; name: st
 const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 export const textToHtml = (s: string) => `<div>${escapeHtml(s).replace(/\r?\n/g, '<br>')}</div>`;
 
-const KEEP = new Set(['P', 'BR', 'DIV', 'SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'A', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'PRE', 'CODE']);
+const KEEP = new Set(['P', 'BR', 'DIV', 'SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'A', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'PRE', 'CODE',
+  'TABLE', 'THEAD', 'TBODY', 'TR', 'TD', 'TH']);
+// The editor's own formatting (text colour, highlight, size, table borders, image size) is inline style. Only these
+// properties survive, each with a value that can't load anything or hide text: plain colours, lengths and keywords.
+const COLOR = /^(#[0-9a-f]{3,8}|rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*(1|0?\.\d*[1-9]\d*|0*[1-9]\d*%)\s*)?\))$/i;
+const LEN = /^\d{1,3}(\.\d+)?(px|em|%)$/;
+const STYLE: Record<string, Record<string, (v: string) => boolean>> = {
+  SPAN: { color: (v) => COLOR.test(v), 'background-color': (v) => COLOR.test(v), 'font-size': (v) => /^(x-small|small|medium|large|x-large|xx-large)$/.test(v) || /^(1[0-9]|2[0-9]|3[0-2])px$/.test(v) },
+  IMG: { width: (v) => LEN.test(v), 'max-width': (v) => v === '100%' },
+  TABLE: { 'border-collapse': (v) => v === 'collapse' },
+  TD: { border: (v) => /^1px solid (#[0-9a-f]{3,8}|rgb\([\d,\s]+\))$/i.test(v), padding: (v) => /^(\d{1,2}px ?){1,2}$/.test(v) },
+};
+STYLE.TH = STYLE.TD;
+function safeStyle(tag: string, style: string): string {
+  const ok = STYLE[tag];
+  if (!ok) return '';
+  return style.split(';').map((d) => d.split(':')).filter((p) => p.length === 2)
+    .map(([k, v]) => [k.trim().toLowerCase(), v.trim()]).filter(([k, v]) => ok[k]?.(v)).map(([k, v]) => `${k}: ${v}`).join('; ');
+}
+const FONT_SIZE = ['x-small', 'small', 'medium', 'large', 'x-large', 'xx-large', 'xx-large'];
 const DROP = 'script, style, head, title, meta, link, iframe, object, embed, form, input, button, select, textarea, svg, math, template, noscript';
 
 /**
@@ -74,17 +93,30 @@ export function cleanHtml(html: string): string {
         const src = el.getAttribute('src') ?? '', cid = el.getAttribute('data-cid'), alt = el.getAttribute('alt');
         const keep = /^cid:/i.test(src) ? src : cid && /^blob:/.test(src) ? src : null;
         if (!keep) { el.remove(); continue; }
+        const style = safeStyle('IMG', el.getAttribute('style') ?? '');
         for (const attr of [...el.attributes]) el.removeAttribute(attr.name);
         el.setAttribute('src', keep);
         if (cid) el.setAttribute('data-cid', cid);
         if (alt) el.setAttribute('alt', alt);
+        if (style) el.setAttribute('style', style);
+        continue;
+      }
+      if (el.tagName === 'FONT') {
+        // Some browsers' editing commands still write <font color size>: keep what it means as a styled span.
+        const span = doc.createElement('span'), size = Number(el.getAttribute('size'));
+        span.setAttribute('style', [el.getAttribute('color') && `color: ${el.getAttribute('color')}`, size >= 1 && size <= 7 && `font-size: ${FONT_SIZE[size - 1]}`, el.getAttribute('style')].filter(Boolean).join('; '));
+        span.append(...el.childNodes); el.replaceWith(span);
+        const style = safeStyle('SPAN', span.getAttribute('style')!);
+        if (style) span.setAttribute('style', style); else span.replaceWith(...span.childNodes);
         continue;
       }
       if (!KEEP.has(el.tagName)) { el.replaceWith(...el.childNodes); continue; }
       const href = el.tagName === 'A' ? el.getAttribute('href') ?? '' : '';
       const sig = el.tagName === 'DIV' && el.hasAttribute('data-sig'); // inert marker so Compose can swap signatures
+      const style = safeStyle(el.tagName, el.getAttribute('style') ?? '');
       for (const attr of [...el.attributes]) el.removeAttribute(attr.name);
       if (sig) el.setAttribute('data-sig', '');
+      if (style) el.setAttribute('style', style);
       if (/^(https?:|mailto:)/i.test(href.trim())) { el.setAttribute('href', href.trim()); el.setAttribute('rel', 'noopener noreferrer'); }
     }
   };
@@ -176,7 +208,7 @@ export function draftFromEmail(e: EmailFull): Draft {
     id: e.id, to: e.to ?? [], cc: e.cc ?? [], bcc: e.bcc ?? [], subject: e.subject ?? '',
     from: e.from?.[0]?.email,
     html: e.html ? cleanHtml(e.html) : textToHtml(e.text ?? ''), text: e.text ?? '',
-    attachments: e.attachments.filter((a: Attachment) => a.disposition !== 'inline'),
+    attachments: e.attachments.filter((a: Attachment) => a.disposition !== 'inline' || embedded(e).includes(a)), // pictures in the text stay
     inReplyTo: e.inReplyTo ?? undefined, references: e.references ?? undefined, // a resumed reply stays in its thread
   };
 }

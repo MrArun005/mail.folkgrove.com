@@ -138,3 +138,23 @@ export async function answerFromMail(question: string, sources: AskSource[]): Pr
 /** Citation numbers in an answer, in order, once each (only ones that exist). */
 export const citations = (answer: string, count: number) =>
   [...new Set([...answer.matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])))].filter((n) => n >= 1 && n <= count);
+
+export const canSmartCompose = canSuggestReplies;
+let completer: Promise<any> | null = null;
+
+/**
+ * Smart Compose: the next few words of what's being written, on this device. Only when the model is already
+ * downloaded (never a surprise download while typing); '' when there's nothing worth suggesting.
+ */
+export async function completeText(before: string, signal: AbortSignal): Promise<string> {
+  if ((await g.LanguageModel.availability()) !== 'available') return '';
+  completer ??= g.LanguageModel.create({
+    initialPrompts: [{ role: 'system', content: 'You continue an email the user is typing. Reply with only the next few words (at most 8) that follow the text exactly where it stops, on one line, no quotes. If no continuation is obvious, reply with nothing.' }],
+  }).catch((e: unknown) => { completer = null; throw e; });
+  // A fresh copy of the primed session per suggestion, so earlier drafts never pile up in its context.
+  const lm = await (await completer).clone({ signal });
+  try {
+    const out: string = await lm.prompt(`Text so far:\n"""\n${before.slice(-1500)}\n"""\nNext words:`, { signal });
+    return out.split('\n')[0].replace(/^["'\s]+|["\s]+$/g, '').split(/\s+/).slice(0, 8).join(' ');
+  } finally { lm.destroy?.(); }
+}

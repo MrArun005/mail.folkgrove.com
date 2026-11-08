@@ -48,6 +48,14 @@ const paths = {
   receipt: 'M3 10.5 7 14.5 13 6.5M9.5 14.5l.5.5 7-9',
   print: 'M6 7V3h8v4M6 14H4V8h12v6h-2M6 11h8v6H6z',
   command: 'M7 4.5a2.5 2.5 0 1 0-2.5 2.5H15.5A2.5 2.5 0 1 0 13 4.5v11a2.5 2.5 0 1 0 2.5-2.5H4.5A2.5 2.5 0 1 0 7 15.5z',
+  emoji: 'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM7 11.5a3.5 3.5 0 0 0 6 0M7.5 8v.1M12.5 8v.1',
+  table: 'M3.5 4.5h13v11h-13zM3.5 8.5h13M3.5 12h13M8 4.5v11M12.5 4.5v11',
+  textStyle: 'M4 15.5 8 4.5h1l4 11M5.5 11.5h6M13 15.5l2-5 2 5M13.6 14h2.8',
+  popOut: 'M11 3.5h5.5V9M16.5 3.5 9.5 10.5M14 12v3.5a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1H8',
+  minimize: 'M5 10h10',
+  textSize: 'M3 15.5 6 8h1l3 7.5M4.2 13h4.6M11 15.5 14.5 4.5h1l3.5 11M12.3 12h5.4',
+  color: 'M5.5 13 9.5 3.5h1l4 9.5M7 9.5h6M4 16.5h12',
+  expand: 'M5 12.5 10 7.5l5 5',
 } as const;
 
 export type IconName = keyof typeof paths;

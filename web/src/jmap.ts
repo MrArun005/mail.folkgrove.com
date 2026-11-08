@@ -6,6 +6,7 @@ import type { CalEvent } from './calendar';
 import { buildReply, parseInvite, replyWord, type Invite, type PartStat } from './ics';
 import { buildMdn } from './mailutil';
 import { autocryptHeader, myKey, peerKey, unlockedKey } from './keys';
+import { reactionBody, reactionOf } from './reactions';
 
 
 const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission', 'urn:ietf:params:jmap:vacationresponse', 'urn:ietf:params:jmap:sieve'];
@@ -66,6 +67,8 @@ export interface EmailFull extends EmailSummary {
   /** The topmost Received line (our server's) and the DKIM-Signature headers, to check the two above. */
   received?: string | null;
   dkim?: string[];
+  /** RFC 9078: this message is an emoji reaction (to the message in inReplyTo). */
+  reaction?: string | null;
 }
 export interface Identity { id: string; name: string; email: string; textSignature: string; htmlSignature: string }
 export interface Vacation { isEnabled: boolean; fromDate: string | null; toDate: string | null; subject: string | null; textBody: string | null }
@@ -87,6 +90,8 @@ export interface Draft {
   followUpDays?: number;
   /** Send end-to-end encrypted and signed (PGP/MIME). Every recipient needs a known key (keys.ts). */
   encrypt?: boolean;
+  /** RFC 9078 reaction: the body is just this emoji, in a part marked Content-Disposition: reaction. */
+  reaction?: string;
 }
 /** An Email/query filter: { inMailbox }, { text }, { hasKeyword }, … */
 export type Filter = Record<string, unknown>;
@@ -111,7 +116,11 @@ export interface Note { id: string; title: string; body: string; updatedAt: stri
 export interface Task { id: string; title: string; done: boolean; due: string | null; threadId: string | null; createdAt: string }
 export interface Subscription { from: Address; count: number; lastAt: string; unsubscribe: { urls: string[]; oneClick: boolean } }
 /** A contact in the address book (a simplified JSContact card, RFC 9553). */
-export interface Contact { id?: string; given: string; surname: string; emails: string[]; phones: string[]; org: string; note: string }
+export interface Contact {
+  id?: string; given: string; surname: string; emails: string[]; phones: string[]; org: string; note: string;
+  /** A contact group (JSContact kind "group", vCard KIND:group): `given` is its name, `members` the member cards' ids. */
+  kind?: 'group'; members?: string[];
+}
 export interface AppPassword { id: string; description: string; createdAt?: string; expiresAt?: string | null }
 export interface Template { id: string; subject: string; html: string; attachments: Attachment[] }
 
@@ -392,7 +401,7 @@ export class Jmap {
       return { ...e, attachments: e.attachments ?? [], html: join(e.htmlBody, 'text/html'), text: join(e.textBody, 'text/plain'), unsubscribe,
         receiptTo: e['header:Disposition-Notification-To:asAddresses'] ?? null, autocrypt: e['header:Autocrypt:asText'] ?? null,
         authResults: e['header:Authentication-Results:asText:all'] ?? [],
-        received: e['header:Received:asRaw:all']?.[0] ?? null, dkim: e['header:DKIM-Signature:asText:all'] ?? [] };
+        received: e['header:Received:asRaw:all']?.[0] ?? null, dkim: e['header:DKIM-Signature:asText:all'] ?? [], reaction: reactionOf(e) };
     }).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
   }
 
@@ -780,9 +789,11 @@ export class Jmap {
       ...(d.inReplyTo?.length && { inReplyTo: d.inReplyTo }),
       ...(d.references?.length && { references: d.references }),
       ...(d.receipt && { 'header:Disposition-Notification-To:asAddresses': [{ email: me.email }] }),
-      bodyValues: { t: { value: d.text }, h: { value: d.html } },
-      textBody: [{ partId: 't', type: 'text/plain' }],
-      htmlBody: [{ partId: 'h', type: 'text/html' }],
+      ...(d.reaction ? reactionBody(d.reaction) : {
+        bodyValues: { t: { value: d.text }, h: { value: d.html } },
+        textBody: [{ partId: 't', type: 'text/plain' }],
+        htmlBody: [{ partId: 'h', type: 'text/html' }],
+      }),
       ...(d.attachments.length && {
         attachments: d.attachments.map((a) => (a.cid
           ? { blobId: a.blobId, type: a.type, name: a.name, disposition: 'inline', cid: a.cid }
@@ -803,6 +814,13 @@ export class Jmap {
       accountId: this.accountId, create: { d: await this.compose(d, this.box(boxes, 'drafts')) }, destroy: d.id ? [d.id] : [],
     }, 's']]);
     return r.created.d.id;
+  }
+
+  /** One message by id (a draft handed over from a popped-out compose window), or null if it's gone. */
+  async email(id: string): Promise<EmailFull | null> {
+    const [r] = await this.call([['Email/get', { accountId: this.accountId, ids: [id], properties: ['threadId'] }, 'g']]);
+    const tid = r.list[0]?.threadId;
+    return tid ? (await this.threadLive(tid)).find((e) => e.id === id) ?? null : null;
   }
 
   async deleteDraft(id: string) { await this.call([['Email/set', { accountId: this.accountId, destroy: [id] }, 'x']]); }
@@ -1229,8 +1247,12 @@ export class Jmap {
       ['ContactCard/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'ContactCard/query', path: '/ids' } }, 'g'],
     ], [CONTACTS]);
     const part = (c: any, kind: string) => c.name?.components?.find((x: { kind: string }) => x.kind === kind)?.value ?? '';
+    // Groups name their members by card uid; the app works with card ids.
+    // ponytail: members outside this account's address books are dropped from view (and from the group if it's saved).
+    const byUid = new Map((r.list as any[]).filter((c) => c.uid).map((c) => [c.uid as string, c.id as string]));
     return (r.list as any[]).map((c) => ({
       id: c.id,
+      ...(c.kind === 'group' && { kind: 'group' as const, members: Object.keys(c.members ?? {}).map((u) => byUid.get(u)).filter((x): x is string => !!x) }),
       given: part(c, 'given') || (c.name?.full ?? ''), surname: part(c, 'surname'),
       emails: Object.values(c.emails ?? {}).map((e: any) => e.address).filter(Boolean),
       phones: Object.values(c.phones ?? {}).map((p: any) => p.number).filter(Boolean),
@@ -1247,6 +1269,7 @@ export class Jmap {
       phones: Object.fromEntries(c.phones.filter(Boolean).map((p, i) => [`p${i}`, { number: p.trim() }])),
       organizations: c.org.trim() ? { o0: { name: c.org.trim() } } : {},
       notes: c.note.trim() ? { n0: { note: c.note.trim() } } : {},
+      ...(c.kind === 'group' && { kind: 'group', members: await this.memberUids(c.members ?? []) }),
     };
     if (c.id) {
       await this.call([['ContactCard/set', { accountId: this.accountId, update: { [c.id]: card } }, 's']], [CONTACTS]);
@@ -1257,6 +1280,16 @@ export class Jmap {
     if (!book) throw new JmapError(t('jmap.noAddressBook'));
     const [r] = await this.call([['ContactCard/set', { accountId: this.accountId, create: { c: { ...card, addressBookIds: { [book.id]: true } } } }, 's']], [CONTACTS]);
     return r.created.c.id;
+  }
+
+  /** Card ids → uids for a group's members; cards made without a uid get one now (groups can only point at uids). */
+  private async memberUids(ids: string[]): Promise<Record<string, true>> {
+    if (!ids.length) return {};
+    const [r] = await this.call([['ContactCard/get', { accountId: this.accountId, ids, properties: ['uid'] }, 'g']], [CONTACTS]);
+    const cards = r.list as { id: string; uid?: string }[];
+    const fresh = Object.fromEntries(cards.filter((c) => !c.uid).map((c) => [c.id, { uid: `urn:uuid:${crypto.randomUUID()}` }]));
+    if (Object.keys(fresh).length) await this.call([['ContactCard/set', { accountId: this.accountId, update: fresh }, 's']], [CONTACTS]);
+    return Object.fromEntries(cards.map((c) => [c.uid ?? fresh[c.id].uid, true as const]));
   }
 
   async deleteContact(id: string) { await this.call([['ContactCard/set', { accountId: this.accountId, destroy: [id] }, 'd']], [CONTACTS]); }

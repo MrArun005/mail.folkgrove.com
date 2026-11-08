@@ -132,6 +132,12 @@ From docs/research/gmail-gap.md. Gmail column: ✅ has it, ⬜ doesn't.
 | Package, flight, order, booking cards | ✅ | ✅ | From the sender's schema.org data, read on this device; https links only, shown by their real host; “Purchases & trips” search chip |
 | Add to calendar from email | ✅ | ✅ | From a card or a date in the text (“Friday 14 Dec at 3pm”), prefilled in your calendar; English phrasing, month names in every language |
 | Verified senders, brand logos, “be careful” | ✅ | ✅ | Mark on DMARC pass; warning when a big brand's name comes on unverified mail; BIMI logos fetched and cleaned by our server (the brand never sees you read it). No VMC check (Gmail's blue tick) |
+| Smart Compose | ✅ | ✅ | Grey next words, Tab accepts; the browser's on-device model, nothing leaves the device; off by default (Settings) |
+| Several drafts, pop-out | ✅ | ✅ | Bars along the bottom, each autosaving; pop out to its own window and back; Esc minimizes; one full-screen draft on phones |
+| Emoji reactions | ✅ | ✅ | Standard RFC 9078 (works with Thunderbird and others); chips under the message; other mail apps see the emoji as a tiny reply |
+| Rich toolbar (colour, size, emoji, table, image size) | ✅ | ✅ | Pasted pictures go into the text; image sizes are small / medium / original (no drag handles) |
+| Contact groups as recipients | ✅ | ✅ | Standard vCard/JSContact groups (sync with CardDAV apps); a group expands to its people in To/Cc/Bcc |
+| Help me schedule | ✅ | ✅ | 3–5 free times from your own calendar (weekdays 9–17) as a list; replies don't create events yet |
 
 ## Score today
 

@@ -121,3 +121,32 @@ export function allDayOn(events: CalEvent[], day: Date): CalEvent[] {
 }
 
 export const timeLabel = (d: Date) => d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+
+/**
+ * "Help me schedule": free slots in your working hours over the next `days` days, at most `count`, spread out
+ * (one per day first, then a second one on each day, …) and never back to back.
+ * ponytail: working hours are fixed (weekdays, startHour–endHour, local time) and all-day events don't block
+ * (holidays and reminders usually are all-day; Google free/busy treats them the same way). A setting can come later.
+ */
+export function freeSlots(events: CalEvent[], from: Date, { days = 5, minutes = 30, count = 5, startHour = 9, endHour = 17 } = {}): { start: Date; end: Date }[] {
+  const busy = events.filter((e) => !e.allDay).map(span);
+  const step = 30 * 60000, len = minutes * 60000;
+  const first = new Date(Math.ceil(+from / step) * step);
+  const perDay: { start: Date; end: Date }[][] = [];
+  for (let i = 0; i < days; i++) {
+    const day = addDays(new Date(from.getFullYear(), from.getMonth(), from.getDate()), i);
+    if (day.getDay() === 0 || day.getDay() === 6) continue;
+    const open = new Date(day).setHours(startHour, 0, 0, 0), close = new Date(day).setHours(endHour, 0, 0, 0);
+    const list: { start: Date; end: Date }[] = [];
+    for (let s = Math.max(open, +first); s + len <= close; s += step) {
+      if (busy.some((b) => +b.start < s + len && +b.end > s)) continue;
+      if (list.length && s < +list[list.length - 1].end + 60 * 60000) continue; // an hour between choices
+      list.push({ start: new Date(s), end: new Date(s + len) });
+    }
+    perDay.push(list);
+  }
+  const out: { start: Date; end: Date }[] = [];
+  for (let round = 0; out.length < count && perDay.some((l) => l.length > round); round++)
+    for (const l of perDay) if (l[round] && out.length < count) out.push(l[round]);
+  return out.sort((a, b) => +a.start - +b.start);
+}

@@ -84,5 +84,8 @@ describe('who sent it', () => {
     expect(trust(m('PayPal', 'service@mail.paypal.com', ar('dmarc=pass header.from=mail.paypal.com')), 'me@ours.test').brand).toBeNull();
     // A colleague here naming themselves "PayPal" is warned about too (nothing outside checked it).
     expect(trust(m('PayPal Support', 'bo@ours.test'), 'me@ours.test').brand).toBe('PayPal');
+    // "OpenMail" from anywhere but this server is a warning; our own notices aren't.
+    expect(trust(m('OpenMail Security', 'alert@openmail-help.example', ar('dmarc=pass header.from=openmail-help.example')), 'me@ours.test').brand).toBe('OpenMail');
+    expect(trust(m('OpenMail', 'noreply@ours.test'), 'me@ours.test').brand).toBeNull();
   });
 });
