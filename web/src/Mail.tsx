@@ -769,7 +769,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         <div className="me">
           <Menu label={t('mail.accounts')} up button={
             <button className="account-btn" title={t('mail.switchAccount')}>
-              <span className="addr">{identity?.name && identity.name !== identity.email ? identity.name : client.username}</span>
+              <span className="addr" dir="auto">{identity?.name && identity.name !== identity.email ? identity.name : client.username}</span>
               {accounts.length > 1 && <span className="count">{accounts.length}</span>}
             </button>}>
             {(close) => <>

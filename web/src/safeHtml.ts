@@ -33,6 +33,8 @@ export function buildSrcdoc(html: string, allowRemoteImages: boolean, inline: Re
   const doc = new DOMParser().parseFromString(html, 'text/html');
   // <link> (prefetch/preconnect) and <meta> can reach the network outside CSP's reach; <a ping> beacons on click.
   doc.querySelectorAll('script, base, meta, link').forEach((el) => el.remove());
+  // Mail in Arabic or Hebrew reads right to left, whatever the app's language, unless the sender said otherwise.
+  if (!doc.documentElement.dir && !doc.body.dir) doc.body.dir = 'auto';
   doc.querySelectorAll('[ping]').forEach((el) => el.removeAttribute('ping'));
   doc.querySelectorAll('img[src^="cid:" i]').forEach((img) => {
     const data = inline[img.getAttribute('src')!.slice(4).replace(/^<|>$/g, '')];
