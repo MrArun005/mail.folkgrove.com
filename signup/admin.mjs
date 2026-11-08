@@ -55,6 +55,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   const admins = new Set(cfg.admins ?? []);
   // Admin rights go by name, so admin names can never be signed up for, and the console can't touch admin accounts.
   cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins];
+  const reloadLookups = () => jmap([['x:Action/set', { create: { r: { '@type': 'ReloadLookupStores' } } }, 'r']]);
   const isAdmin = (a) => a.roles?.['@type'] !== 'User' || admins.has(String(a.name).toLowerCase());
   const caller = callerOf({ cfg, jmap, getDomainId });
   const badAuth = new RateLimiter(20, 15 * 60e3); // failed sign-ins per network, as for /api/aliases
@@ -256,12 +257,14 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       const tier = await newTier();
       if (tier.some((k) => k.key.toLowerCase() === full)) return { address: full };
       await set('x:MemoryLookupKey', { create: { k: { namespace: NEW, key: full, isGlobPattern: false } } });
+      await reloadLookups(); // Stalwart only sees lookup-key changes after this
       return { address: full };
     },
     'DELETE new-accounts/:id': async (_req, _url, id) => {
       const [k] = await get('x:MemoryLookupKey', [id]);
       if (!k || k.namespace !== NEW) return [404, 'not_found', 'That entry no longer exists.']; // only ever this namespace
       await set('x:MemoryLookupKey', { destroy: [id] });
+      await reloadLookups();
       return {};
     },
 

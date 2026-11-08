@@ -50,7 +50,7 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `INACTIVE_MONTHS` | `12` with sign-up on, else off | Months without sign-in before an account is due for blocking (reminders 60, 30 and 7 days before). `0` = off. Needs `EVENTS_URL`, and `SYSTEM_SMTP_USER` to send reminders. |
 | `ARF_MAILBOX` | `abuse` | The team mailbox (a Stalwart group, which `install.sh` creates) read every 5 minutes for [spam complaints](#spam-complaints-arf-reports); the service also keeps the `ADMINS` in it. `off` = not read. Runs with `EVENTS_URL`. |
 | `ARF_LIMIT`, `ARF_WINDOW_HOURS` | `5`, `24` | Genuine complaints about one account within the window that suspend its sending (only an admin can lift it). |
-| `ARF_REPORTERS` | | Comma-separated feedback-loop senders to trust: domains (the report must still pass DKIM/DMARC for them) and IP addresses (enough by themselves). Empty: any domain that passes DKIM/DMARC. Set it once you've joined the loops, e.g. `yahoo.com,microsoft.com`. |
+| `ARF_REPORTERS` | | Comma-separated feedback-loop senders to trust: domains (the report must still pass DKIM/DMARC for them) and IP addresses (enough by themselves). Empty: no report counts automatically (they stay in abuse@ for an admin). Set it once you've joined the loops, e.g. `yahoo.com,microsoft.com`. |
 
 Docker:
 

@@ -63,12 +63,15 @@ export function reporterTrusted(h, { domain, reporters = [] }) {
   // brackets comes earlier and so doesn't count.
   const ip = [...rcv.split(/\sby\s/i)[0].matchAll(/\[([0-9a-fA-F:.]+)\]/g)].at(-1)?.[1] ?? '';
   const no = (why) => ({ ok: false, why, ip });
-  if (h.slice(0, iRcv).some(([n, v]) => n === 'dkim-signature' && under(tag(v, 'd'), domain))) return no('sent from this server');
+  // Any DKIM signature above our Received line was added here before local delivery: one of our users sent it (on
+  // our domain or their own), however its headers look below.
+  if (h.slice(0, iRcv).some(([n]) => n === 'dkim-signature')) return no('sent from this server');
   const list = reporters.map((r) => r.toLowerCase());
   if (ip && list.includes(ip.toLowerCase())) return { ok: true, why: 'listed IP', ip };
   const ar = h.slice(iRcv + 1).find(([n]) => n === 'authentication-results')?.[1] ?? '';
   if (!by || ar.split(';')[0].trim().toLowerCase() !== by) return no(`no Authentication-Results from ${by || 'our server'}`);
-  const from = addressOf(field(h, 'from')).split('@')[1] ?? '';
+  const froms = h.filter(([n]) => n === 'from');
+  const from = froms.length === 1 ? addressOf(froms[0][1]).split('@')[1] ?? '' : '';
   if (!from || under(from, domain)) return no('report From is missing or ours');
   const aligned = (d) => !!d && (d = d.toLowerCase().replace(/.*@/, ''), under(from, d) || under(d, from));
   const pass = ar.split(';').slice(1).some((r) => {
@@ -77,7 +80,9 @@ export function reporterTrusted(h, { domain, reporters = [] }) {
     return (/^\s*dmarc=pass\b/i.test(v) && aligned(prop('header.from'))) || (/^\s*dkim=pass\b/i.test(v) && aligned(prop('header.d') ?? prop('header.i')));
   });
   if (!pass) return no(`${from} not authenticated (DKIM/DMARC)`);
-  if (list.length && !list.some((r) => under(from, r))) return no(`${from} not in ARF_REPORTERS`);
+  // Only listed feedback loops count: any domain can pass its own DKIM, and one that holds a genuine message from a
+  // user could report it. Without a list, reports stay in abuse@ for an admin to read.
+  if (!list.some((r) => under(from, r))) return no(list.length ? `${from} not in ARF_REPORTERS` : 'ARF_REPORTERS is not set (kept for an admin)');
   return { ok: true, why: 'authenticated', domain: from, ip };
 }
 

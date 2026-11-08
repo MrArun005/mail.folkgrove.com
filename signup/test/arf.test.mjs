@@ -40,8 +40,14 @@ test('arf: parses a feedback report; anything else is not one', () => {
 });
 
 test('arf: only a reporter authenticated by our server (or on the list) is trusted', () => {
-  const cfg = { domain: D };
+  const cfg = { domain: D, reporters: ['yahoo.example'] };
   const h = (top, from) => headersOf(arf({ from, sender: `eve@${D}`, messageId: 'm', top }));
+  // No list: nothing counts automatically, however well authenticated.
+  assert.match(reporterTrusted(h(STALWART_TOP('dmarc=pass header.from=yahoo.example'), 'fbl@yahoo.example'), { domain: D }).why, /ARF_REPORTERS is not set/);
+  // A report signed here (one of our users, on any domain) is never trusted.
+  assert.equal(reporterTrusted(h([`DKIM-Signature: v=1; d=custom.example; s=x; b=x`, ...STALWART_TOP('dmarc=pass header.from=yahoo.example')], 'fbl@yahoo.example'), cfg).why, 'sent from this server');
+  // Two From lines: ignored.
+  assert.ok(!reporterTrusted([...h(STALWART_TOP('dmarc=pass header.from=yahoo.example'), 'fbl@yahoo.example'), ['from', 'x@evil.example']], cfg).ok);
   assert.ok(reporterTrusted(h(STALWART_TOP('dmarc=pass header.from=yahoo.example'), 'fbl@yahoo.example'), cfg).ok);
   assert.ok(reporterTrusted(h(STALWART_TOP('dkim=pass header.d=yahoo.example header.s=s1'), 'fbl@mail.yahoo.example'), cfg).ok); // aligned
   assert.ok(!reporterTrusted(h(STALWART_TOP('dkim=pass header.d=evil.example'), 'fbl@yahoo.example'), cfg).ok); // not aligned
@@ -73,10 +79,10 @@ test('arf: a genuine report counts against the envelope sender, once per message
   const seen = [];
   const complaint = async (who, mid) => (seen.push([who, mid]), 'counted');
   const raw = (o) => [...STALWART_TOP('dmarc=pass header.from=yahoo.example'), arf(o)].join('\r\n');
-  assert.equal((await handleReport(raw({ sender: `eve@${D}`, messageId: `1@${D}` }), { domain: D }, complaint)).counted, true);
+  assert.equal((await handleReport(raw({ sender: `eve@${D}`, messageId: `1@${D}` }), { domain: D, arf: { reporters: ['yahoo.example'] } }, complaint)).counted, true);
   assert.deepEqual(seen, [[`eve@${D}`, `<1@${D}>`]]);
-  assert.match((await handleReport(raw({ sender: `eve@${D}`, messageId: '1@x.example' }), { domain: D }, complaint)).why, /not from this server/);
-  assert.match((await handleReport(raw({ sender: 'bob@x.example', messageId: `2@${D}` }), { domain: D }, complaint)).why, /not ours/);
+  assert.match((await handleReport(raw({ sender: `eve@${D}`, messageId: '1@x.example' }), { domain: D, arf: { reporters: ['yahoo.example'] } }, complaint)).why, /not from this server/);
+  assert.match((await handleReport(raw({ sender: 'bob@x.example', messageId: `2@${D}` }), { domain: D, arf: { reporters: ['yahoo.example'] } }, complaint)).why, /not ours/);
   assert.equal(seen.length, 1);
 });
 
