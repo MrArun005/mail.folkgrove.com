@@ -11,6 +11,7 @@ import { span, type CalEvent } from './calendar';
 import type { PartStat } from './ics';
 import { Menu, TimeChoices } from './Menu';
 import { isCryptoPart, SecureBanner, useSecureMail } from './Encryption';
+import { locale, t } from './i18n';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
 export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task';
@@ -51,49 +52,49 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
   return (
     <article className="thread">
       <div className="toolbar">
-        <Button variant="quiet" icon="back" label="Back to list" className="only-mobile" onClick={onBack} />
-        {!inTrash && <Button variant="quiet" icon="archive" label="Archive" shortcut="e" onClick={() => onAction('archive')} />}
-        <Button variant="quiet" icon="trash" label={inTrash ? 'Delete forever' : 'Delete'} shortcut="#" onClick={() => onAction('trash')} />
-        <Button variant="quiet" icon="junk" label={inJunk ? 'Not spam' : 'Report spam'} shortcut="!" onClick={() => onAction('junk')} />
-        <Button variant="quiet" icon="unread" label="Mark as unread" shortcut="u" onClick={() => onAction('unread')} />
-        <Button variant="quiet" icon="star" label={starred ? 'Unstar' : 'Star'} shortcut="s" pressed={starred} onClick={() => onAction('star')} />
+        <Button variant="quiet" icon="back" label={t('reader.backToList')} className="only-mobile" onClick={onBack} />
+        {!inTrash && <Button variant="quiet" icon="archive" label={t('reader.archive')} shortcut="e" onClick={() => onAction('archive')} />}
+        <Button variant="quiet" icon="trash" label={inTrash ? t('reader.deleteForever') : t('common.delete')} shortcut="#" onClick={() => onAction('trash')} />
+        <Button variant="quiet" icon="junk" label={inJunk ? t('reader.notSpam') : t('reader.reportSpam')} shortcut="!" onClick={() => onAction('junk')} />
+        <Button variant="quiet" icon="unread" label={t('reader.markUnread')} shortcut="u" onClick={() => onAction('unread')} />
+        <Button variant="quiet" icon="star" label={starred ? t('reader.unstar') : t('reader.star')} shortcut="s" pressed={starred} onClick={() => onAction('star')} />
         <span className="tool-sep" />
-        <Menu label="Snooze" button={<Button variant="quiet" icon="clock" label="Snooze" />}>
-          {(close) => <><p className="menu-title">Snooze until…</p><TimeChoices verb="Snooze" close={close} onPick={onSnooze} /></>}
+        <Menu label={t('reader.snooze')} button={<Button variant="quiet" icon="clock" label={t('reader.snooze')} />}>
+          {(close) => <><p className="menu-title">{t('reader.snoozeUntil')}</p><TimeChoices verb={t('reader.snooze')} close={close} onPick={onSnooze} /></>}
         </Menu>
         {(['move', 'label'] as const).map((mode) => (
-          <Menu key={mode} label={mode === 'move' ? 'Move to' : 'Label as'}
-            button={<Button variant="quiet" icon={mode === 'move' ? 'folder' : 'tag'} label={mode === 'move' ? 'Move to folder' : 'Label as'} />}>
+          <Menu key={mode} label={mode === 'move' ? t('reader.moveTo') : t('reader.labelAs')}
+            button={<Button variant="quiet" icon={mode === 'move' ? 'folder' : 'tag'} label={mode === 'move' ? t('reader.moveToFolder') : t('reader.labelAs')} />}>
             {(close) => <>
-              <p className="menu-title">{mode === 'move' ? 'Move to' : 'Label as'}</p>
+              <p className="menu-title">{mode === 'move' ? t('reader.moveTo') : t('reader.labelAs')}</p>
               {folders.map((f) => <button key={f.id} className="menu-item" role="menuitem" onClick={() => { close(); onMoveTo(f.id, mode === 'label'); }}><Icon name="folder" size={16} />{f.name}</button>)}
-              <button className="menu-item" role="menuitem" onClick={() => { close(); onMoveTo(null, mode === 'label'); }}><Icon name="compose" size={16} />New folder…</button>
+              <button className="menu-item" role="menuitem" onClick={() => { close(); onMoveTo(null, mode === 'label'); }}><Icon name="compose" size={16} />{t('reader.newFolder')}</button>
             </>}
           </Menu>
         ))}
-        <Menu label="More" align="right" button={<Button variant="quiet" icon="more" label="More" />}>
+        <Menu label={t('reader.more')} align="right" button={<Button variant="quiet" icon="more" label={t('reader.more')} />}>
           {(close) => {
             const sender = last.from?.[0]?.email;
             const item = (what: MoreAction, icon: Parameters<typeof Icon>[0]['name'], text: string) =>
               <button className="menu-item" role="menuitem" onClick={() => { close(); onMore(what, last); }}><Icon name={icon} size={16} />{text}</button>;
             return <>
-              {muted ? item('unmute', 'unread', 'Unmute')
-                : <button className="menu-item" role="menuitem" onClick={() => { close(); onAction('mute'); }}><Icon name="mute" size={16} />Mute (new replies skip your Inbox)</button>}
-              {item('task', 'check', 'Add to Tasks')}
-              {item('print', 'print', 'Print')}
-              {item('original', 'file', 'Show original')}
+              {muted ? item('unmute', 'unread', t('reader.unmute'))
+                : <button className="menu-item" role="menuitem" onClick={() => { close(); onAction('mute'); }}><Icon name="mute" size={16} />{t('reader.mute')}</button>}
+              {item('task', 'check', t('reader.addToTasks'))}
+              {item('print', 'print', t('reader.print'))}
+              {item('original', 'file', t('reader.showOriginal'))}
               {sender && sender.toLowerCase() !== me.toLowerCase() && <>
-                {item('addContact', 'compose', 'Add sender to contacts')}
-                {item('filter', 'tag', 'Filter messages like this')}
-                {item('block', 'junk', `Block ${sender}`)}
+                {item('addContact', 'compose', t('reader.addContact'))}
+                {item('filter', 'tag', t('reader.filterLike'))}
+                {item('block', 'junk', t('reader.block', { sender }))}
               </>}
             </>;
           }}
         </Menu>
       </div>
 
-      {muted && <p className="banner" role="status"><Icon name="mute" size={16} /><span className="grow">Muted: new replies in this conversation skip your Inbox.</span><Button variant="link" onClick={() => onMore('unmute', last)}>Unmute</Button></p>}
-      <h1 className="subject">{last.subject?.replace(/^((re|fwd?|aw|sv)\s*:\s*)+/i, '') || '(no subject)'}</h1>
+      {muted && <p className="banner" role="status"><Icon name="mute" size={16} /><span className="grow">{t('reader.muted')}</span><Button variant="link" onClick={() => onMore('unmute', last)}>{t('reader.unmute')}</Button></p>}
+      <h1 className="subject">{last.subject?.replace(/^((re|fwd?|aw|sv)\s*:\s*)+/i, '') || t('reader.noSubject')}</h1>
 
       {messages.map((m) => open.has(m.id)
         ? <Message key={m.id} client={client} m={m} me={me} inJunk={inJunk} onUnsubscribe={onUnsubscribe} onRsvp={onRsvp} onReceipt={onReceipt} onFold={messages.length > 1 ? () => setOpen((s) => { const n = new Set(s); n.delete(m.id); return n; }) : undefined} />
@@ -107,10 +108,10 @@ export function Reader({ client, me, messages, error, inTrash, inJunk, folders, 
 
       <SmartReplies m={last} me={me} onPick={(text) => onReply('reply', last, text)} />
       <div className="reply-bar">
-        <Button icon="reply" title="Reply (r)" onClick={() => onReply('reply', last)}>Reply</Button>
+        <Button icon="reply" title={t('reader.replyTitle')} onClick={() => onReply('reply', last)}>{t('reader.reply')}</Button>
         {(last.to?.length ?? 0) + (last.cc?.length ?? 0) > 1 &&
-          <Button icon="replyAll" title="Reply all (a)" onClick={() => onReply('replyAll', last)}>Reply all</Button>}
-        <Button icon="forward" title="Forward (f)" onClick={() => onReply('forward', last)}>Forward</Button>
+          <Button icon="replyAll" title={t('reader.replyAllTitle')} onClick={() => onReply('replyAll', last)}>{t('reader.replyAll')}</Button>}
+        <Button icon="forward" title={t('reader.forwardTitle')} onClick={() => onReply('forward', last)}>{t('reader.forward')}</Button>
       </div>
       {footer}
     </article>
@@ -134,12 +135,12 @@ function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onRecei
   // Prefer the sender's plain-text part; from HTML, only what a reader can actually see (see visibleText).
   const plain = (shown.text || (shown.html ? visibleText(shown.html) : '')).trim();
   async function help(kind: 'translation' | 'summary') {
-    setAssisting(kind === 'translation' ? 'Translating on this device…' : 'Summarising on this device…');
+    setAssisting(kind === 'translation' ? t('reader.translating') : t('reader.summarising'));
     try {
-      if (kind === 'summary') setAssist({ kind, text: await summarize(plain), note: 'Summary of the sender’s message, made on this device. It can be wrong: check the message before acting on it.' });
+      if (kind === 'summary') setAssist({ kind, text: await summarize(plain), note: t('reader.summaryNote') });
       else {
-        const t = await translate(plain);
-        setAssist(t ? { kind, text: t.text, note: `Translated from ${languageName(t.from)} on this device` } : { kind: 'summary', text: '', note: 'This message is already in your language.' });
+        const tr = await translate(plain);
+        setAssist(tr ? { kind, text: tr.text, note: t('reader.translatedFrom', { language: languageName(tr.from) }) } : { kind: 'summary', text: '', note: t('reader.alreadyYourLanguage') });
       }
     } catch (e) { setAssist({ kind: 'summary', text: '', note: (e as Error).message }); }
     finally { setAssisting(''); }
@@ -165,24 +166,24 @@ function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onRecei
         </span>
         <div className="addr">
           <span className="who">{displayName(sender, me)}{sender?.name && <span className="email"> {sender.email}</span>}</span>
-          <span className="to">to {formatAddresses(m.to) || 'undisclosed recipients'}{m.cc?.length ? `, cc ${formatAddresses(m.cc)}` : ''}</span>
+          <span className="to">{t(m.cc?.length ? 'reader.toCc' : 'reader.to', { to: formatAddresses(m.to) || t('reader.undisclosed'), cc: formatAddresses(m.cc) })}</span>
         </div>
         <span className="meta-right">
-          {m.unsubscribe && <Button variant="link" onClick={(e) => { e.stopPropagation(); onUnsubscribe(m); }}>Unsubscribe</Button>}
-          <time dateTime={m.receivedAt} title={new Date(m.receivedAt).toLocaleString()}>{longDate(m.receivedAt)}</time>
+          {m.unsubscribe && <Button variant="link" onClick={(e) => { e.stopPropagation(); onUnsubscribe(m); }}>{t('reader.unsubscribe')}</Button>}
+          <time dateTime={m.receivedAt} title={new Date(m.receivedAt).toLocaleString(locale())}>{longDate(m.receivedAt)}</time>
         </span>
       </header>
       {plain.length > 40 && (canTranslate() || canSummarize()) && (
         <p className="assist-links">
-          {canTranslate() && assist?.kind !== 'translation' && <Button variant="link" disabled={!!assisting} onClick={() => help('translation')}>Translate</Button>}
-          {canSummarize() && plain.length > 600 && <Button variant="link" disabled={!!assisting} onClick={() => help('summary')}>Summarize</Button>}
+          {canTranslate() && assist?.kind !== 'translation' && <Button variant="link" disabled={!!assisting} onClick={() => help('translation')}>{t('reader.translate')}</Button>}
+          {canSummarize() && plain.length > 600 && <Button variant="link" disabled={!!assisting} onClick={() => help('summary')}>{t('reader.summarize')}</Button>}
           {assisting && <span className="fine">{assisting}</span>}
         </p>
       )}
       {assist?.kind === 'summary' && (
-        <div className="assist" role="note" aria-label="Summary of this message">
+        <div className="assist" role="note" aria-label={t('reader.summaryLabel')}>
           <span className="grow"><span className="fine">{assist.note}</span>{assist.text && <span className="assist-text">{assist.text}</span>}</span>
-          <Button variant="quiet" size="sm" icon="close" label="Close" onClick={() => setAssist(null)} />
+          <Button variant="quiet" size="sm" icon="close" label={t('common.close')} onClick={() => setAssist(null)} />
         </div>
       )}
       <Invitation client={client} m={m} onRsvp={onRsvp} />
@@ -190,46 +191,46 @@ function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onRecei
       {m.receiptTo?.length && !m.keywords.$mdnsent && m.from?.[0]?.email.toLowerCase() !== me.toLowerCase() ? (
         <p className="banner banner--info">
           <Icon name="receipt" size={16} />
-          <span className="grow">{displayName(m.from?.[0])} asked to be told when you read this{m.receiptTo[0].email.toLowerCase() !== m.from?.[0]?.email.toLowerCase() ? ` (the receipt would go to ${m.receiptTo[0].email})` : ''}.</span>
-          <Button variant="link" onClick={() => onReceipt(m, true)}>Send receipt</Button>
-          <Button variant="link" onClick={() => onReceipt(m, false)}>Ignore</Button>
+          <span className="grow">{t(m.receiptTo[0].email.toLowerCase() !== m.from?.[0]?.email.toLowerCase() ? 'reader.receiptAskOther' : 'reader.receiptAsk', { name: displayName(m.from?.[0]), email: m.receiptTo[0].email })}</span>
+          <Button variant="link" onClick={() => onReceipt(m, true)}>{t('reader.sendReceipt')}</Button>
+          <Button variant="link" onClick={() => onReceipt(m, false)}>{t('reader.ignore')}</Button>
         </p>
       ) : null}
       {html && html.trackers.length > 0 && (
         <p className="banner banner--safe"><Icon name="shield" size={16} />
-          Blocked {html.trackers.length === 1 ? 'a tracking pixel' : `${html.trackers.length} tracking pixels`} from {html.trackers.join(', ')}. The sender can’t see that you opened this.
+          {t('reader.trackers', { count: html.trackers.length, hosts: html.trackers.join(', ') })}
         </p>
       )}
       {html && html.blockedImages > 0 && (
         <p className="banner banner--info">
-          <span>{html.blockedImages === 1 ? '1 image is' : `${html.blockedImages} images are`} hidden to protect your privacy. Loading images can tell the sender you opened this.</span>
-          <Button variant="link" onClick={() => setShowImages(true)}>Load images</Button>
+          <span>{t('reader.imagesHidden', { count: html.blockedImages })}</span>
+          <Button variant="link" onClick={() => setShowImages(true)}>{t('reader.loadImages')}</Button>
         </p>
       )}
       {assist?.kind === 'translation' ? (
         <>
-          <p className="fine assist-note">{assist.note} · <Button variant="link" onClick={() => setAssist(null)}>Show original</Button></p>
+          <p className="fine assist-note">{assist.note} · <Button variant="link" onClick={() => setAssist(null)}>{t('reader.showUntranslated')}</Button></p>
           <div className="letter">{assist.text}</div>
         </>
       ) : html
-        ? <MessageFrame title={`Message from ${displayName(sender)}`} srcdoc={html.srcdoc} />
+        ? <MessageFrame title={t('reader.messageFrom', { name: displayName(sender) })} srcdoc={html.srcdoc} />
         : <div className="letter">{shown.text}</div>}
       {files.length + links.length > 0 && (
-        <ul className="chips" aria-label="Attachments">
+        <ul className="chips" aria-label={t('reader.attachments')}>
           {files.map((a) => (
             <li key={a.blobId + a.name}>
-              <button className="chip" onClick={() => (previewKind(a) ? setPreview(a) : save(client, a).catch(() => notify(`Couldn’t download ${a.name ?? 'the file'}`, 'Check your connection and try again.')))}
-                title={previewKind(a) ? `Preview ${a.name ?? 'file'}` : `Download ${a.name ?? 'file'}`}>
-                <Icon name="file" size={16} /><span className="fname">{a.name ?? 'Untitled file'}</span>
+              <button className="chip" onClick={() => (previewKind(a) ? setPreview(a) : save(client, a).catch(() => notify(a.name ? t('reader.couldntDownload', { name: a.name }) : t('reader.couldntDownloadFile'), t('reader.checkConnection'))))}
+                title={previewKind(a) ? (a.name ? t('reader.preview', { name: a.name }) : t('reader.previewFile')) : (a.name ? t('reader.downloadName', { name: a.name }) : t('reader.downloadFile'))}>
+                <Icon name="file" size={16} /><span className="fname">{a.name ?? t('reader.untitledFile')}</span>
                 <span className="fsize">{fileSize(a.size)}</span><Icon name={previewKind(a) ? 'search' : 'download'} size={16} />
               </button>
             </li>
           ))}
           {links.map((l) => (
             <li key={l.url}>
-              <a className="chip" href={l.url} target="_blank" rel="noopener noreferrer" title={`Download ${l.name}`}>
+              <a className="chip" href={l.url} target="_blank" rel="noopener noreferrer" title={t('reader.downloadName', { name: l.name })}>
                 <Icon name="file" size={16} /><span className="fname">{l.name}</span>
-                <span className="fsize">{fileSize(l.size)}</span><span className="flink">Download</span>
+                <span className="fsize">{fileSize(l.size)}</span><span className="flink">{t('reader.download')}</span>
               </a>
             </li>
           ))}
@@ -256,7 +257,7 @@ function Preview({ client, a, onClose }: { client: Jmap; a: Attachment; onClose:
       const typed = new Blob([b], { type: kind === 'pdf' ? 'application/pdf' : kind === 'text' ? 'text/plain;charset=utf-8' : a.type });
       url = URL.createObjectURL(typed);
       setSrc({ url, text: kind === 'text' ? await typed.text() : undefined });
-    }, () => setErr('Couldn’t load this file.'));
+    }, () => setErr(t('reader.couldntLoadFile')));
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
     window.addEventListener('keydown', esc, true);
     return () => { if (url) URL.revokeObjectURL(url); window.removeEventListener('keydown', esc, true); };
@@ -264,15 +265,15 @@ function Preview({ client, a, onClose }: { client: Jmap; a: Attachment; onClose:
   // Portal: the reader pane is its own containing block, so a fixed overlay inside it wouldn't cover the page.
   return createPortal(
     <div className="overlay" onMouseDown={onClose}>
-      <div className="att-preview" role="dialog" aria-label={`Preview of ${a.name ?? 'attachment'}`} onMouseDown={(e) => e.stopPropagation()}>
+      <div className="att-preview" role="dialog" aria-label={a.name ? t('reader.previewOf', { name: a.name }) : t('reader.previewOfAttachment')} onMouseDown={(e) => e.stopPropagation()}>
         <header>
-          <span className="fname">{a.name ?? 'Untitled file'}</span><span className="fsize">{fileSize(a.size)}</span>
-          <Button size="sm" icon="download" onClick={() => save(client, a)}>Download</Button>
-          <Button variant="quiet" size="sm" icon="close" label="Close preview" onClick={onClose} />
+          <span className="fname">{a.name ?? t('reader.untitledFile')}</span><span className="fsize">{fileSize(a.size)}</span>
+          <Button size="sm" icon="download" onClick={() => save(client, a)}>{t('reader.download')}</Button>
+          <Button variant="quiet" size="sm" icon="close" label={t('reader.closePreview')} onClick={onClose} />
         </header>
         <div className="att-preview-body">
-          {err ? <p className="error">{err}</p> : !src ? <p className="fine">Loading…</p>
-            : kind === 'image' ? <img src={src.url} alt={a.name ?? 'Attachment'} />
+          {err ? <p className="error">{err}</p> : !src ? <p className="fine">{t('common.loading')}</p>
+            : kind === 'image' ? <img src={src.url} alt={a.name ?? t('reader.attachment')} />
             : kind === 'pdf' ? <iframe title={a.name ?? 'PDF'} src={src.url} />
             : <pre>{src.text}</pre>}
         </div>
@@ -298,10 +299,10 @@ function hue(s: string) { let h = 0; for (const c of s) h = (h * 31 + c.charCode
 
 export function shortDate(iso: string) {
   const d = new Date(iso), now = new Date();
-  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  return d.toLocaleDateString([], d.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { dateStyle: 'medium' });
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleDateString(locale(), d.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { dateStyle: 'medium' });
 }
-const longDate = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const longDate = (iso: string) => new Date(iso).toLocaleString(locale(), { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 /** Invitations (text/calendar attachments): what, when, where, and Yes / Maybe / No (sent to the organizer). */
 function Invitation({ client, m, onRsvp }: { client: Jmap; m: EmailFull; onRsvp: (m: EmailFull, ics: Attachment, status: PartStat) => Promise<void> }) {
@@ -312,21 +313,21 @@ function Invitation({ client, m, onRsvp }: { client: Jmap; m: EmailFull; onRsvp:
   if (!ev || !ics) return null;
   const answer = (['ACCEPTED', 'TENTATIVE', 'DECLINED'] as const).find((p) => m.keywords[`$rsvp-${p.toLowerCase()}`]);
   const { start, end } = span(ev);
-  const when = ev.allDay ? start.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
-    : `${start.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  const when = ev.allDay ? start.toLocaleDateString(locale(), { weekday: 'long', month: 'long', day: 'numeric' })
+    : `${start.toLocaleString(locale(), { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} – ${end.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}`;
   const opt = (status: PartStat, label: string) => (
     <Button size="sm" variant={answer === status ? 'primary' : 'secondary'} pressed={answer === status} disabled={!!busy}
       onClick={async () => { setBusy(status); try { await onRsvp(m, ics, status); } finally { setBusy(null); } }}>
-      {busy === status ? 'Sending…' : label}
+      {busy === status ? t('reader.rsvpSending') : label}
     </Button>
   );
   return (
     <div className="banner banner--info invite">
       <Icon name="calendar" size={16} />
-      <span className="what"><b>{ev.title || 'Invitation'}</b>, {when}{ev.location ? `, ${ev.location}` : ''}</span>
-      <span className="rsvp" role="group" aria-label="Your answer">
-        <span className="q">{answer ? 'Your answer' : 'Going?'}</span>
-        {opt('ACCEPTED', 'Yes')}{opt('TENTATIVE', 'Maybe')}{opt('DECLINED', 'No')}
+      <span className="what"><b>{ev.title || t('reader.invitation')}</b>, {when}{ev.location ? `, ${ev.location}` : ''}</span>
+      <span className="rsvp" role="group" aria-label={t('reader.yourAnswer')}>
+        <span className="q">{answer ? t('reader.yourAnswer') : t('reader.going')}</span>
+        {opt('ACCEPTED', t('reader.yes'))}{opt('TENTATIVE', t('reader.maybe'))}{opt('DECLINED', t('reader.no'))}
       </span>
     </div>
   );
@@ -352,8 +353,8 @@ function SmartReplies({ m, me, onPick }: { m: EmailFull; me: string; onPick: (te
   }, [m.id]);
   if (!ideas.length) return null;
   return (
-    <div className="smart-replies" role="group" aria-label="Suggested replies (made on this device)">
-      {ideas.map((t) => <button key={t} className="filter-chip" onClick={() => onPick(t)}>{t}</button>)}
+    <div className="smart-replies" role="group" aria-label={t('reader.suggestedReplies')}>
+      {ideas.map((idea) => <button key={idea} className="filter-chip" onClick={() => onPick(idea)}>{idea}</button>)}
     </div>
   );
 }
@@ -371,8 +372,8 @@ function MessageFrame({ title, srcdoc }: { title: string; srcdoc: string }) {
       if (!a || !claimed || sameSite(claimed, a.hostname)) return;
       e.preventDefault();
       if (!/^https?:$/.test(a.protocol)) return; // only web addresses are ever opened from here
-      if (await confirmIt({ title: 'This link isn’t what it says', danger: true, confirm: 'Open anyway',
-        body: `It shows ${claimed} but goes to ${a.hostname}. Scam emails do this to steal passwords.` })) window.open(a.href, '_blank', 'noopener');
+      if (await confirmIt({ title: t('reader.linkTitle'), danger: true, confirm: t('reader.openAnyway'),
+        body: t('reader.linkBody', { claimed, host: a.hostname }) })) window.open(a.href, '_blank', 'noopener');
     };
     const setup = () => {
       const d = f.contentDocument; if (!d) return;

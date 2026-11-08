@@ -6,6 +6,7 @@
 // ponytail: PBKDF2, not Argon2 (WebCrypto has no memory-hard KDF). A stolen copy of this browser's storage can be
 // brute-forced offline at PBKDF2 speed, so the passphrase must be strong (we ask for 12+ characters).
 
+import { t } from './i18n';
 export interface MyKey {
   fingerprint: string;
   publicKey: string;   // armored
@@ -120,7 +121,7 @@ export async function unwrap(w: NonNullable<MyKey['wrapped']>, passphrase: strin
   try {
     const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(w.iv) }, await kek(passphrase, unb64(w.salt), w.rounds), unb64(w.data));
     return new TextDecoder().decode(out);
-  } catch { throw new Error('That passphrase isn’t right.'); }
+  } catch { throw new Error(t('keys.wrongPassphrase')); }
 }
 
 // Unlocked private keys, this tab's memory only.
@@ -129,7 +130,7 @@ export const unlockedKey = (user: string) => unlocked.get(lc(user));
 export function keepUnlocked(user: string, armoredPrivate: string) { unlocked.set(lc(user), armoredPrivate); }
 export async function unlock(user: string, passphrase: string): Promise<string> {
   const k = await myKey(user);
-  if (!k?.wrapped) throw new Error('There’s no private key in this browser. Restore your key backup in Settings → Security.');
+  if (!k?.wrapped) throw new Error(t('keys.noPrivateKey'));
   const s = await unwrap(k.wrapped, passphrase);
   unlocked.set(lc(user), s);
   return s;

@@ -6,6 +6,8 @@
 // sign you out; closing the tab does. ponytail: a stolen refresh token works until it's used once (rotation) or
 // revoked at sign-out; a backend-held httpOnly cookie would remove that window if we ever add a backend.
 
+import { locale, serverText, t } from './i18n';
+
 export const CLIENT_ID = 'openmail-web';
 const SCOPE = 'openid offline_access urn:ietf:params:oauth:scope:mail urn:ietf:params:oauth:scope:contacts urn:ietf:params:oauth:scope:calendars';
 const KEY = 'om:oauth';
@@ -35,18 +37,18 @@ async function authorize(user: string, pass: string, scope: string, otp?: string
   const post = async (body: object) => {
     const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .catch(async (e) => { throw new Error((await blockedNetwork()) ?? (e as Error).message); });
-    if (!r.ok) throw new Error((await blockedNetwork()) ?? `The mail server couldn’t sign you in right now (${r.status}). Try again in a moment.`);
+    if (!r.ok) throw new Error((await blockedNetwork()) ?? t('oauth.cantSignIn', { status: r.status }));
     return r.json() as Promise<{ type: string; location?: string; token?: string }>;
   };
   let r = await post({ type: 'authCode', accountName: user, accountSecret: pass, query, ...(otp && { mfaToken: otp.replace(/\s/g, '') }) });
   if (r.type === 'consentRequired' && r.token) r = await post({ type: 'authConsent', token: r.token, query, consent: true });
   if (r.type === 'mfaRequired') return 'code';
-  if (r.type === 'failure') throw new Error((await blockedNetwork()) ?? (otp ? 'That code didn’t work. Check your authenticator app and try the newest code.' : 'Wrong email or password.'));
-  if (r.type === 'expired') throw new Error('Your password has expired. Ask your administrator to reset it.');
-  if (!r.location) throw new Error('The mail server sent an answer this app doesn’t understand.');
+  if (r.type === 'failure') throw new Error((await blockedNetwork()) ?? (otp ? t('oauth.badCode') : t('oauth.wrongPassword')));
+  if (r.type === 'expired') throw new Error(t('oauth.passwordExpired'));
+  if (!r.location) throw new Error(t('oauth.badAnswer'));
   const back = new URL(r.location, location.origin).searchParams;
-  if (back.get('error')) throw new Error(back.get('error_description') || 'Sign-in was refused.');
-  if (back.get('state') !== state || !back.get('code')) throw new Error('That sign-in didn’t match. Please try again.');
+  if (back.get('error')) throw new Error(back.get('error_description') || t('oauth.refused'));
+  if (back.get('state') !== state || !back.get('code')) throw new Error(t('oauth.mismatch'));
   return tokenRequest({ grant_type: 'authorization_code', code: back.get('code')!, redirect_uri: redirectUri(), code_verifier: verifier });
 }
 
@@ -57,15 +59,15 @@ async function authorize(user: string, pass: string, scope: string, otp?: string
 async function blockedNetwork(): Promise<string | null> {
   const j = await fetch('/api/blocked').then((r) => (r.ok ? r.json() : null), () => null).catch(() => null);
   if (!j?.blocked) return null;
-  const until = j.until ? new Date(j.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-  return `Too many sign-ins failed from your network, so it’s blocked for a while. This is temporary${until ? `: try again after ${until}` : ', usually about an hour'}. If you’ve forgotten your password, ask your administrator to reset it.`;
+  const until = j.until ? new Date(j.until).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }) : '';
+  return until ? t('oauth.blockedUntil', { time: until }) : t('oauth.blocked');
 }
 
 /** Everyday sign-in: mail, contacts and calendars, remembered in this tab. */
 export async function signIn(user: string, pass: string, otp?: string): Promise<Session | 'code'> {
-  const t = await authorize(user, pass, SCOPE, otp);
-  if (t === 'code') return t;
-  const s = new Session({ ...t, username: t.username || user.toLowerCase() });
+  const tok = await authorize(user, pass, SCOPE, otp);
+  if (tok === 'code') return tok;
+  const s = new Session({ ...tok, username: tok.username || user.toLowerCase() });
   s.remember();
   return s;
 }
@@ -77,8 +79,8 @@ async function tokenRequest(body: Record<string, string>): Promise<Tokens> {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: CLIENT_ID, ...body }),
   });
   const j = await res.json().catch(() => ({}));
-  if (j.error === 'invalid_grant') throw new Error('Your session has ended. Please sign in again.'); // expired, revoked or account gone
-  if (!res.ok || !j.access_token) throw new Error(j.error_description || j.error || `Sign-in failed (${res.status})`);
+  if (j.error === 'invalid_grant') throw new Error(t('oauth.sessionEnded')); // expired, revoked or account gone
+  if (!res.ok || !j.access_token) throw new Error(j.error_description || j.error || t('oauth.failed', { status: res.status }));
   return { access: j.access_token, refresh: j.refresh_token, expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000, username: j.username ?? '' };
 }
 
@@ -120,14 +122,11 @@ export async function ssoProvider(): Promise<string | null> {
 export function adoptSso(username: string) {
   device.set([...device.get(), username]); device.active(username); store.set('active', username);
 }
-const SSO_ERRORS: Record<string, string> = {
-  expired: 'That sign-in took too long or was already used. Please try again.',
-  cancelled: 'Sign-in was cancelled.',
-  refused: 'Your sign-in couldn’t be verified. Try again, or ask your administrator.',
-  no_account: 'That account can’t use this mail server. Sign in with your work address, or ask your administrator.',
-  rate_limited: 'Too many sign-in attempts. Wait a minute and try again.',
-};
-export const ssoError = (code: string) => SSO_ERRORS[code] ?? 'The sign-in service isn’t answering. Try again in a few minutes.';
+const SSO_ERRORS = {
+  expired: 'oauth.ssoExpired', cancelled: 'oauth.ssoCancelled', refused: 'oauth.ssoRefused',
+  no_account: 'oauth.ssoNoAccount', rate_limited: 'oauth.ssoRateLimited',
+} as const;
+export const ssoError = (code: string) => t(SSO_ERRORS[code as keyof typeof SSO_ERRORS] ?? 'oauth.ssoUnavailable');
 
 /** Usernames signed in here (this tab and remembered on this device), active first. */
 export function signedInAccounts(): string[] {
@@ -192,10 +191,10 @@ export class Session {
   refresh(): Promise<void> {
     // One refresh at a time: refresh tokens rotate, so a second parallel request would use a dead token.
     this.refreshing ??= (this.cookie ? this.cookieRefresh() : tokenRequest({ grant_type: 'refresh_token', refresh_token: this.t.refresh })
-      .then((t) => {
-        this.t = { ...t, username: t.username || this.t.username };
+      .then((tok) => {
+        this.t = { ...tok, username: tok.username || this.t.username };
         // A refresh that finishes after sign-out must not bring the account back.
-        if (!this.signedOut && this.t.username in saved()) store.set('accounts', { ...saved(), [this.t.username]: t.refresh });
+        if (!this.signedOut && this.t.username in saved()) store.set('accounts', { ...saved(), [this.t.username]: tok.refresh });
       }))
       .finally(() => { this.refreshing = null; });
     return this.refreshing;
@@ -206,7 +205,7 @@ export class Session {
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.access_token) {
       device.set(device.get().filter((x) => x !== this.t.username));
-      throw new Error(j.error?.message ?? 'Your session has ended. Please sign in again.');
+      throw new Error(j.error?.message ? serverText(j.error.code, j.error.message) : t('oauth.sessionEnded'));
     }
     this.t = { ...this.t, access: j.access_token, expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000 };
   }
@@ -240,7 +239,7 @@ const SECURITY_SCOPE = 'openid urn:ietf:params:oauth:scope:mail urn:ietf:params:
 // ponytail: that retry re-sends the same two-factor code; if the server rejects the replay, the user enters a new one.
 const SETTINGS_SCOPE = ' urn:stalwart:oauth:scope:settings';
 export async function stepUp(user: string, pass: string, otp?: string): Promise<string | 'code'> {
-  const t = await authorize(user, pass, SECURITY_SCOPE + SETTINGS_SCOPE, otp)
+  const tok = await authorize(user, pass, SECURITY_SCOPE + SETTINGS_SCOPE, otp)
     .catch((e: Error) => (/scope/i.test(e.message) ? authorize(user, pass, SECURITY_SCOPE, otp) : Promise.reject(e)));
-  return t === 'code' ? t : t.access;
+  return tok === 'code' ? tok : tok.access;
 }

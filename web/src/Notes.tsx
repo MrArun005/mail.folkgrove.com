@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
 import { confirmIt } from './Dialog';
 import type { Jmap, Note } from './jmap';
+import { locale, t } from './i18n';
 
 /** Notes: plain-text notes that sync everywhere. List on the left, editor on the right; saves as you type. */
 export function NotesView({ client, say }: { client: Jmap; say: (t: string) => void }) {
@@ -19,21 +20,21 @@ export function NotesView({ client, say }: { client: Jmap; say: (t: string) => v
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
 
   return (
-    <section className="notes" aria-label="Notes">
+    <section className="notes" aria-label={t('folder.notes')}>
       <div className="notes-list">
         <div className="notes-head">
-          <input className="input" type="search" placeholder="Search notes" aria-label="Search notes" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <Button variant="primary" icon="compose" onClick={() => show({ id: '', title: '', body: '', updatedAt: new Date().toISOString(), pinned: false })}>New note</Button>
+          <input className="input" type="search" placeholder={t('notes.search')} aria-label={t('notes.search')} value={query} onChange={(e) => setQuery(e.target.value)} />
+          <Button variant="primary" icon="compose" onClick={() => show({ id: '', title: '', body: '', updatedAt: new Date().toISOString(), pinned: false })}>{t('notes.new')}</Button>
         </div>
         {notes === null && <div className="rows-loading" aria-busy="true">{[0, 1, 2].map((i) => <span key={i} />)}</div>}
-        {notes?.length === 0 && <p className="empty">No notes yet. Ideas, lists, anything: they sync to every device.</p>}
+        {notes?.length === 0 && <p className="empty">{t('notes.empty')}</p>}
         <ul>
           {sorted.map((n) => (
             <li key={n.id}>
               <button className={`note-row${open?.id === n.id ? ' active' : ''}`} onClick={() => show(n)}>
-                <span className="title">{n.pinned && <span className="pill">Pinned</span>}{n.title || 'Untitled note'}</span>
-                <span className="preview">{n.body.slice(0, 120) || 'No text'}</span>
-                <time>{new Date(n.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time>
+                <span className="title">{n.pinned && <span className="pill">{t('notes.pinned')}</span>}{n.title || t('notes.untitled')}</span>
+                <span className="preview">{n.body.slice(0, 120) || t('notes.noText')}</span>
+                <time>{new Date(n.updatedAt).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })}</time>
               </button>
             </li>
           ))}
@@ -42,7 +43,7 @@ export function NotesView({ client, say }: { client: Jmap; say: (t: string) => v
       {open ? <NoteEditor key={editKey} client={client} note={open} say={say}
         onSaved={(n) => { setOpen(n); setNotes((l) => [n, ...(l ?? []).filter((x) => x.id !== open.id && x.id !== n.id)]); }}
         onDeleted={() => { setNotes((l) => l?.filter((x) => x.id !== open.id) ?? l); setOpen(null); }} />
-        : <div className="reader-empty"><p>Pick a note, or start a new one.</p></div>}
+        : <div className="reader-empty"><p>{t('notes.pick')}</p></div>}
     </section>
   );
 }
@@ -64,14 +65,14 @@ function NoteEditor({ client, note, say, onSaved, onDeleted }: {
     const snap = JSON.stringify(next);
     if (snap === last.current && current.current) return;
     last.current = snap;
-    setStatus('Saving…');
+    setStatus(t('common.saving'));
     // One save at a time, in order: each replaces the previous copy.
     saving.current = saving.current.then(async () => {
       try {
         const id = await client.saveNote({ id: current.current || undefined, ...next });
-        current.current = id; setStatus('Saved');
+        current.current = id; setStatus(t('notes.saved'));
         onSaved({ id, ...next, updatedAt: new Date().toISOString() });
-      } catch (e) { setStatus(''); say(`Couldn’t save the note: ${(e as Error).message}`); }
+      } catch (e) { setStatus(''); say(t('notes.couldntSave', { error: (e as Error).message })); }
     });
   }
   const later = (next: { title: string; body: string; pinned: boolean }) => { clearTimeout(timer.current); timer.current = window.setTimeout(() => save(next), 900); };
@@ -81,16 +82,16 @@ function NoteEditor({ client, note, say, onSaved, onDeleted }: {
     <article className="note-editor">
       <div className="note-tools">
         <span className="fine" role="status">{status}</span>
-        <Button variant="quiet" size="sm" icon="star" iconFilled={pinned} label={pinned ? 'Unpin' : 'Pin to the top'} pressed={pinned}
+        <Button variant="quiet" size="sm" icon="star" iconFilled={pinned} label={pinned ? t('notes.unpin') : t('notes.pin')} pressed={pinned}
           onClick={() => { setPinned(!pinned); save({ title, body, pinned: !pinned }); }} />
-        {current.current && <Button variant="quiet" size="sm" icon="trash" label="Delete note" onClick={async () => {
-          if (!(await confirmIt({ title: 'Delete this note?', body: 'It’s removed from every device.', confirm: 'Delete note', danger: true }))) return;
-          await saving.current; await client.deleteNote(current.current); say('Note deleted'); onDeleted();
+        {current.current && <Button variant="quiet" size="sm" icon="trash" label={t('notes.delete')} onClick={async () => {
+          if (!(await confirmIt({ title: t('notes.deleteTitle'), body: t('notes.deleteBody'), confirm: t('notes.delete'), danger: true }))) return;
+          await saving.current; await client.deleteNote(current.current); say(t('notes.deleted')); onDeleted();
         }} />}
       </div>
-      <input className="note-title" placeholder="Title" aria-label="Note title" value={title} autoFocus={!note.id}
+      <input className="note-title" placeholder={t('notes.title')} aria-label={t('notes.titleLabel')} value={title} autoFocus={!note.id}
         onChange={(e) => { setTitle(e.target.value); later({ title: e.target.value, body, pinned }); }} onBlur={() => { clearTimeout(timer.current); save(); }} />
-      <textarea className="note-body" placeholder="Write anything" aria-label="Note" value={body}
+      <textarea className="note-body" placeholder={t('notes.bodyPlaceholder')} aria-label={t('notes.note')} value={body}
         onChange={(e) => { setBody(e.target.value); later({ title, body: e.target.value, pinned }); }} onBlur={() => { clearTimeout(timer.current); save(); }} />
     </article>
   );

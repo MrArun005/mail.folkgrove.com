@@ -8,17 +8,18 @@ import type { Attachment, EmailFull, Jmap } from './jmap';
 import { forgetMyKey, keepUnlocked, myKey, peerKey, peerKeys, removePeerKey, saveMyKey, savePeerKey, senderAuthenticated, unlock, unlockedKey, wrap, type KeySource, type MyKey, type PeerKey } from './keys';
 import { displayName, fileSize, parseAddresses } from './mailutil';
 import type { MailFile, Opened } from './pgp';
+import { t, type Key } from './i18n';
 
 const pgp = () => import('./pgp');
 
 /** Ask for the passphrase if the key isn't unlocked in this tab yet. False when cancelled or there's no key here. */
 export async function ensureUnlocked(user: string): Promise<boolean> {
   if (unlockedKey(user)) return true;
-  if (!(await myKey(user))?.wrapped) { await notify('Your key isn’t in this browser', 'Restore your key backup in Settings → Security, then try again.'); return false; }
+  if (!(await myKey(user))?.wrapped) { await notify(t('encryption.notHere'), t('encryption.notHereBody')); return false; }
   for (;;) {
-    const pass = await promptIt({ title: 'Unlock your key', body: 'Your passphrase unlocks it until you close this tab.', label: 'Passphrase', confirm: 'Unlock', secret: true });
+    const pass = await promptIt({ title: t('encryption.unlockTitle'), body: t('encryption.unlockBody'), label: t('encryption.passphrase'), confirm: t('encryption.unlock'), secret: true });
     if (!pass) return false;
-    try { await unlock(user, pass); return true; } catch (e) { await notify((e as Error).message, 'Check it and try again.'); }
+    try { await unlock(user, pass); return true; } catch (e) { await notify((e as Error).message, t('encryption.tryAgain')); }
   }
 }
 
@@ -38,7 +39,7 @@ export function EncryptionSection({ sec, username }: { sec: Jmap; username: stri
   const reload = async () => {
     setLocal((await myKey(username)) ?? null);
     try { setServer(await sec.encryptionState()); }
-    catch (e) { setMsg(FORBIDDEN.test((e as Error).message) ? 'This server’s webmail can’t manage encryption yet. Your administrator needs to re-run the installer (it allows the “settings” permission); then sign in here again.' : (e as Error).message); }
+    catch (e) { setMsg(FORBIDDEN.test((e as Error).message) ? t('encryption.forbidden') : (e as Error).message); }
   };
   useEffect(() => { reload(); }, []);
   const run = (fn: () => Promise<unknown>) => async () => {
@@ -57,8 +58,8 @@ export function EncryptionSection({ sec, username }: { sec: Jmap; username: stri
     reset(); await reload();
   }
   const create = run(async () => {
-    if (pass.length < 12) throw new Error('Use at least 12 characters. A few unrelated words work well.');
-    if (pass !== again) throw new Error('The passphrases don’t match.');
+    if (pass.length < 12) throw new Error(t('encryption.tooShort'));
+    if (pass !== again) throw new Error(t('encryption.mismatch'));
     const p = await pgp(), key = await p.createKey('', username);
     setMade({ key, backup: await p.backupKey(key, pass), saved: false });
   });
@@ -69,7 +70,7 @@ export function EncryptionSection({ sec, username }: { sec: Jmap; username: stri
     setMade({ ...made!, saved: true });
   };
   const restore = run(async () => {
-    if (!file) throw new Error('Choose your backup file first.');
+    if (!file) throw new Error(t('encryption.chooseFile'));
     const key = await (await pgp()).restoreKey(await file.text(), pass);
     await keep(key, pass);
   });
@@ -82,8 +83,8 @@ export function EncryptionSection({ sec, username }: { sec: Jmap; username: stri
   });
   async function atRest(on: boolean) {
     const keyId = published?.id ?? server?.keys[0]?.id;
-    if (on && !(await confirmIt({ danger: true, confirm: 'Encrypt stored mail', title: 'Encrypt stored mail?',
-      body: `New mail will be stored so that only your key can open it. If you lose your key and its backup, that mail is gone for good: nobody can recover it, including us. Search won’t find words inside encrypted messages. Mail you already have stays as it is.${local?.wrapped ? '' : ' This browser doesn’t hold your private key, so you’ll read new mail only in an app that does.'}` }))) return;
+    if (on && !(await confirmIt({ danger: true, confirm: t('encryption.atRestConfirm'), title: t('encryption.atRestTitle'),
+      body: t('encryption.atRestBody') + (local?.wrapped ? '' : ' ' + t('encryption.atRestNoKey')) }))) return;
     await run(async () => { await sec.setEncryptionAtRest(on ? keyId! : null); await reload(); })();
   }
 
@@ -92,51 +93,51 @@ export function EncryptionSection({ sec, username }: { sec: Jmap; username: stri
 
   return (
     <div className="sec-block">
-      <div className="sec-head"><span><b>Encryption</b> {server?.atRest ? <span className="pill on">Stored mail encrypted</span> : null}</span></div>
+      <div className="sec-head"><span><b>{t('encryption.title')}</b> {server?.atRest ? <span className="pill on">{t('encryption.storedEncrypted')}</span> : null}</span></div>
       {local || server?.keys.length ? <>
-        {(local ? [local.fingerprint] : server!.keys.flatMap((k) => k.fingerprints)).map((f) => (
-          <p key={f} className="fine">Your key <code className="key">{f.match(/.{1,4}/g)!.join(' ')}</code>
-            {local?.wrapped ? ' · in this browser' : local ? ' · public key only (the private key is in your other app)' : ' · not in this browser'}</p>
-        ))}
-        {!local?.wrapped && !mode && <Button size="sm" className="start" onClick={() => setMode('restore')}>Restore my key in this browser</Button>}
+        {(local ? [local.fingerprint] : server!.keys.flatMap((k) => k.fingerprints)).map((f) => {
+          const [before, after] = t(local?.wrapped ? 'encryption.keyHere' : local ? 'encryption.keyPublicOnly' : 'encryption.keyNotHere').split('{fp}');
+          return <p key={f} className="fine">{before}<code className="key">{f.match(/.{1,4}/g)!.join(' ')}</code>{after}</p>;
+        })}
+        {!local?.wrapped && !mode && <Button size="sm" className="start" onClick={() => setMode('restore')}>{t('encryption.restoreHere')}</Button>}
         <label className="inline"><input type="checkbox" className="check" checked={!!server?.atRest} disabled={busy || !server?.keys.length} onChange={(e) => atRest(e.target.checked)} />
-          Encrypt stored mail</label>
-        <p className="fine">New mail is stored encrypted to your key, so someone who gets hold of the server’s disks or backups can’t read it. It’s opened here, on your device. Search can’t see inside encrypted messages.</p>
-        {local && <p className="fine">People can find your public key (WKD) and it goes out with your mail (Autocrypt), so they can write to you encrypted.
-          {' '}<Button variant="link" onClick={async () => { if (await confirmIt({ danger: true, confirm: 'Remove key', title: 'Remove your key from this browser?', body: 'You’ll need your backup file and passphrase to read encrypted mail here again.' })) { await forgetMyKey(username); reload(); } }}>Remove it from this browser</Button></p>}
+          {t('encryption.atRestLabel')}</label>
+        <p className="fine">{t('encryption.atRestInfo')}</p>
+        {local && <p className="fine">{t('encryption.published')}
+          {' '}<Button variant="link" onClick={async () => { if (await confirmIt({ danger: true, confirm: t('encryption.removeKey'), title: t('encryption.removeTitle'), body: t('encryption.removeBody') })) { await forgetMyKey(username); reload(); } }}>{t('encryption.removeLink')}</Button></p>}
       </> : !mode && <>
-        <p className="fine">One key lets you encrypt the mail stored on the server and send and receive end-to-end encrypted mail (OpenPGP: works with Proton, Thunderbird and GnuPG). Your private key stays in this browser, locked with a passphrase.</p>
+        <p className="fine">{t('encryption.intro')}</p>
         <div className="actions">
-          <Button size="sm" variant="primary" onClick={() => setMode('create')}>Create a key</Button>
-          <Button size="sm" onClick={() => setMode('restore')}>Restore from backup</Button>
-          <Button size="sm" onClick={() => setMode('public')}>Use my own public key</Button>
+          <Button size="sm" variant="primary" onClick={() => setMode('create')}>{t('encryption.create')}</Button>
+          <Button size="sm" onClick={() => setMode('restore')}>{t('encryption.restoreBackup')}</Button>
+          <Button size="sm" onClick={() => setMode('public')}>{t('encryption.usePublic')}</Button>
         </div>
       </>}
 
       {mode === 'create' && !made && <>
-        <p className="fine">Choose a passphrase. It locks your key in this browser and its backup file. We never see it and can’t reset it.</p>
-        <div className="row2">{pw('Passphrase', pass, setPass)}{pw('Passphrase, again', again, setAgain)}</div>
-        <div className="actions"><Button size="sm" onClick={reset}>Cancel</Button><Button size="sm" variant="primary" disabled={busy || !pass} onClick={create}>{busy ? 'Creating…' : 'Create key'}</Button></div>
+        <p className="fine">{t('encryption.choosePass')}</p>
+        <div className="row2">{pw(t('encryption.passphrase'), pass, setPass)}{pw(t('encryption.passAgain'), again, setAgain)}</div>
+        <div className="actions"><Button size="sm" onClick={reset}>{t('common.cancel')}</Button><Button size="sm" variant="primary" disabled={busy || !pass} onClick={create}>{busy ? t('encryption.creating') : t('encryption.createKey')}</Button></div>
       </>}
       {made && <>
-        <p className="banner banner--danger" role="alert"><Icon name="lock" size={16} /><span className="grow">Save your backup file before you go on. Without it and your passphrase, encrypted mail can’t be opened by anyone, including us. Keep it somewhere other than this computer.</span></p>
+        <p className="banner banner--danger" role="alert"><Icon name="lock" size={16} /><span className="grow">{t('encryption.saveBackup')}</span></p>
         <div className="actions">
-          <Button size="sm" variant={made.saved ? 'secondary' : 'primary'} icon="download" onClick={download}>{made.saved ? 'Download again' : 'Download backup'}</Button>
-          <Button size="sm" variant={made.saved ? 'primary' : 'secondary'} disabled={!made.saved || busy} onClick={run(() => keep(made.key, pass))}>{busy ? 'Finishing…' : 'Finish setup'}</Button>
+          <Button size="sm" variant={made.saved ? 'secondary' : 'primary'} icon="download" onClick={download}>{made.saved ? t('encryption.downloadAgain') : t('encryption.downloadBackup')}</Button>
+          <Button size="sm" variant={made.saved ? 'primary' : 'secondary'} disabled={!made.saved || busy} onClick={run(() => keep(made.key, pass))}>{busy ? t('encryption.finishing') : t('encryption.finish')}</Button>
         </div>
       </>}
       {mode === 'restore' && <>
-        <p className="fine">Your backup file (.asc) and its passphrase. A key exported from GnuPG, Thunderbird or Proton works too.</p>
+        <p className="fine">{t('encryption.restoreInfo')}</p>
         <div className="row2">
-          <label>Backup file<input className="input" type="file" accept=".asc,.gpg,.key,.txt,application/pgp-keys,text/plain" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label>
-          {pw('Passphrase', pass, setPass, 'current-password')}
+          <label>{t('encryption.backupFile')}<input className="input" type="file" accept=".asc,.gpg,.key,.txt,application/pgp-keys,text/plain" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label>
+          {pw(t('encryption.passphrase'), pass, setPass, 'current-password')}
         </div>
-        <div className="actions"><Button size="sm" onClick={reset}>Cancel</Button><Button size="sm" variant="primary" disabled={busy || !file} onClick={restore}>{busy ? 'Restoring…' : 'Restore key'}</Button></div>
+        <div className="actions"><Button size="sm" onClick={reset}>{t('common.cancel')}</Button><Button size="sm" variant="primary" disabled={busy || !file} onClick={restore}>{busy ? t('encryption.restoring') : t('encryption.restoreKey')}</Button></div>
       </>}
       {mode === 'public' && <>
-        <p className="fine">Paste your OpenPGP public key or S/MIME certificate. Your private key stays in your other app, so encrypted mail opens there, not here.</p>
-        <textarea className="input key" rows={5} aria-label="Public key or certificate" placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----" value={text} onChange={(e) => setText(e.target.value)} />
-        <div className="actions"><Button size="sm" onClick={reset}>Cancel</Button><Button size="sm" variant="primary" disabled={busy || !text.trim()} onClick={addPublic}>Add key</Button></div>
+        <p className="fine">{t('encryption.publicInfo')}</p>
+        <textarea className="input key" rows={5} aria-label={t('encryption.publicLabel')} placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----" value={text} onChange={(e) => setText(e.target.value)} />
+        <div className="actions"><Button size="sm" onClick={reset}>{t('common.cancel')}</Button><Button size="sm" variant="primary" disabled={busy || !text.trim()} onClick={addPublic}>{t('encryption.addKey')}</Button></div>
       </>}
       {msg && <p className="error" role="alert">{msg}</p>}
       <PeopleKeys />
@@ -144,8 +145,10 @@ export function EncryptionSection({ sec, username }: { sec: Jmap; username: stri
   );
 }
 
-const fp = (f?: string) => f?.match(/.{1,4}/g)?.join(' ') ?? 'unknown fingerprint';
-const SOURCE: Record<KeySource, string> = { wkd: 'from their mail service (WKD)', autocrypt: 'from their mail (Autocrypt)', attached: 'attached to their mail', imported: 'added by you' };
+const fp = (f?: string) => f?.match(/.{1,4}/g)?.join(' ') ?? t('encryption.unknownFp');
+const SOURCE: Record<KeySource, Key> = { wkd: 'encryption.fromWkd', autocrypt: 'encryption.fromAutocrypt', attached: 'encryption.fromAttached', imported: 'encryption.fromYou' };
+/** The key-conflict warning, split around the new key's fingerprint (shown as code). */
+const conflictText = (k: PeerKey) => t('encryption.conflict', { source: t(SOURCE[k.conflict!.source]), email: k.email }).split('{fp}');
 /** A key with its fingerprint, ready to store. */
 async function peer(email: string, publicKey: string, source: KeySource): Promise<PeerKey> {
   return { email, publicKey, source, fingerprint: (await (await pgp()).describeKey(publicKey)).fingerprint, added: new Date().toISOString() };
@@ -161,25 +164,25 @@ function PeopleKeys() {
     try {
       const found = await (await pgp()).readPublicKeys(text);
       for (const [email, publicKey] of found) await savePeerKey(await peer(email, publicKey, 'imported'));
-      setMsg(found.length ? `Added keys for ${[...new Set(found.map(([e]) => e))].join(', ')}.` : 'That key has no email address in it.'); setText('');
-    } catch { setMsg('That doesn’t look like an OpenPGP public key.'); }
+      setMsg(found.length ? t('encryption.addedKeys', { list: [...new Set(found.map(([e]) => e))].join(', ') }) : t('encryption.noEmail')); setText('');
+    } catch { setMsg(t('encryption.notAKey')); }
     reload();
   };
   return <>
-    <p className="fine">People’s keys</p>
+    <p className="fine">{t('encryption.peopleKeys')}</p>
     {list.length > 0 && <ul className="rule-list">{list.map((k) => (
       <li key={k.email} className="peer-key">
-        <span><b>{k.email}</b> <span className="fine">{SOURCE[k.source]}</span><br /><code className="key">{fp(k.fingerprint)}</code>
+        <span><b>{k.email}</b> <span className="fine">{t(SOURCE[k.source])}</span><br /><code className="key">{fp(k.fingerprint)}</code>
           {k.conflict && <span className="banner banner--danger" role="alert"><Icon name="shield" size={16} /><span className="grow">
-            A different key turned up {SOURCE[k.conflict.source]}: <code className="key">{fp(k.conflict.fingerprint)}</code>. Someone may be pretending to be {k.email}. Encrypted mail to them is paused until you choose. Check with them another way.</span>
-            <Button variant="link" onClick={async () => { await savePeerKey({ ...k.conflict!, email: k.email }, true); reload(); }}>Use the new key</Button>
-            <Button variant="link" onClick={async () => { await savePeerKey({ ...k, conflict: undefined }, true); reload(); }}>Keep the current one</Button></span>}
+            {conflictText(k)[0]}<code className="key">{fp(k.conflict.fingerprint)}</code>{conflictText(k)[1]}</span>
+            <Button variant="link" onClick={async () => { await savePeerKey({ ...k.conflict!, email: k.email }, true); reload(); }}>{t('encryption.useNew')}</Button>
+            <Button variant="link" onClick={async () => { await savePeerKey({ ...k, conflict: undefined }, true); reload(); }}>{t('encryption.keepCurrent')}</Button></span>}
         </span>
-        <Button variant="quiet" size="sm" icon="trash" label={`Forget ${k.email}’s key`} onClick={async () => { await removePeerKey(k.email); reload(); }} />
+        <Button variant="quiet" size="sm" icon="trash" label={t('encryption.forget', { email: k.email })} onClick={async () => { await removePeerKey(k.email); reload(); }} />
       </li>))}</ul>}
     <div className="inline-form">
-      <input className="input key" aria-label="Someone’s public key" placeholder="Paste someone’s public key (-----BEGIN PGP PUBLIC KEY BLOCK-----…)" value={text} onChange={(e) => setText(e.target.value)} />
-      <Button size="md" disabled={!text.trim()} onClick={add}>Add</Button>
+      <input className="input key" aria-label={t('encryption.someonesKey')} placeholder={t('encryption.pastePlaceholder')} value={text} onChange={(e) => setText(e.target.value)} />
+      <Button size="md" disabled={!text.trim()} onClick={add}>{t('common.add')}</Button>
     </div>
     {msg && <p className="fine" role="status">{msg}</p>}
   </>;
@@ -189,10 +192,10 @@ function PeopleKeys() {
 
 export type SecureKind = 'encrypted' | 'signed' | 'smime' | null;
 export function secureKind(m: EmailFull): SecureKind {
-  const t = m.attachments.map((a) => a.type.toLowerCase());
-  if (t.includes('application/pgp-encrypted') || m.attachments.some((a) => a.name === 'encrypted.asc')) return 'encrypted';
-  if (t.some((x) => /pkcs7-mime/.test(x))) return 'smime';
-  return t.includes('application/pgp-signature') ? 'signed' : null;
+  const types = m.attachments.map((a) => a.type.toLowerCase());
+  if (types.includes('application/pgp-encrypted') || m.attachments.some((a) => a.name === 'encrypted.asc')) return 'encrypted';
+  if (types.some((x) => /pkcs7-mime/.test(x))) return 'smime';
+  return types.includes('application/pgp-signature') ? 'signed' : null;
 }
 
 /** Learn a sender's key from their Autocrypt header or an attached key, but only from mail whose sender the server
@@ -235,34 +238,32 @@ export function useSecureMail(client: Jmap, m: EmailFull, me: string, inJunk = f
       const inline = Object.fromEntries((opened.mail?.attachments ?? []).filter((f) => f.cid && /^image\/(png|jpe?g|gif|webp)$/i.test(f.type))
         .map((f) => [f.cid!, `data:${f.type};base64,${btoa(p.bin(f.data))}`]));
       if (live) setState({ ...opened, inline });
-    })().catch((e) => live && setState({ encrypted: kind === 'encrypted', signature: null, mail: null, error: `Couldn’t open it: ${(e as Error).message}`, inline: {} }));
+    })().catch((e) => live && setState({ encrypted: kind === 'encrypted', signature: null, mail: null, error: t('encryption.couldntOpen', { error: (e as Error).message }), inline: {} }));
     return () => { live = false; };
   }, [m.id, tick]);
-  return { kind, state, keyChanged, retry: () => setTick((t) => t + 1) };
+  return { kind, state, keyChanged, retry: () => setTick((n) => n + 1) };
 }
 
 /** How the reader labels a message. Green only for a verified signature, or encryption with no signature claim. */
 export function securityLabel(encrypted: boolean, sig: Opened['signature'], who: string): { tone: 'safe' | 'info' | 'danger'; text: string } {
-  const what = encrypted ? 'Encrypted' : 'Signed';
-  const tail = encrypted ? ' Search can’t see inside it.' : '';
-  if (sig === 'verified') return { tone: 'safe', text: `${what} · Verified: signed by ${who}’s key.${tail}` };
-  if (sig === 'bad') return { tone: 'danger', text: `The signature doesn’t match. This message was changed on the way, or isn’t really from ${who}. Don’t trust what it asks you to do.` };
-  if (sig === 'unknown') return { tone: 'info', text: `${encrypted ? 'Encrypted · signature' : 'Signature'} unverified: we don’t have ${who}’s key to check it, so we can’t say who wrote this.${tail}` };
-  return { tone: 'safe', text: `Encrypted · not signed.${tail}` };
+  if (sig === 'verified') return { tone: 'safe', text: t(encrypted ? 'encryption.verifiedEncrypted' : 'encryption.verifiedSigned', { who }) };
+  if (sig === 'bad') return { tone: 'danger', text: t('encryption.badSignature', { who }) };
+  if (sig === 'unknown') return { tone: 'info', text: t(encrypted ? 'encryption.unverifiedEncrypted' : 'encryption.unverifiedSigned', { who }) };
+  return { tone: 'safe', text: t('encryption.notSigned') };
 }
 
 /** What the reader says about an encrypted or signed message, plus its decrypted (or verified) attachments. */
 export function SecureBanner({ me, m, kind, state, keyChanged, retry }: { me: string; m: EmailFull } & ReturnType<typeof useSecureMail>) {
   const who = displayName(m.from?.[0], me);
-  const changed = keyChanged && <p className="banner banner--danger" role="alert"><Icon name="shield" size={16} /><span className="grow">{who}’s key has changed. It may be a new device, or someone pretending to be them. Check in Settings → Security before sending them anything private.</span></p>;
-  if (kind === 'smime') return <>{changed}<p className="banner banner--info"><Icon name="lock" size={16} /><span className="grow">This message is encrypted with S/MIME. Open it in a mail app that has your certificate (Apple Mail, Outlook or Thunderbird).</span></p></>;
-  if (!kind || !state) return <>{changed}{kind === 'encrypted' && <p className="banner banner--info"><Icon name="lock" size={16} /><span className="grow">Decrypting on this device…</span></p>}</>;
+  const changed = keyChanged && <p className="banner banner--danger" role="alert"><Icon name="shield" size={16} /><span className="grow">{t('encryption.keyChanged', { who })}</span></p>;
+  if (kind === 'smime') return <>{changed}<p className="banner banner--info"><Icon name="lock" size={16} /><span className="grow">{t('encryption.smime')}</span></p></>;
+  if (!kind || !state) return <>{changed}{kind === 'encrypted' && <p className="banner banner--info"><Icon name="lock" size={16} /><span className="grow">{t('encryption.decrypting')}</span></p>}</>;
   if (state.error) return <>{changed}<p className="banner banner--danger" role="alert"><Icon name="lock" size={16} /><span className="grow">{state.error}</span></p></>;
   if (!state.mail) return <>{changed}
     <p className="banner banner--info"><Icon name="lock" size={16} />
       {state.locked
-        ? <><span className="grow">This message is encrypted. Unlock your key to read it here.</span><Button variant="link" onClick={async () => { if (await ensureUnlocked(me)) retry(); }}>Unlock</Button></>
-        : <span className="grow">This message is encrypted to your key, which isn’t in this browser. Restore your key backup in Settings → Security to read it here.</span>}
+        ? <><span className="grow">{t('encryption.locked')}</span><Button variant="link" onClick={async () => { if (await ensureUnlocked(me)) retry(); }}>{t('encryption.unlock')}</Button></>
+        : <span className="grow">{t('encryption.noKeyHere')}</span>}
     </p></>;
   const label = securityLabel(state.encrypted, state.signature, who);
   const files = state.mail.attachments.filter((f) => !(f.cid && state.inline[f.cid]));
@@ -270,8 +271,8 @@ export function SecureBanner({ me, m, kind, state, keyChanged, retry }: { me: st
     {changed}
     <p className={`banner banner--${label.tone}`} role={label.tone === 'danger' ? 'alert' : undefined}>
       <Icon name={state.encrypted ? 'lock' : 'shield'} size={16} /><span className="grow">{label.text}</span></p>
-    {files.length > 0 && <ul className="chips" aria-label="Attachments">{files.map((f, i) => (
-      <li key={i}><button className="chip" title={`Download ${f.name}`} onClick={() => saveFile(f)}>
+    {files.length > 0 && <ul className="chips" aria-label={t('encryption.attachments')}>{files.map((f, i) => (
+      <li key={i}><button className="chip" title={t('encryption.download', { name: f.name })} onClick={() => saveFile(f)}>
         <Icon name="file" size={16} /><span className="fname">{f.name}</span><span className="fsize">{fileSize(f.data.length)}</span><Icon name="download" size={16} />
       </button></li>))}</ul>}
   </>;
@@ -294,7 +295,7 @@ export function useRecipientKeys(fields: string[], me: string) {
   const key = fields.join('\n');
   useEffect(() => {
     let live = true;
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const mine = !!(await myKey(me))?.wrapped;
       if (!mine) return live && setState({ mine, missing: [], checking: false });
       const people = [...new Set(fields.flatMap((f) => parseAddresses(f).list.map((a) => a.email.toLowerCase())))];
@@ -310,7 +311,7 @@ export function useRecipientKeys(fields: string[], me: string) {
       }));
       if (live) setState({ mine, missing: people.filter((_, i) => !have[i]), checking: false });
     }, 600);
-    return () => { live = false; clearTimeout(t); };
+    return () => { live = false; clearTimeout(timer); };
   }, [key, me]);
   return { ...state, ready: state.mine && !state.checking && state.missing.length === 0 };
 }

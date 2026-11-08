@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
+import { serverText, t } from './i18n';
 
 // Public sign-up (signup/ service, proxied at /api/). The link only shows when that service answers,
 // so self-hosted servers without public sign-up never show it. API contract: signup/README.md.
 
 type Err = { code: string; message: string; field?: string };
+// The legal sentence's {links}: page and link text.
+const LEGAL = {
+  terms: ['/legal/terms-of-service.html', 'signup.terms'],
+  aup: ['/legal/acceptable-use.html', 'signup.acceptableUse'],
+  privacy: ['/legal/privacy-policy.html', 'signup.privacy'],
+} as const;
 
 /** Is a sign-up service running behind this origin? */
 export async function signupAvailable(): Promise<boolean> {
@@ -38,7 +45,7 @@ export function Signup({ onDone, onCancel }: { onDone: (email: string) => void; 
       try {
         const j = await (await fetch(`/api/username-available?u=${encodeURIComponent(u)}`)).json();
         if (latest.current !== u) return; // a slower reply for an older name
-        setCheck(j.ok ? (j.available ? { ok: true, text: `${j.email} is available` } : { ok: false, text: j.message }) : null);
+        setCheck(j.ok ? (j.available ? { ok: true, text: t('signup.available', { email: j.email }) } : { ok: false, text: serverText(j.code, j.message) }) : null);
       } catch { /* no verdict; the server checks again on submit */ }
     }, 400);
   }, [username]);
@@ -52,56 +59,60 @@ export function Signup({ onDone, onCancel }: { onDone: (email: string) => void; 
         body: JSON.stringify({ username: username.trim(), password, inviteCode: invite.trim() || undefined,
           recoveryEmail: recovery.trim() || undefined, verifyCode: sentTo ? code.trim() : undefined }),
       });
-      const j = await r.json().catch(() => ({ ok: false, error: { code: 'unavailable', message: 'Sign-up is unavailable right now. Try again in a few minutes.' } }));
+      const j = await r.json().catch(() => ({ ok: false, error: { code: 'unavailable', message: t('server.unavailable') } }));
       if (j.ok && j.needCode) { setSentTo(j.sentTo); setCode(''); setBusy(false); return; }
       if (j.ok) return onDone(j.email);
       if (j.error?.code === 'code_expired' || j.error?.code === 'code_tries') setSentTo(''); // back to step one: ask again
       setErr(j.error);
-    } catch { setErr({ code: 'network', message: 'Can’t reach the server. Check your connection and try again.' }); }
+    } catch { setErr({ code: 'network', message: t('server.network') }); }
     setBusy(false);
   }
 
-  const fieldErr = (f: string) => (err?.field === f ? <p className="error" role="alert">{err.message}</p> : null);
+  const errText = (x: Err) => serverText(x.code, x.message);
+  const fieldErr = (f: string) => (err?.field === f ? <p className="error" role="alert">{errText(err)}</p> : null);
 
   return (
     <main className="login">
       <form onSubmit={submit} noValidate>
         <p className="wordmark">OpenMail</p>
-        <h1>{sentTo ? 'Check your email' : 'Create your mailbox'}</h1>
+        <h1>{sentTo ? t('signup.checkEmail') : t('signup.title')}</h1>
         {sentTo ? <>
-          <p className="fine">We sent a 6-digit code to {sentTo}. It works for 15 minutes.</p>
-          <label>Code
+          <p className="fine">{t('signup.codeSent', { email: sentTo })}</p>
+          <label>{t('signup.code')}
             <input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} required autoFocus />
           </label>
           {fieldErr('verifyCode')}
-          {err && !err.field && <p className="error" role="alert">{err.message}</p>}
-          <Button type="submit" variant="primary" size="lg" disabled={busy || code.trim().length < 6}>{busy ? 'Creating…' : 'Create mailbox'}</Button>
-          <Button variant="link" className="alt" onClick={() => { setSentTo(''); setErr(null); }}>Use a different email, or send a new code</Button>
+          {err && !err.field && <p className="error" role="alert">{errText(err)}</p>}
+          <Button type="submit" variant="primary" size="lg" disabled={busy || code.trim().length < 6}>{busy ? t('signup.creating') : t('signup.create')}</Button>
+          <Button variant="link" className="alt" onClick={() => { setSentTo(''); setErr(null); }}>{t('signup.differentEmail')}</Button>
         </> : <>
-        <label>Username
+        <label>{t('signup.username')}
           <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username"
             autoCapitalize="none" spellCheck={false} required autoFocus aria-describedby="u-help" />
         </label>
-        <p id="u-help" className={check ? (check.ok ? 'fine ok' : 'error') : 'fine'}>{check?.text ?? '3–32 characters: letters, numbers, dots and hyphens.'}</p>
+        <p id="u-help" className={check ? (check.ok ? 'fine ok' : 'error') : 'fine'}>{check?.text ?? t('signup.usernameHelp')}</p>
         {fieldErr('username')}
-        <label>Password
+        <label>{t('signup.password')}
           <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required minLength={12} />
         </label>
-        <p className="fine">At least 12 characters. A few unrelated words make a strong, memorable password.</p>
+        <p className="fine">{t('signup.passwordHelp')}</p>
         {fieldErr('password')}
-        <label>Invite code
+        <label>{t('signup.invite')}
           <input className="input" value={invite} onChange={(e) => setInvite(e.target.value)} autoComplete="off" spellCheck={false} />
         </label>
         {fieldErr('inviteCode')}
-        <label>Your current email
+        <label>{t('signup.recovery')}
           <input className="input" type="email" value={recovery} onChange={(e) => setRecovery(e.target.value)} autoComplete="email" spellCheck={false} />
         </label>
-        <p className="fine">We’ll send it a code to confirm it’s you. It’s also how you get back in if you forget your password.</p>
+        <p className="fine">{t('signup.recoveryHelp')}</p>
         {fieldErr('recoveryEmail')}
-        {err && !err.field && <p className="error" role="alert">{err.message}</p>}
-        <Button type="submit" variant="primary" size="lg" disabled={busy || check?.ok === false}>{busy ? 'Sending code…' : 'Continue'}</Button>
-        <Button variant="link" className="alt" onClick={onCancel}>I already have a mailbox</Button>
-        <p className="fine legal-links">By continuing you agree to the <a href="/legal/terms-of-service.html" target="_blank" rel="noopener">terms</a>, <a href="/legal/acceptable-use.html" target="_blank" rel="noopener">acceptable use</a> and <a href="/legal/privacy-policy.html" target="_blank" rel="noopener">privacy policy</a>.</p>
+        {err && !err.field && <p className="error" role="alert">{errText(err)}</p>}
+        <Button type="submit" variant="primary" size="lg" disabled={busy || check?.ok === false}>{busy ? t('signup.sendingCode') : t('signup.continue')}</Button>
+        <Button variant="link" className="alt" onClick={onCancel}>{t('signup.haveMailbox')}</Button>
+        <p className="fine legal-links">{t('signup.legal').split(/\{(\w+)\}/).map((part, i) => {
+          const link = LEGAL[part as keyof typeof LEGAL];
+          return i % 2 && link ? <a key={i} href={link[0]} target="_blank" rel="noopener">{t(link[1])}</a> : part;
+        })}</p>
         </>}
       </form>
     </main>

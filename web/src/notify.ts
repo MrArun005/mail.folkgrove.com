@@ -2,6 +2,7 @@
 // and only while the app isn't the window you're looking at.
 import type { EmailSummary } from './jmap';
 import { displayName } from './mailutil';
+import { t } from './i18n';
 
 const KEY = 'openmail.notify';
 export const notifySupported = () => typeof window !== 'undefined' && 'Notification' in window;
@@ -15,7 +16,7 @@ export async function setNotify(on: boolean): Promise<boolean> {
   return on;
 }
 export async function showMail(e: EmailSummary, open: () => void) {
-  const title = displayName(e.from?.[0]), body = `${e.subject || '(no subject)'}\n${e.preview}`.slice(0, 200);
+  const title = displayName(e.from?.[0]), body = `${e.subject || t('notify.noSubject')}\n${e.preview}`.slice(0, 200);
   const reg = await navigator.serviceWorker?.getRegistration().catch(() => undefined);
   if (reg) {
     // Through the service worker, with the same tag as its generic "New mail": this replaces it instead of adding one.

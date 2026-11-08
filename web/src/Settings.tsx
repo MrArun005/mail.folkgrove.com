@@ -18,10 +18,10 @@ import { LANGUAGES, languagePref, pickLanguage, setLanguage, t, type Key, type L
 
 export type Theme = 'system' | 'light' | 'dark';
 
-export function applyTheme(t: Theme) {
-  if (t === 'system') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme', t);
-  try { localStorage.setItem('om:theme', t); } catch {}
+export function applyTheme(th: Theme) {
+  if (th === 'system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', th);
+  try { localStorage.setItem('om:theme', th); } catch {}
 }
 export const savedTheme = (): Theme => { try { return (localStorage.getItem('om:theme') as Theme) || 'system'; } catch { return 'system'; } };
 
@@ -65,7 +65,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
     Promise.all([client.getIdentityFresh(), loadScript(client)]).then(([id, script]) => {
       setName(id.name === id.email ? '' : id.name);
       const d = script.data;
-      setSigs(d.signatures ?? (id.textSignature?.trim() ? [{ name: 'Signature', text: id.textSignature }] : []));
+      setSigs(d.signatures ?? (id.textSignature?.trim() ? [{ name: t('settings.signature'), text: id.textSignature }] : []));
       setSigNew(d.sigNew); setSigReply(d.sigReply);
       setVac(script.data.vacation);
     }, (e) => setError(e.message));
@@ -80,10 +80,10 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (vac?.enabled && vac.from && vac.to && vac.to < vac.from) return setError('The out-of-office end date is before the start date.');
+    if (vac?.enabled && vac.from && vac.to && vac.to < vac.from) return setError(t('settings.vacationDates'));
     const list = sigs.map((x) => ({ name: x.name.trim(), text: x.text })).filter((x) => x.name || x.text.trim());
-    if (list.some((x) => !x.name)) return setError('Give each signature a name.');
-    if (new Set(list.map((x) => x.name)).size < list.length) return setError('Two signatures have the same name.');
+    if (list.some((x) => !x.name)) return setError(t('settings.sigNameNeeded'));
+    if (new Set(list.map((x) => x.name)).size < list.length) return setError(t('settings.sigSameName'));
     setBusy(true); setError('');
     try {
       // The identity carries the new-message signature too, so other JMAP apps see it.
@@ -91,61 +91,61 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
       await client.setIdentity({ name: name.trim(), textSignature: main, htmlSignature: main.trim() ? textToHtml(main) : '' });
       await saveScript(client, boxes, (d) => ({ ...d, ...(vac && { vacation: vac }), signatures: list, sigNew, sigReply })); // filters etc. kept
       applyTheme(theme);
-      onSaved('Settings saved');
-    } catch (err) { setError(`Couldn’t save: ${(err as Error).message}`); }
+      onSaved(t('settings.saved'));
+    } catch (err) { setError(t('common.couldntSave', { error: (err as Error).message })); }
     finally { setBusy(false); }
   }
 
 
   return (
     <div className="overlay" onMouseDown={onClose}>
-      <form className="sheet settings" role="dialog" aria-label="Settings" onMouseDown={(e) => e.stopPropagation()} onSubmit={save}
+      <form className="sheet settings" role="dialog" aria-label={t('settings.title')} onMouseDown={(e) => e.stopPropagation()} onSubmit={save}
 >
-        <h2>Settings</h2>
+        <h2>{t('settings.title')}</h2>
 
         <section>
-          <h3>You</h3>
-          <label>Name people see<input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alice Martin" autoFocus /></label>
+          <h3>{t('settings.you')}</h3>
+          <label>{t('settings.name')}<input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('settings.namePlaceholder')} autoFocus /></label>
         </section>
 
         <section>
-          <h3>Signatures</h3>
+          <h3>{t('settings.signatures')}</h3>
           {sigs.map((sg, i) => {
             const set = (p: Partial<Signature>) => setSigs(sigs.map((x, j) => (j === i ? { ...x, ...p } : x)));
             return (
               <div key={i} className="sig-card">
                 <div className="sig-head">
-                  <input className="input" aria-label="Signature name" placeholder="Name, e.g. Work" value={sg.name} onChange={(e) => set({ name: e.target.value })} />
-                  <Button variant="quiet" size="sm" icon="trash" label={`Delete signature ${sg.name}`} onClick={() => setSigs(sigs.filter((_, j) => j !== i))} />
+                  <input className="input" aria-label={t('settings.sigName')} placeholder={t('settings.sigNamePlaceholder')} value={sg.name} onChange={(e) => set({ name: e.target.value })} />
+                  <Button variant="quiet" size="sm" icon="trash" label={t('settings.deleteSig', { name: sg.name })} onClick={() => setSigs(sigs.filter((_, j) => j !== i))} />
                 </div>
-                <textarea className="input" rows={3} aria-label={`Signature ${sg.name}`} value={sg.text} onChange={(e) => set({ text: e.target.value })} placeholder={'Alice Martin\nProduct lead'} />
+                <textarea className="input" rows={3} aria-label={t('settings.sigText', { name: sg.name })} value={sg.text} onChange={(e) => set({ text: e.target.value })} placeholder={t('settings.sigPlaceholder')} />
               </div>
             );
           })}
-          <Button size="sm" icon="compose" className="start" onClick={() => setSigs([...sigs, { name: sigs.length ? '' : 'Signature', text: '' }])}>Add signature</Button>
+          <Button size="sm" icon="compose" className="start" onClick={() => setSigs([...sigs, { name: sigs.length ? '' : t('settings.signature'), text: '' }])}>{t('settings.addSig')}</Button>
           {sigs.length > 0 && (
             <div className="row2">
-              <label>For new messages<SigSelect sigs={sigs} value={sigNew} onChange={setSigNew} /></label>
-              <label>For replies and forwards<SigSelect sigs={sigs} value={sigReply} onChange={setSigReply} /></label>
+              <label>{t('settings.sigNew')}<SigSelect sigs={sigs} value={sigNew} onChange={setSigNew} /></label>
+              <label>{t('settings.sigReply')}<SigSelect sigs={sigs} value={sigReply} onChange={setSigReply} /></label>
             </div>
           )}
-          <p className="fine">You can switch or remove the signature in each message.</p>
+          <p className="fine">{t('settings.sigNote')}</p>
         </section>
 
         <section>
-          <h3>Out-of-office reply</h3>
+          <h3>{t('settings.vacation')}</h3>
           {vac ? <>
-            <label className="inline"><input type="checkbox" className="check" checked={vac.enabled} onChange={(e) => setVac({ ...vac, enabled: e.target.checked })} />Automatically reply while I’m away</label>
+            <label className="inline"><input type="checkbox" className="check" checked={vac.enabled} onChange={(e) => setVac({ ...vac, enabled: e.target.checked })} />{t('settings.vacationOn')}</label>
             <fieldset disabled={!vac.enabled}>
               <div className="row2">
-                <label>First day<input className="input" type="date" value={dateOnly(vac.from ?? null)} onChange={(e) => setVac({ ...vac, from: e.target.value || null })} /></label>
-                <label>Last day<input className="input" type="date" value={dateOnly(vac.to ?? null)} onChange={(e) => setVac({ ...vac, to: e.target.value || null })} /></label>
+                <label>{t('settings.firstDay')}<input className="input" type="date" value={dateOnly(vac.from ?? null)} onChange={(e) => setVac({ ...vac, from: e.target.value || null })} /></label>
+                <label>{t('settings.lastDay')}<input className="input" type="date" value={dateOnly(vac.to ?? null)} onChange={(e) => setVac({ ...vac, to: e.target.value || null })} /></label>
               </div>
-              <label>Subject<input className="input" value={vac.subject ?? ''} onChange={(e) => setVac({ ...vac, subject: e.target.value })} placeholder="Out of office" /></label>
-              <label>Message<textarea className="input" rows={3} value={vac.body ?? ''} onChange={(e) => setVac({ ...vac, body: e.target.value })} placeholder="I’m away until Monday and will reply when I’m back." /></label>
+              <label>{t('settings.subject')}<input className="input" value={vac.subject ?? ''} onChange={(e) => setVac({ ...vac, subject: e.target.value })} placeholder={t('settings.vacationSubject')} /></label>
+              <label>{t('settings.message')}<textarea className="input" rows={3} value={vac.body ?? ''} onChange={(e) => setVac({ ...vac, body: e.target.value })} placeholder={t('settings.vacationBody')} /></label>
             </fieldset>
-            <p className="fine">Each sender gets the reply at most once a day. Blocked senders never get it.</p>
-          </> : <p className="fine">Loading…</p>}
+            <p className="fine">{t('settings.vacationNote')}</p>
+          </> : <p className="fine">{t('common.loading')}</p>}
         </section>
 
         <AddressesSection client={client} onChanged={onIdentitiesChanged} />
@@ -163,27 +163,27 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
 
         {notifySupported() && (
           <section>
-            <h3>Notifications</h3>
+            <h3>{t('settings.notifications')}</h3>
             <label className="inline"><input type="checkbox" className="check" checked={notify}
               onChange={async (e) => {
                 const want = e.target.checked, on = await setNotify(want); setNotifyState(on);
-                if (want && !on) return setError('Your browser blocked notifications. Allow them for this site in the browser’s settings.');
-                if (on) setPushNote((await enablePush(client).catch(() => false)) ? 'Also when OpenMail is closed.' : 'Only while OpenMail is open in a tab (this browser or server can’t do background push).');
+                if (want && !on) return setError(t('settings.notifyBlocked'));
+                if (on) setPushNote((await enablePush(client).catch(() => false)) ? t('settings.pushOn') : t('settings.pushOff'));
                 else { await disablePush(client); setPushNote(''); }
               }} />
-              Show a desktop notification when new mail arrives in Primary</label>
-            <p className="fine">{pushNote || 'On this device, while OpenMail isn’t the window you’re looking at.'}</p>
+              {t('settings.notifyLabel')}</label>
+            <p className="fine">{pushNote || t('settings.notifyNote')}</p>
           </section>
         )}
         <InstallSection />
 
         <section>
-          <h3>Appearance</h3>
-          <div className="segmented" role="radiogroup" aria-label="Light or dark">
-            {(['system', 'light', 'dark'] as const).map((t) => (
-              <label key={t} className={theme === t ? 'on' : ''}>
-                <input type="radio" name="theme" value={t} checked={theme === t} onChange={() => { setTheme(t); applyTheme(t); }} />
-                {t === 'system' ? 'Match device' : t === 'light' ? 'Light' : 'Dark'}
+          <h3>{t('settings.appearance')}</h3>
+          <div className="segmented" role="radiogroup" aria-label={t('settings.lightOrDark')}>
+            {(['system', 'light', 'dark'] as const).map((th) => (
+              <label key={th} className={theme === th ? 'on' : ''}>
+                <input type="radio" name="theme" value={th} checked={theme === th} onChange={() => { setTheme(th); applyTheme(th); }} />
+                {t(th === 'system' ? 'settings.matchDevice' : th === 'light' ? 'settings.light' : 'settings.dark')}
               </label>
             ))}
           </div>
@@ -207,15 +207,15 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
               {(Object.keys(LANGUAGES) as Lang[]).map((l) => <option key={l} value={l} lang={l}>{LANGUAGES[l]}</option>)}
             </select>
           </div>
-          <p className="fine">Saved on this device. Your browser’s zoom (⌘ +/−) works too.</p>
+          <p className="fine">{t('settings.appearanceNote')}</p>
         </section>
 
         <DeleteAccountSection client={client} onDeleted={onAccountDeleted} />
 
         {error && <p className="error" role="alert">{error}</p>}
         <footer>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Saving…' : 'Save settings'}</Button>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button type="submit" variant="primary" disabled={busy}>{busy ? t('common.saving') : t('settings.saveSettings')}</Button>
         </footer>
       </form>
     </div>
@@ -228,20 +228,20 @@ function CategoriesSection({ client, boxes }: { client: Jmap; boxes: Mailbox[] }
   const [note, setNote] = useState('');
   useEffect(() => { loadScript(client).then(({ data }) => setOn(data.categories !== false), () => setOn(true)); }, [client]);
   async function toggle(next: boolean) {
-    setOn(next); setNote('Saving…');
+    setOn(next); setNote(t('common.saving'));
     try {
       await saveScript(client, boxes, (d) => ({ ...d, categories: next }));
       const inbox = boxes.find((b) => b.role === 'inbox')?.id;
       const n = next && inbox ? await client.tagUpdates(inbox) : 0;
-      setNote(next ? `On. ${n ? `${n} newsletters moved to Updates.` : 'New newsletters will go to Updates.'}` : 'Off. Everything stays in one Inbox.');
-    } catch (e) { setOn(!next); setNote(`Couldn’t change this: ${(e as Error).message}`); }
+      setNote(next ? (n ? t('settings.categoriesMoved', { count: n }) : t('settings.categoriesOn')) : t('settings.categoriesOff'));
+    } catch (e) { setOn(!next); setNote(t('common.couldntChange', { error: (e as Error).message })); }
   }
   return (
     <section>
-      <h3>Inbox</h3>
+      <h3>{t('settings.inbox')}</h3>
       <label className="inline"><input type="checkbox" className="check" checked={!!on} disabled={on === null}
-        onChange={(e) => toggle(e.target.checked)} />Sort newsletters and notifications into an Updates tab</label>
-      <p className="fine">{note || 'People’s messages stay in Primary. Sorting happens on the server as mail arrives.'}</p>
+        onChange={(e) => toggle(e.target.checked)} />{t('settings.categoriesLabel')}</label>
+      <p className="fine">{note || t('settings.categoriesNote')}</p>
     </section>
   );
 }
@@ -251,22 +251,22 @@ function ScreenerSection({ client, boxes }: { client: Jmap; boxes: Mailbox[] }) 
   const [note, setNote] = useState('');
   useEffect(() => { loadScript(client).then(({ data }) => setOn(!!data.screener?.on), () => setOn(false)); }, [client]);
   async function toggle(next: boolean) {
-    setOn(next); setNote('Saving…');
+    setOn(next); setNote(t('common.saving'));
     try {
       // First time on: everyone you already correspond with (and your contacts) is approved.
       const { data } = await loadScript(client);
       const seed = data.screener?.allow?.length ? [] : await knownSenders(client);
       let allow: string[] = [];
       await saveScript(client, boxes, (d) => ({ ...d, screener: { on: next, allow: (allow = d.screener?.allow?.length ? d.screener.allow : seed) } }));
-      setNote(next ? `On. ${allow.length} people you already know go straight to your Inbox.` : 'Off. New senders go to your Inbox again.');
-    } catch (e) { setOn(!next); setNote(`Couldn’t change this: ${(e as Error).message}`); }
+      setNote(next ? t('settings.screenerOn', { count: allow.length }) : t('settings.screenerOff'));
+    } catch (e) { setOn(!next); setNote(t('common.couldntChange', { error: (e as Error).message })); }
   }
   return (
     <section>
-      <h3>Screener</h3>
+      <h3>{t('settings.screener')}</h3>
       <label className="inline"><input type="checkbox" className="check" checked={!!on} disabled={on === null}
-        onChange={(e) => toggle(e.target.checked)} />Hold mail from first-time senders until I approve them</label>
-      <p className="fine">{note || 'New senders wait in the Screener folder. Say yes once and they reach your Inbox from then on; say no and they never do. Works on the server, even when this app is closed.'}</p>
+        onChange={(e) => toggle(e.target.checked)} />{t('settings.screenerLabel')}</label>
+      <p className="fine">{note || t('settings.screenerNote')}</p>
     </section>
   );
 }
@@ -283,7 +283,7 @@ function SigSelect({ sigs, value, onChange }: { sigs: Signature[]; value: string
   return (
     <select className="input" value={chooseSignature(named, value)?.name ?? ''} onChange={(e) => onChange(e.target.value)}>
       {named.map((x) => <option key={x.name} value={x.name.trim()}>{x.name}</option>)}
-      <option value="">No signature</option>
+      <option value="">{t('settings.noSignature')}</option>
     </select>
   );
 }

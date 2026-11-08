@@ -2,14 +2,16 @@
 // Summarizer APIs). The message never leaves this computer: no server of ours, no AI company. Where the browser
 // doesn't have them, the features simply don't appear. Models may download once on first use (the browser asks).
 
+import { lang, locale, t } from './i18n';
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const g = globalThis as any;
 
 export const canTranslate = () => typeof g.Translator?.create === 'function' && typeof g.LanguageDetector?.create === 'function';
 export const canSummarize = () => typeof g.Summarizer?.create === 'function';
 
-/** The user's language, e.g. "en" from "en-IN". */
-export const myLanguage = () => (navigator.language || 'en').split('-')[0].toLowerCase();
+/** The app's language, e.g. "zh" from "zh-CN". */
+export const myLanguage = () => lang().split('-')[0].toLowerCase();
 
 /** Detected language of the text, or null when unsure. */
 export async function detectLanguage(text: string): Promise<string | null> {
@@ -23,23 +25,23 @@ export async function translate(text: string, target = myLanguage()): Promise<{ 
   const from = await detectLanguage(text);
   if (!from || from === target) return null;
   if ((await g.Translator.availability({ sourceLanguage: from, targetLanguage: target })) === 'unavailable')
-    throw new Error(`Your browser can’t translate from ${languageName(from)} yet.`);
-  const t = await g.Translator.create({ sourceLanguage: from, targetLanguage: target });
+    throw new Error(t('ai.cantTranslateFrom', { language: languageName(from) }));
+  const tr = await g.Translator.create({ sourceLanguage: from, targetLanguage: target });
   // Paragraph by paragraph: keeps the shape of the message and stays under per-call input limits.
   const parts: string[] = [];
-  for (const p of text.split(/\n{2,}/)) parts.push(p.trim() ? await t.translate(p) : p);
+  for (const p of text.split(/\n{2,}/)) parts.push(p.trim() ? await tr.translate(p) : p);
   return { from, text: parts.join('\n\n') };
 }
 
 /** A few key points about the text. */
 export async function summarize(text: string): Promise<string> {
-  if ((await g.Summarizer.availability()) === 'unavailable') throw new Error('Summaries aren’t available in this browser.');
+  if ((await g.Summarizer.availability()) === 'unavailable') throw new Error(t('ai.noSummaries'));
   const s = await g.Summarizer.create({ type: 'key-points', format: 'plain-text', length: 'short' });
   return s.summarize(text.slice(0, 12000));
 }
 
 export const languageName = (code: string) => {
-  try { return new Intl.DisplayNames([navigator.language || 'en'], { type: 'language' }).of(code) ?? code; } catch { return code; }
+  try { return new Intl.DisplayNames([locale()], { type: 'language' }).of(code) ?? code; } catch { return code; }
 };
 
 export const canRewrite = () => typeof g.Rewriter?.create === 'function';
@@ -47,7 +49,7 @@ export type RewriteStyle = 'formal' | 'casual' | 'shorter';
 
 /** Rewrite plain text in another tone or length, on this device. */
 export async function rewrite(text: string, style: RewriteStyle): Promise<string> {
-  if ((await g.Rewriter.availability()) === 'unavailable') throw new Error('Writing help isn’t available in this browser.');
+  if ((await g.Rewriter.availability()) === 'unavailable') throw new Error(t('ai.noWritingHelp'));
   const r = await g.Rewriter.create({
     tone: style === 'formal' ? 'more-formal' : style === 'casual' ? 'more-casual' : 'as-is',
     length: style === 'shorter' ? 'shorter' : 'as-is', format: 'plain-text',

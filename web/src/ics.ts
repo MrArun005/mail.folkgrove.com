@@ -1,6 +1,8 @@
 // Just enough iCalendar (RFC 5545) to answer an invitation (iTIP REPLY, RFC 5546) the way Gmail, Outlook and
 // Zoho expect: same UID and SEQUENCE, the organizer, and one ATTENDEE line carrying our answer.
 
+import { t } from './i18n';
+
 export type PartStat = 'ACCEPTED' | 'TENTATIVE' | 'DECLINED';
 
 export interface Invite {
@@ -56,4 +58,5 @@ export function buildReply(inv: Invite, me: { email: string; name?: string | nul
   ].map(fold).join('\r\n');
 }
 
-export const replyWord: Record<PartStat, string> = { ACCEPTED: 'Accepted', TENTATIVE: 'Tentative', DECLINED: 'Declined' };
+/** The answer's word for the reply's subject ("Accepted: Team lunch"). */
+export const replyWord = (s: PartStat) => t(({ ACCEPTED: 'ics.accepted', TENTATIVE: 'ics.tentative', DECLINED: 'ics.declined' } as const)[s]);

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from './Button';
 import { describe, quickTimes, toLocalInput } from './when';
+import { t } from './i18n';
 
 /** Button + dropdown. Closes on outside click, Esc, or choosing an item. Arrow keys move between items. */
 export function Menu({ button, label, children, align = 'left', up = false }: {
@@ -47,7 +48,7 @@ export function TimeChoices({ onPick, close, verb }: { onPick: (d: Date) => void
         const d = new Date(custom);
         if (+d > Date.now()) { close(); onPick(d); }
       }}>
-        <label>Pick a date and time<input className="input" type="datetime-local" value={custom} min={toLocalInput(new Date())} onChange={(e) => setCustom(e.target.value)} /></label>
+        <label>{t('menu.pickTime')}<input className="input" type="datetime-local" value={custom} min={toLocalInput(new Date())} onChange={(e) => setCustom(e.target.value)} /></label>
         <Button type="submit" variant="primary" size="sm">{verb}</Button>
       </form>
     </>

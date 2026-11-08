@@ -8,8 +8,9 @@ import { loadScript, saveScript } from './Filters';
 import { ACCESS, accessOf, type Access, type Comment, type Jmap, type Mailbox, type Person, type SharedAccount } from './jmap';
 import { displayName } from './mailutil';
 import { shortDate } from './Reader';
+import { boxName, t, type Key } from './i18n';
 
-const ACCESS_LABEL: Record<Access, string> = { read: 'Can read', write: 'Can read and change', full: 'Full access' };
+const ACCESS_LABEL: Record<Access, Key> = { read: 'sharing.read', write: 'sharing.write', full: 'sharing.full' };
 const who = (name: string) => name.replace(/@.*/, '');
 
 /** Other accounts you can open, plus the ones you've hidden from the rail (kept in your Sieve settings, so synced). */
@@ -38,12 +39,12 @@ export function SharedRail({ accounts, hidden, current, onOpen, onHide, onUnhide
 }) {
   const items = accounts.flatMap((a) => (a.whole
     ? [{ key: a.id, a, box: undefined as Mailbox | undefined, label: who(a.name), unread: a.boxes.find((b) => b.role === 'inbox')?.unreadEmails ?? 0 }]
-    : a.boxes.map((b) => ({ key: `${a.id}/${b.id}`, a, box: b, label: `${b.name} · ${who(a.name)}`, unread: b.unreadEmails }))));
+    : a.boxes.map((b) => ({ key: `${a.id}/${b.id}`, a, box: b, label: [boxName(b), who(a.name)].join(' · '), unread: b.unreadEmails }))));
   const shown = items.filter((x) => !hidden.includes(x.key));
   if (!items.length) return null;
   return (
     <div className="saved shared-rail">
-      <p className="rail-label">Shared with me</p>
+      <p className="rail-label">{t('sharing.sharedWithMe')}</p>
       <ul>
         {shown.map((x) => {
           const on = current.account === x.a.id && (!x.box || current.box === x.box.id);
@@ -53,19 +54,19 @@ export function SharedRail({ accounts, hidden, current, onOpen, onHide, onUnhide
                 <Icon name={x.box ? roleIcon(x.box.role) : x.a.team ? 'inbox' : 'person'} /><span className="name">{x.label}</span>
                 {x.unread > 0 && <span className="count">{x.unread}</span>}
               </button>
-              <Button variant="quiet" size="sm" icon="close" label={`Hide ${x.label}`} onClick={() => onHide(x.key)} />
+              <Button variant="quiet" size="sm" icon="close" label={t('sharing.hide', { name: x.label })} onClick={() => onHide(x.key)} />
             </li>
           );
         })}
       </ul>
-      {shown.length < items.length && <Button variant="link" className="rail-link" onClick={onUnhide}>Show {items.length - shown.length} hidden</Button>}
+      {shown.length < items.length && <Button variant="link" className="rail-link" onClick={onUnhide}>{t('sharing.showHidden', { count: items.length - shown.length })}</Button>}
     </div>
   );
 }
 
 /** Settings → Folders → Share: who can see this folder, and how much they can do. */
 export function ShareFolder({ client, box, onDone }: { client: Jmap; box: Mailbox; onDone: () => void }) {
-  return <SharePanel client={client} boxIds={[box.id]} intro={`People on this server you share “${box.name}” with see it under “Shared with me”.`} onDone={onDone} />;
+  return <SharePanel client={client} boxIds={[box.id]} intro={t('sharing.folderIntro', { name: box.name })} onDone={onDone} />;
 }
 
 function SharePanel({ client, boxIds, intro, onDone }: { client: Jmap; boxIds: string[]; intro: string; onDone: () => void }) {
@@ -87,25 +88,25 @@ function SharePanel({ client, boxIds, intro, onDone }: { client: Jmap; boxIds: s
   };
   const add = () => run(async () => {
     const p = await client.findPerson(email);
-    if (p.email.toLowerCase() === client.username.toLowerCase()) throw new Error('That’s you. Enter someone else’s address.');
+    if (p.email.toLowerCase() === client.username.toLowerCase()) throw new Error(t('sharing.notYou'));
     await client.share(boxIds, p.id, ACCESS[access]); setEmail('');
   });
   return (
     <div className="share-panel" onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') { e.preventDefault(); if (email.trim()) add(); } }}>
       <p className="fine">{intro}</p>
       <div className="inline-form">
-        <input className="input" type="email" placeholder="Their address, e.g. sam@example.com" aria-label="Share with" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <AccessSelect value={access} onChange={setAccess} label="What they can do" />
-        <Button disabled={busy || !email.trim()} onClick={add}>Share</Button>
+        <input className="input" type="email" placeholder={t('sharing.addressPlaceholder')} aria-label={t('sharing.shareWith')} value={email} onChange={(e) => setEmail(e.target.value)} />
+        <AccessSelect value={access} onChange={setAccess} label={t('sharing.whatTheyCanDo')} />
+        <Button disabled={busy || !email.trim()} onClick={add}>{t('sharing.share')}</Button>
       </div>
-      {people === null ? <p className="fine">Loading…</p> : people.length > 0 && (
+      {people === null ? <p className="fine">{t('common.loading')}</p> : people.length > 0 && (
         <ul className="rule-list">
           {people.map(({ p, access }) => (
             <li key={p.id}>
               <span className="grow">{p.email || p.name}</span>
               <span className="row-btns">
-                <AccessSelect value={access} onChange={(a) => run(() => client.share(boxIds, p.id, ACCESS[a]))} label={`What ${p.email} can do`} />
-                <Button variant="quiet" size="sm" icon="close" label={`Stop sharing with ${p.email || p.name}`} onClick={() => run(() => client.share(boxIds, p.id, null))} />
+                <AccessSelect value={access} onChange={(a) => run(() => client.share(boxIds, p.id, ACCESS[a]))} label={t('sharing.whatCanDo', { name: p.email || p.name })} />
+                <Button variant="quiet" size="sm" icon="close" label={t('sharing.stop', { name: p.email || p.name })} onClick={() => run(() => client.share(boxIds, p.id, null))} />
               </span>
             </li>
           ))}
@@ -119,7 +120,7 @@ function SharePanel({ client, boxIds, intro, onDone }: { client: Jmap; boxIds: s
 function AccessSelect({ value, onChange, label }: { value: Access; onChange: (a: Access) => void; label: string }) {
   return (
     <select className="input input--sm" aria-label={label} value={value} onChange={(e) => onChange(e.target.value as Access)}>
-      {(Object.keys(ACCESS_LABEL) as Access[]).map((a) => <option key={a} value={a}>{ACCESS_LABEL[a]}</option>)}
+      {(Object.keys(ACCESS_LABEL) as Access[]).map((a) => <option key={a} value={a}>{t(ACCESS_LABEL[a])}</option>)}
     </select>
   );
 }
@@ -144,27 +145,27 @@ export function DelegatesSection({ client }: { client: Jmap }) {
   };
   const add = () => run(async () => {
     const p = await client.findPerson(email);
-    if (p.email.toLowerCase() === client.username.toLowerCase()) throw new Error('That’s you. Enter someone else’s address.');
+    if (p.email.toLowerCase() === client.username.toLowerCase()) throw new Error(t('sharing.notYou'));
     await client.delegate(p.id, send); setEmail('');
   });
   return (
     <section onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') { e.preventDefault(); if (email.trim()) add(); } }}>
-      <h3>Delegation</h3>
-      <p className="fine">Let someone on this server open your whole mailbox from their account menu, for example an assistant. They can read, file and delete your mail. With sending on, their replies go out from your address “on behalf of” them.</p>
+      <h3>{t('sharing.delegation')}</h3>
+      <p className="fine">{t('sharing.delegationIntro')}</p>
       <div className="inline-form">
-        <input className="input" type="email" placeholder="Their address" aria-label="Delegate to" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <Button disabled={busy || !email.trim()} onClick={add}>Give access</Button>
+        <input className="input" type="email" placeholder={t('sharing.theirAddress')} aria-label={t('sharing.delegateTo')} value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Button disabled={busy || !email.trim()} onClick={add}>{t('sharing.giveAccess')}</Button>
       </div>
-      <label className="inline"><input type="checkbox" className="check" checked={send} onChange={(e) => setSend(e.target.checked)} />Also let them send on my behalf</label>
-      {list === null ? <p className="fine">Loading…</p> : list.length > 0 && (
+      <label className="inline"><input type="checkbox" className="check" checked={send} onChange={(e) => setSend(e.target.checked)} />{t('sharing.alsoSend')}</label>
+      {list === null ? <p className="fine">{t('common.loading')}</p> : list.length > 0 && (
         <ul className="rule-list">
           {list.map(({ p, send }) => (
             <li key={p.id}>
-              <span className="grow">{p.email || p.name}<span className="fine"> · {send ? 'can send on your behalf' : 'can’t send'}</span></span>
+              <span className="grow">{p.email || p.name}<span className="fine"> · {send ? t('sharing.canSend') : t('sharing.cantSend')}</span></span>
               <span className="row-btns">
-                <Button variant="quiet" size="sm" onClick={() => run(() => client.delegate(p.id, !send))}>{send ? 'Stop sending' : 'Allow sending'}</Button>
-                <Button variant="quiet" size="sm" icon="close" label={`Remove ${p.email || p.name}`} onClick={async () => {
-                  if (await confirmIt({ title: `Remove ${p.email || p.name}?`, body: 'They can no longer open your mailbox or send on your behalf.', confirm: 'Remove access', danger: true }))
+                <Button variant="quiet" size="sm" onClick={() => run(() => client.delegate(p.id, !send))}>{send ? t('sharing.stopSending') : t('sharing.allowSending')}</Button>
+                <Button variant="quiet" size="sm" icon="close" label={t('sharing.remove', { name: p.email || p.name })} onClick={async () => {
+                  if (await confirmIt({ title: t('sharing.removeTitle', { name: p.email || p.name }), body: t('sharing.removeBody'), confirm: t('sharing.removeAccess'), danger: true }))
                     run(() => client.delegate(p.id, null));
                 }} />
               </span>
@@ -190,19 +191,19 @@ export function TeamComments({ client, threadId, version, me }: { client: Jmap; 
     try { await fn(); await load(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   return (
-    <section className="team-comments" aria-label="Team comments">
-      <h2 className="rail-label">Team comments <span className="fine">· only people with access to this mailbox see these</span></h2>
+    <section className="team-comments" aria-label={t('sharing.teamComments')}>
+      <h2 className="rail-label">{t('sharing.teamComments')} <span className="fine">· {t('sharing.teamCommentsNote')}</span></h2>
       {list?.map((c) => (
         <div key={c.id} className="comment">
           <p className="comment-meta"><b>{displayName(c.author)}</b> <time dateTime={c.at}>{shortDate(c.at)}</time>
-            {c.author.email.toLowerCase() === me.toLowerCase() && <Button variant="quiet" size="sm" icon="trash" label="Delete comment" onClick={() => run(() => client.deleteComment(c.id))} />}</p>
+            {c.author.email.toLowerCase() === me.toLowerCase() && <Button variant="quiet" size="sm" icon="trash" label={t('sharing.deleteComment')} onClick={() => run(() => client.deleteComment(c.id))} />}</p>
           <p className="comment-text">{c.text}</p>
         </div>
       ))}
       <div className="inline-form">
-        <textarea className="input" rows={2} placeholder="Add a comment for your team" aria-label="Team comment" value={text} onChange={(e) => setText(e.target.value)}
+        <textarea className="input" rows={2} placeholder={t('sharing.commentPlaceholder')} aria-label={t('sharing.comment')} value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && text.trim()) run(async () => { await client.addComment(threadId, text); setText(''); }); }} />
-        <Button disabled={busy || !text.trim()} onClick={() => run(async () => { await client.addComment(threadId, text); setText(''); })}>Comment</Button>
+        <Button disabled={busy || !text.trim()} onClick={() => run(async () => { await client.addComment(threadId, text); setText(''); })}>{t('sharing.commentButton')}</Button>
       </div>
       {msg && <p className="error" role="alert">{msg}</p>}
     </section>

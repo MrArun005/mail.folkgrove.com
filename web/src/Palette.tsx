@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Icon, type IconName } from './icons';
+import { t } from './i18n';
 
 export interface Command { id: string; label: string; icon: IconName; hint?: string; run: () => void }
 
@@ -15,10 +16,10 @@ export function Palette({ commands, onClose }: { commands: Command[]; onClose: (
 
   return (
     <div className="overlay top" onMouseDown={onClose}>
-      <div className="palette" role="dialog" aria-label="Command palette" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="palette" role="dialog" aria-label={t('palette.label')} onMouseDown={(e) => e.stopPropagation()}>
         <div className="palette-input">
           <Icon name="search" />
-          <input autoFocus value={q} placeholder="Type a command or folder…" aria-controls="palette-list"
+          <input autoFocus value={q} placeholder={t('palette.placeholder')} aria-controls="palette-list"
             aria-activedescendant={shown[i] ? `cmd-${shown[i].id}` : undefined}
             onChange={(e) => { setQ(e.target.value); setI(0); }}
             onKeyDown={(e) => {
@@ -35,7 +36,7 @@ export function Palette({ commands, onClose }: { commands: Command[]; onClose: (
               <Icon name={c.icon} size={16} /><span>{c.label}</span>{c.hint && <kbd>{c.hint}</kbd>}
             </li>
           ))}
-          {!shown.length && <li className="none">No matching command</li>}
+          {!shown.length && <li className="none">{t('palette.none')}</li>}
         </ul>
       </div>
     </div>

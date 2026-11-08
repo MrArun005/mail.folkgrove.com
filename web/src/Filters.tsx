@@ -4,10 +4,11 @@ import { Button } from './Button';
 import type { Jmap, Mailbox } from './jmap';
 import { describeRule, parseScript, toSieve, validateRule, type Rule, type RuleAction, type ScriptData } from './rules';
 import { ShareFolder } from './Sharing';
+import { boxName, t, type Key } from './i18n';
 
-const ACTIONS: { value: RuleAction; label: string }[] = [
-  { value: 'move', label: 'Move to folder' }, { value: 'read', label: 'Mark as read' }, { value: 'star', label: 'Star it' },
-  { value: 'trash', label: 'Delete it' }, { value: 'block', label: 'Block (send to Junk)' }, { value: 'forward', label: 'Forward to…' },
+const ACTIONS: { value: RuleAction; msg: Key }[] = [
+  { value: 'move', msg: 'filters.move' }, { value: 'read', msg: 'filters.read' }, { value: 'star', msg: 'filters.star' },
+  { value: 'trash', msg: 'filters.trash' }, { value: 'block', msg: 'filters.block' }, { value: 'forward', msg: 'filters.forward' },
 ];
 
 /** The one server-side script holding filters + out-of-office. Always read-modify-write through these two. */
@@ -64,7 +65,7 @@ export function FiltersSection({ client, boxes, prefill }: { client: Jmap; boxes
       await saveScript(client, boxes, (d) => ({ ...d, rules: next })); // everything else in the script is kept
       setRules(next);
       return true;
-    } catch (e) { setError(`Couldn’t save filters: ${(e as Error).message}`); return false; }
+    } catch (e) { setError(t('filters.couldntSave', { error: (e as Error).message })); return false; }
   }
 
   async function add() {
@@ -78,14 +79,14 @@ export function FiltersSection({ client, boxes, prefill }: { client: Jmap; boxes
 
   return (
     <section>
-      <h3>Filters</h3>
-      <p className="fine">Filters run on the mail server as messages arrive, so they work even when this app is closed.</p>
-      {rules === null ? <p className="fine">Loading…</p> : rules.length === 0 && !draft ? <p className="fine">No filters yet.</p> : (
+      <h3>{t('filters.title')}</h3>
+      <p className="fine">{t('filters.intro')}</p>
+      {rules === null ? <p className="fine">{t('common.loading')}</p> : rules.length === 0 && !draft ? <p className="fine">{t('filters.none')}</p> : (
         <ul className="rule-list">
           {rules.map((r) => (
             <li key={r.id}>
               <span>{describeRule(r)}</span>
-              <Button variant="quiet" size="sm" icon="trash" label="Delete filter" onClick={() => save(rules.filter((x) => x.id !== r.id))} />
+              <Button variant="quiet" size="sm" icon="trash" label={t('filters.delete')} onClick={() => save(rules.filter((x) => x.id !== r.id))} />
             </li>
           ))}
         </ul>
@@ -93,30 +94,30 @@ export function FiltersSection({ client, boxes, prefill }: { client: Jmap; boxes
       {draft ? (
         <div className="rule-form">
           <div className="row3">
-            <label>From contains<input className="input" value={draft.from ?? ''} onChange={(e) => set({ from: e.target.value })} placeholder="news@shop.com or shop.com" /></label>
-            <label>To contains<input className="input" value={draft.to ?? ''} onChange={(e) => set({ to: e.target.value })} /></label>
-            <label>Subject contains<input className="input" value={draft.subject ?? ''} onChange={(e) => set({ subject: e.target.value })} /></label>
+            <label>{t('filters.from')}<input className="input" value={draft.from ?? ''} onChange={(e) => set({ from: e.target.value })} placeholder={t('filters.fromPlaceholder')} /></label>
+            <label>{t('filters.to')}<input className="input" value={draft.to ?? ''} onChange={(e) => set({ to: e.target.value })} /></label>
+            <label>{t('filters.subject')}<input className="input" value={draft.subject ?? ''} onChange={(e) => set({ subject: e.target.value })} /></label>
           </div>
           <div className="row3">
-            <label>Then<select className="input" value={draft.action} onChange={(e) => set({ action: e.target.value as RuleAction })}>
-              {ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            <label>{t('filters.then')}<select className="input" value={draft.action} onChange={(e) => set({ action: e.target.value as RuleAction })}>
+              {ACTIONS.map((a) => <option key={a.value} value={a.value}>{t(a.msg)}</option>)}
             </select></label>
             {draft.action === 'move' && (
-              <label>Folder<select className="input" value={draft.folder ?? ''} onChange={(e) => set({ folder: e.target.value })}>
-                <option value="" disabled>Choose a folder</option>
-                {folders.map((f) => <option key={f.id} value={f.path ?? f.name}>{f.path ?? f.name}</option>)}
+              <label>{t('filters.folder')}<select className="input" value={draft.folder ?? ''} onChange={(e) => set({ folder: e.target.value })}>
+                <option value="" disabled>{t('filters.chooseFolder')}</option>
+                {folders.map((f) => <option key={f.id} value={f.path ?? f.name}>{f.role ? boxName(f) : f.path ?? f.name}</option>)}
               </select></label>
             )}
             {draft.action === 'forward' && (
-              <label>Forward to<input className="input" type="email" value={draft.forwardTo ?? ''} onChange={(e) => set({ forwardTo: e.target.value })} /></label>
+              <label>{t('filters.forwardTo')}<input className="input" type="email" value={draft.forwardTo ?? ''} onChange={(e) => set({ forwardTo: e.target.value })} /></label>
             )}
           </div>
           <div className="actions">
-            <Button size="sm" onClick={() => { setDraft(null); setError(''); }}>Cancel</Button>
-            <Button size="sm" variant="primary" onClick={add}>Add filter</Button>
+            <Button size="sm" onClick={() => { setDraft(null); setError(''); }}>{t('common.cancel')}</Button>
+            <Button size="sm" variant="primary" onClick={add}>{t('filters.add')}</Button>
           </div>
         </div>
-      ) : <Button size="sm" icon="compose" className="start" onClick={() => setDraft({ id: crypto.randomUUID(), action: 'move' })}>New filter</Button>}
+      ) : <Button size="sm" icon="compose" className="start" onClick={() => setDraft({ id: crypto.randomUUID(), action: 'move' })}>{t('filters.new')}</Button>}
       {error && <p className="error" role="alert">{error}</p>}
     </section>
   );
@@ -132,30 +133,30 @@ export function FoldersSection({ client, boxes, onChanged }: { client: Jmap; box
   }
   return (
     <section>
-      <h3>Folders</h3>
-      {mine.length === 0 ? <p className="fine">Folders you create (from Move to → New folder) appear here.</p> : (
+      <h3>{t('folders.title')}</h3>
+      {mine.length === 0 ? <p className="fine">{t('folders.empty')}</p> : (
         <ul className="rule-list">
           {mine.map((b) => (
             <li key={b.id} style={{ paddingLeft: `calc(var(--s3) + ${b.depth ?? 0} * var(--s5))` }}>
               <span className="grow">{b.name}</span>
               <span className="row-btns">
-                <select className="input input--sm" aria-label={`Put ${b.name} inside`} value={b.parentId ?? ''}
+                <select className="input input--sm" aria-label={t('folders.putInside', { name: b.name })} value={b.parentId ?? ''}
                   onChange={(e) => run(() => client.moveMailbox(b.id, e.target.value || null))}>
-                  <option value="">Top level</option>
-                  {mine.filter((p) => p.id !== b.id && !(p.path ?? '').startsWith(`${b.path}/`)).map((p) => <option key={p.id} value={p.id}>Inside {p.path}</option>)}
+                  <option value="">{t('folders.topLevel')}</option>
+                  {mine.filter((p) => p.id !== b.id && !(p.path ?? '').startsWith(`${b.path}/`)).map((p) => <option key={p.id} value={p.id}>{t('folders.inside', { path: p.path ?? p.name })}</option>)}
                 </select>
-                <Button variant="quiet" size="sm" icon="person" label={`Share ${b.name}…`} pressed={sharing === b.id} onClick={() => setSharing(sharing === b.id ? null : b.id)} />
-                <Button variant="quiet" size="sm" icon="folder" label={`New folder inside ${b.name}`} onClick={async () => {
-                  const name = await promptIt({ title: `New folder inside “${b.name}”`, label: 'Folder name', confirm: 'Create folder' });
+                <Button variant="quiet" size="sm" icon="person" label={t('folders.share', { name: b.name })} pressed={sharing === b.id} onClick={() => setSharing(sharing === b.id ? null : b.id)} />
+                <Button variant="quiet" size="sm" icon="folder" label={t('folders.newInside', { name: b.name })} onClick={async () => {
+                  const name = await promptIt({ title: t('folders.newInsideTitle', { name: b.name }), label: t('folders.name'), confirm: t('folders.create') });
                   if (name) run(() => client.createMailbox(name, b.id));
                 }} />
-                <Button variant="quiet" size="sm" icon="compose" label={`Rename ${b.name}`} onClick={async () => {
-                  const name = await promptIt({ title: `Rename “${b.name}”`, label: 'New name', value: b.name, confirm: 'Rename' });
+                <Button variant="quiet" size="sm" icon="compose" label={t('folders.rename', { name: b.name })} onClick={async () => {
+                  const name = await promptIt({ title: t('folders.renameTitle', { name: b.name }), label: t('folders.newName'), value: b.name, confirm: t('folders.renameConfirm') });
                   if (name && name !== b.name) run(() => client.renameMailbox(b.id, name));
                 }} />
-                <Button variant="quiet" size="sm" icon="trash" label={`Delete ${b.name}`} onClick={async () => {
-                  if (mine.some((x) => x.parentId === b.id)) return setError(`“${b.name}” has folders inside it. Move or delete those first.`);
-                  if (await confirmIt({ title: `Delete the folder “${b.name}”?`, body: 'Messages that are only in this folder are deleted too.', confirm: 'Delete folder', danger: true })) run(() => client.deleteMailbox(b.id));
+                <Button variant="quiet" size="sm" icon="trash" label={t('folders.delete', { name: b.name })} onClick={async () => {
+                  if (mine.some((x) => x.parentId === b.id)) return setError(t('folders.hasChildren', { name: b.name }));
+                  if (await confirmIt({ title: t('folders.deleteTitle', { name: b.name }), body: t('folders.deleteBody'), confirm: t('folders.deleteConfirm'), danger: true })) run(() => client.deleteMailbox(b.id));
                 }} />
               </span>
               {sharing === b.id && <ShareFolder client={client} box={b} onDone={() => {}} />}

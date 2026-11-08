@@ -1,6 +1,6 @@
 // Minimal JMAP client (RFC 8620 core, 8621 mail + submission). Talks to Stalwart directly; we have no backend.
 import { SCRIPT_NAME, UPDATES } from './rules';
-import { serverText, t } from './i18n';
+import { boxName, serverText, t } from './i18n';
 import { isOffline, offlineStore } from './offline';
 import type { CalEvent } from './calendar';
 import { buildReply, parseInvite, replyWord, type Invite, type PartStat } from './ics';
@@ -196,8 +196,8 @@ export class Jmap {
     let s;
     try {
       const res = await probe.fetch(`${base}/jmap/session`);
-      if (res.status === 401) throw new JmapError('Wrong email or password');
-      if (!res.ok) throw new JmapError(`The mail server returned an error (${res.status})`);
+      if (res.status === 401) throw new JmapError(t('jmap.wrongPassword'));
+      if (!res.ok) throw new JmapError(t('jmap.serverError', { status: res.status }));
       s = await res.json();
       if (offlineUser) offlineStore.set(`${offlineUser}:session`, s);
     } catch (e) {
@@ -206,7 +206,7 @@ export class Jmap {
     }
     // A mail session has a mail account; a security-only session (step-up) has just the Stalwart one.
     const accountId = s.primaryAccounts?.['urn:ietf:params:jmap:mail'] ?? s.primaryAccounts?.['urn:stalwart:jmap'] ?? Object.keys(s.accounts ?? {})[0];
-    if (!accountId) throw new JmapError('This account has no mailbox');
+    if (!accountId) throw new JmapError(t('jmap.noMailbox'));
     // Session URLs may be absolute with the server's internal hostname (e.g. behind a proxy).
     // Keep only the path and use the origin we actually reached.
     const c = new Jmap(authHeader, onUnauthorized, base, accountId, s.username, pathOnly(s.apiUrl), pathOnly(s.downloadUrl), pathOnly(s.uploadUrl), pathOnly(s.eventSourceUrl));
@@ -225,7 +225,7 @@ export class Jmap {
       catch {
         // The refresh token no longer works (signed out elsewhere, revoked, or the server's settings changed).
         window.dispatchEvent(new Event(SESSION_EXPIRED));
-        throw new JmapError('Your session has ended. Please sign in again.');
+        throw new JmapError(t('oauth.sessionEnded'));
       }
       return this.fetch(url, init, false);
     }
@@ -283,7 +283,7 @@ export class Jmap {
     });
     if (!res.ok) {
       const detail = await res.json().then((j) => j?.detail as string | undefined, () => undefined);
-      throw new JmapError(detail && /concurrent requests/i.test(detail) ? detail : `The mail server returned an error (${res.status})`);
+      throw new JmapError(detail && /concurrent requests/i.test(detail) ? detail : t('jmap.serverError', { status: res.status }));
     }
     const { methodResponses } = await res.json();
     for (const [name, args] of methodResponses) {
@@ -567,7 +567,7 @@ export class Jmap {
     const res = await this.fetch(this.base + this.uploadUrl.replace('{accountId}', this.accountId), {
       method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file,
     });
-    if (!res.ok) throw new JmapError(res.status === 413 ? 'That file is too large to attach' : `Upload failed (${res.status})`);
+    if (!res.ok) throw new JmapError(res.status === 413 ? t('jmap.attachTooLarge') : t('jmap.uploadFailed', { status: res.status }));
     const r = await res.json();
     return { blobId: r.blobId, type: r.type, size: r.size, name: file.name ?? 'attachment' };
   }
@@ -599,7 +599,7 @@ export class Jmap {
     const url = this.downloadUrl.replace('{accountId}', this.accountId).replace('{blobId}', a.blobId)
       .replace('{name}', encodeURIComponent(a.name ?? 'file')).replace('{type}', encodeURIComponent(a.type));
     const res = await this.fetch(this.base + url);
-    if (!res.ok) throw new JmapError(`Download failed (${res.status})`);
+    if (!res.ok) throw new JmapError(t('jmap.downloadFailed', { status: res.status }));
     return res.blob();
   }
 
@@ -627,7 +627,7 @@ export class Jmap {
       const list = await this.identities();
       // The account's own address first; Stalwart also adds one identity per alias.
       this.identity = list.find((i) => i.email.toLowerCase() === this.username.toLowerCase()) ?? list[0];
-      if (!this.identity) throw new JmapError('This account has no sending identity');
+      if (!this.identity) throw new JmapError(t('jmap.noIdentity'));
     }
     return this.identity;
   }
@@ -667,7 +667,7 @@ export class Jmap {
   /** Delete this account for good (the account service, signup/account.mjs). Errors carry the service's `code`. */
   async deleteAccount(body: { password: string; code?: string; confirm: string }): Promise<void> {
     const r = await this.fetch(`${this.base}/api/account`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (r.status === 404 || r.status === 502) throw new JmapError('This server can’t delete accounts from here. Ask its administrator.');
+    if (r.status === 404 || r.status === 502) throw new JmapError(t('jmap.noAccountDelete'));
     await aliasReply(r);
   }
 
@@ -677,7 +677,7 @@ export class Jmap {
   async shareFile(file: File, expiresDays: 7 | 30 | 0): Promise<SharedFile> {
     const r = await this.fetch(`${this.base}/api/files?name=${encodeURIComponent(file.name)}&expires=${expiresDays}`,
       { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
-    if (r.status === 404 || r.status === 502) throw new JmapError('This server can’t send large files as links. Ask its administrator.');
+    if (r.status === 404 || r.status === 502) throw new JmapError(t('jmap.noFileLinks'));
     return this.absolute((await aliasReply(r)).file);
   }
   /** null = this server doesn't run the account service. */
@@ -714,7 +714,7 @@ export class Jmap {
   async davObjects(kind: 'cal' | 'card'): Promise<string[]> {
     const dav = async (path: string, method: string, body: string) => {
       const r = await this.fetch(this.base + path, { method, headers: { Depth: '1', 'Content-Type': 'application/xml' }, body });
-      if (r.status !== 207) throw new JmapError(`The server didn’t list your ${kind === 'cal' ? 'calendars' : 'contacts'} (${r.status})`);
+      if (r.status !== 207) throw new JmapError(t(kind === 'cal' ? 'jmap.davCalendars' : 'jmap.davContacts', { status: r.status }));
       return new DOMParser().parseFromString(await r.text(), 'application/xml');
     };
     const ns = kind === 'cal' ? 'urn:ietf:params:xml:ns:caldav' : 'urn:ietf:params:xml:ns:carddav';
@@ -743,7 +743,7 @@ export class Jmap {
   /** Admin console API (signup/admin.mjs); only accounts listed in the service's ADMINS get answers. */
   async admin<T = any>(path: string, method = 'GET', body?: object): Promise<T> {
     const r = await this.fetch(`${this.base}/api/admin/${path}`, { method, ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
-    if (r.status === 404 || r.status === 502) throw new JmapError('The admin console is off on this server. Set ADMINS for the account service to switch it on.');
+    if (r.status === 404 || r.status === 502) throw new JmapError(t('jmap.adminOff'));
     return aliasReply(r);
   }
 
@@ -793,7 +793,7 @@ export class Jmap {
 
   private box(boxes: Mailbox[], role: string) {
     const id = boxes.find((b) => b.role === role)?.id;
-    if (!id) throw new JmapError(`The ${role} folder is missing`);
+    if (!id) throw new JmapError(t('jmap.folderMissing', { folder: boxName({ role, name: role }) }));
     return id;
   }
 
@@ -857,7 +857,7 @@ export class Jmap {
     const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === NOTES)?.id ?? await this.createMailbox(NOTES);
     const [r] = await this.call([['Email/set', { accountId: this.accountId,
       create: { n: { mailboxIds: { [box]: true }, keywords: { $seen: true, ...(n.pinned && { $pinned: true }) }, from: [{ email: this.username }],
-        subject: n.title.trim().slice(0, 300) || 'Untitled note', bodyValues: { t: { value: n.body } }, textBody: [{ partId: 't', type: 'text/plain' }] } },
+        subject: n.title.trim().slice(0, 300) || t('notes.untitled'), bodyValues: { t: { value: n.body } }, textBody: [{ partId: 't', type: 'text/plain' }] } },
       ...(n.id && { destroy: [n.id] }) }, 'n']]);
     return r.created.n.id;
   }
@@ -915,9 +915,9 @@ export class Jmap {
    */
   async trashFrom(email: string, boxes: Mailbox[]): Promise<number> {
     const target = email.trim().toLowerCase();
-    if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(target)) throw new JmapError('That isn’t a valid sender address');
+    if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(target)) throw new JmapError(t('jmap.badSender'));
     const trash = boxes.find((b) => b.role === 'trash')?.id;
-    if (!trash) throw new JmapError('The trash folder is missing');
+    if (!trash) throw new JmapError(t('jmap.trashMissing'));
     const keep = new Set(boxes.filter((b) => b.role === 'sent' || b.role === 'drafts').map((b) => b.id));
     const [, r] = await this.call([
       ['Email/query', { accountId: this.accountId, filter: { from: target }, limit: 1000 }, 'q'],
@@ -955,7 +955,7 @@ export class Jmap {
    */
   /** sendAt: schedule for later (SMTP FUTURERELEASE HOLDUNTIL, up to 30 days on Stalwart). */
   async send(d: Draft, boxes: Mailbox[], sendAt?: Date): Promise<{ submissionId: string; emailId: string }> {
-    if (!this.mayAct) throw new JmapError(`You can read ${this.owner} but not send from it. Ask its owner for permission to send.`);
+    if (!this.mayAct) throw new JmapError(t('jmap.cantSendAs', { owner: this.owner ?? '' }));
     if (this.via) {
       // Delegation: Stalwart has no send-as for another account, so it goes out from your own account with
       // From: owner and Sender: you. ponytail: the Sent copy and Undo live in your own mailbox, not the owner's.
@@ -986,7 +986,7 @@ export class Jmap {
       ...(d.encrypt && d.id ? [['Email/set', { accountId: this.accountId, destroy: [d.id] }, 'x'] as [string, object, string]] : []), // the unencrypted autosaved draft
     ]).catch((e) => {
       // Sending suspended (signup/abuse.mjs): the server refuses the submission; the message stays in Drafts.
-      throw /^forbidden:/.test((e as Error).message) ? new JmapError('Sending is switched off for your account right now, so this wasn’t sent. It’s saved in Drafts. The notice above your inbox says why and what to do.') : e;
+      throw /^forbidden:/.test((e as Error).message) ? new JmapError(t('jmap.sendingOff')) : e;
     });
     return { submissionId: sub.created.s.id, emailId: created.created.d.id };
   }
@@ -994,12 +994,12 @@ export class Jmap {
   /** The raw encrypted + signed message for a draft (pgp.ts loads only now). Encrypted to you too, so Sent stays readable. */
   private async encrypted(d: Draft, me: Identity, keydata?: string): Promise<string> {
     const privateKey = unlockedKey(this.username);
-    if (!privateKey) throw new JmapError('Unlock your encryption key to send encrypted mail.');
+    if (!privateKey) throw new JmapError(t('jmap.unlockKey'));
     const people = [...d.to, ...d.cc, ...(d.bcc ?? [])];
     // A key under dispute (a different one turned up) isn't used until you choose one in Settings.
     const keys = await Promise.all(people.map(async (a) => { const k = await peerKey(a.email); return k?.conflict ? undefined : k?.publicKey; }));
     const missing = people.filter((_, i) => !keys[i]);
-    if (missing.length) throw new JmapError(`There’s no encryption key for ${missing.map((a) => a.email).join(', ')}.`);
+    if (missing.length) throw new JmapError(t('jmap.noKeyFor', { addresses: missing.map((a) => a.email).join(', ') }));
     const own = await myKey(this.username);
     const pgp = await import('./pgp');
     const files = await Promise.all(d.attachments.map(async (a) => ({ name: a.name ?? 'attachment', type: a.type, cid: a.cid ?? null, data: new Uint8Array(await (await this.download(a)).arrayBuffer()) })));
@@ -1068,7 +1068,7 @@ export class Jmap {
   /** Send a read receipt the user chose to send. Not kept in Sent; the original is marked $MDNSent (RFC 3503). */
   async sendReadReceipt(m: EmailFull, boxes: Mailbox[]): Promise<void> {
     const to = m.receiptTo?.[0]?.email;
-    if (!to) throw new JmapError('This message didn’t ask for a read receipt');
+    if (!to) throw new JmapError(t('jmap.noReceiptAsked'));
     const me = await this.getIdentity();
     const raw = buildMdn({ from: me.email, to, subject: m.subject ?? '', originalMessageId: m.messageId?.[0], readAt: new Date(),
       domain: me.email.split('@')[1], id: crypto.randomUUID() });
@@ -1166,7 +1166,7 @@ export class Jmap {
 
   async saveEvent(e: CalEvent): Promise<string> {
     const body = {
-      '@type': 'Event', ...(e.uid && !e.id ? { uid: e.uid } : {}), title: e.title.trim() || 'Untitled event', start: e.start, timeZone: e.allDay ? null : e.timeZone,
+      '@type': 'Event', ...(e.uid && !e.id ? { uid: e.uid } : {}), title: e.title.trim() || t('calendar.untitledEvent'), start: e.start, timeZone: e.allDay ? null : e.timeZone,
       duration: e.duration, showWithoutTime: e.allDay, description: e.description,
       locations: e.location.trim() ? { l1: { '@type': 'Location', name: e.location.trim() } } : null,
     };
@@ -1176,7 +1176,7 @@ export class Jmap {
     }
     const [cals] = await this.call([['Calendar/get', { accountId: this.accountId, properties: ['isDefault'] }, 'c']], CALENDARS);
     const cal = (cals.list as { id: string; isDefault: boolean }[]).find((c) => c.isDefault) ?? cals.list[0];
-    if (!cal) throw new JmapError('This account has no calendar');
+    if (!cal) throw new JmapError(t('jmap.noCalendar'));
     const [r] = await this.call([['CalendarEvent/set', { accountId: this.accountId, create: { e: { ...body, calendarIds: { [cal.id]: true } } } }, 's']], CALENDARS);
     return r.created.e.id;
   }
@@ -1187,13 +1187,13 @@ export class Jmap {
    */
   async rsvp(emailId: string, invite: Attachment, status: PartStat, boxes: Mailbox[]): Promise<Invite> {
     const inv = parseInvite(await (await this.download(invite)).text());
-    if (!inv) throw new JmapError('This invitation can’t be read');
+    if (!inv) throw new JmapError(t('jmap.badInvite'));
     const me = await this.getIdentity();
     const reply = buildReply(inv, { email: me.email, name: me.name !== me.email ? me.name : null }, status);
     const file = await this.upload(Object.assign(new Blob([reply], { type: 'text/calendar; method=REPLY; charset=utf-8' }), { name: 'reply.ics' }));
     const who = me.name && me.name !== me.email ? me.name : me.email;
     const verb = { ACCEPTED: 'accepted', TENTATIVE: 'tentatively accepted', DECLINED: 'declined' }[status];
-    await this.send({ to: [{ name: null, email: inv.organizerEmail }], cc: [], subject: `${replyWord[status]}: ${inv.summary}`,
+    await this.send({ to: [{ name: null, email: inv.organizerEmail }], cc: [], subject: t('ics.replySubject', { answer: replyWord(status), subject: inv.summary }),
       html: `<p>${who} has ${verb} this invitation.</p>`, text: `${who} has ${verb} this invitation.`,
       attachments: [{ ...file, type: 'text/calendar; method=REPLY; charset=utf-8' }] }, boxes);
     const kw = (s: PartStat) => `keywords/$rsvp-${s.toLowerCase()}`;
@@ -1250,7 +1250,7 @@ export class Jmap {
     }
     const [books] = await this.call([['AddressBook/get', { accountId: this.accountId, properties: ['isDefault'] }, 'b']], [CONTACTS]);
     const book = (books.list as { id: string; isDefault: boolean }[]).find((b) => b.isDefault) ?? books.list[0];
-    if (!book) throw new JmapError('This account has no address book');
+    if (!book) throw new JmapError(t('jmap.noAddressBook'));
     const [r] = await this.call([['ContactCard/set', { accountId: this.accountId, create: { c: { ...card, addressBookIds: { [book.id]: true } } } }, 's']], [CONTACTS]);
     return r.created.c.id;
   }
@@ -1298,7 +1298,7 @@ export class Jmap {
   /** Every other account you can open, with the folders you can see in each. Read fresh: shares change. */
   async sharedAccounts(): Promise<SharedAccount[]> {
     const res = await this.fetch(`${this.base}/jmap/session`);
-    if (!res.ok) throw new JmapError(`The mail server returned an error (${res.status})`);
+    if (!res.ok) throw new JmapError(t('jmap.serverError', { status: res.status }));
     const s = await res.json();
     const others = Object.entries(s.accounts as Record<string, { name: string; accountCapabilities: Record<string, unknown> }>)
       .filter(([id, a]) => id !== this.accountId && a.accountCapabilities['urn:ietf:params:jmap:mail']).slice(0, 16); // ponytail: 16 = calls per request
@@ -1315,7 +1315,7 @@ export class Jmap {
   /** Someone on this server by exact address (the account service: Stalwart's directory search is off for users). */
   async findPerson(email: string): Promise<Person> {
     const r = await this.fetch(`${this.base}/api/principal?email=${encodeURIComponent(email.trim())}`);
-    if ([404, 502, 503].includes(r.status) && !r.headers.get('content-type')?.includes('json')) throw new JmapError('Sharing needs the account service, which isn’t running on this server.');
+    if ([404, 502, 503].includes(r.status) && !r.headers.get('content-type')?.includes('json')) throw new JmapError(t('jmap.sharingOff'));
     return (await aliasReply(r)).principal;
   }
   /** Everyone your folders are shared with, by principal id (the account service: Principal/get can't see them). */
@@ -1359,7 +1359,7 @@ export class Jmap {
   }
   async addComment(threadId: string, text: string, name?: string): Promise<string> {
     const k = this.commentKey(threadId);
-    if (!k || !text.trim()) throw new JmapError('Write something first');
+    if (!k || !text.trim()) throw new JmapError(t('jmap.writeSomething'));
     const box = (await this.mailboxes(true)).find((b) => !b.role && b.name === COMMENTS)?.id ?? await this.createMailbox(COMMENTS);
     const [r] = await this.call([['Email/set', { accountId: this.accountId, create: { c: {
       mailboxIds: { [box]: true }, keywords: { $seen: true, [k]: true }, from: [name ? { name, email: this.username } : { email: this.username }],

@@ -4,6 +4,7 @@
 import * as openpgp from 'openpgp';
 import { encodeHeader } from './mailutil';
 import { wkdUrls } from './keys';
+import { t } from './i18n';
 
 // ── Bytes as "binary strings" (one char per byte), so signed parts keep their exact bytes ──
 
@@ -97,7 +98,7 @@ export async function openMessage(raw: Uint8Array, privateKey: string | undefine
   if (root.type === 'multipart/encrypted') {
     encrypted = true;
     const payload = root.parts.find((p) => p.type !== 'application/pgp-encrypted');
-    if (!payload) return { encrypted, signature, mail: null, error: 'This encrypted message is damaged.' };
+    if (!payload) return { encrypted, signature, mail: null, error: t('pgp.damaged') };
     if (!privateKey) return { encrypted, signature, mail: null };
     try {
       const r = await openpgp.decrypt({
@@ -107,7 +108,7 @@ export async function openMessage(raw: Uint8Array, privateKey: string | undefine
       signature = await sigState(r.signatures);
       root = parseMime(bin(r.data as Uint8Array));
     } catch (e) {
-      return { encrypted, signature, mail: null, error: /session key|decrypt/i.test((e as Error).message) ? 'This message was encrypted to a different key than the one in this browser.' : `Couldn’t decrypt it: ${(e as Error).message}` };
+      return { encrypted, signature, mail: null, error: /session key|decrypt/i.test((e as Error).message) ? t('pgp.otherKey') : t('pgp.couldntDecrypt', { error: (e as Error).message }) };
     }
   }
   if (root.type === 'multipart/signed') {
@@ -203,7 +204,7 @@ export async function restoreKey(armored: string, passphrase: string) {
   const k = await openpgp.readPrivateKey({ armoredKey: armored });
   if (k.isDecrypted()) return k.armor();
   try { return (await openpgp.decryptKey({ privateKey: k, passphrase })).armor(); }
-  catch { throw new Error('That passphrase doesn’t unlock this key.'); }
+  catch { throw new Error(t('pgp.backupPassphrase')); }
 }
 /** Public keys in a pasted block or file, as [email, armored] pairs (one key can carry several addresses). */
 export async function readPublicKeys(text: string) {

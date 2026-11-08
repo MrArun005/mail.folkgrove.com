@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Button } from './Button';
 import type { Jmap } from './jmap';
 import { dropLabels, fileChunks, headerText, placement, splitMbox } from './importer';
+import { t } from './i18n';
 
 const PARALLEL = 4; // uploads in flight at once
 
@@ -12,13 +13,13 @@ const PARALLEL = 4; // uploads in flight at once
  */
 export function ImportSection({ client, onDone }: { client: Jmap; onDone: () => void }) {
   const [state, setState] = useState<{ done: number; failed: number; read: number; total: number; running: boolean } | null>(null);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState(''), [failedRun, setFailedRun] = useState(false);
   const stop = useRef(false);
   const input = useRef<HTMLInputElement>(null);
 
   async function run(files: File[]) {
     if (!files.length) return;
-    stop.current = false; setMsg('');
+    stop.current = false; setMsg(''); setFailedRun(false);
     const total = files.reduce((n, f) => n + f.size, 0);
     let done = 0, failed = 0, read = 0;
     const tick = () => setState({ done, failed, read, total, running: !stop.current });
@@ -27,6 +28,7 @@ export function ImportSection({ client, onDone }: { client: Jmap; onDone: () => 
       const boxes = await client.mailboxes();
       const role = (r: string) => boxes.find((b) => b.role === r)?.id;
       const known = new Map<string, string>();
+      // Not translated: a mailbox name on the server (a second import the same day finds it).
       const importFolder = `Imported ${new Date().toISOString().slice(0, 10)}`;
       const inFlight = new Set<Promise<void>>();
 
@@ -52,33 +54,30 @@ export function ImportSection({ client, onDone }: { client: Jmap; onDone: () => 
         read += file.size - fileRead; // count the tail of a stopped file so the bar ends
       }
       await Promise.all(inFlight);
-      setMsg(stop.current ? `Stopped. ${done.toLocaleString()} messages imported.`
-        : `Done. ${done.toLocaleString()} messages imported${failed ? `, ${failed.toLocaleString()} couldn’t be read` : ''}.`);
+      setMsg(stop.current ? t('import.stopped', { count: done })
+        : failed ? t('import.doneFailed', { count: done, failed }) : t('import.done', { count: done }));
       onDone();
-    } catch (e) { setMsg(`Import stopped: ${(e as Error).message}`); }
+    } catch (e) { setFailedRun(true); setMsg(t('import.error', { error: (e as Error).message })); }
     finally { setState((s) => s && { ...s, running: false }); }
   }
 
   const pct = state ? Math.min(100, Math.round((state.read / Math.max(state.total, 1)) * 100)) : 0;
   return (
     <section>
-      <h3>Import mail</h3>
-      <p className="fine">
-        From Gmail: Google Takeout → Mail → download the .mbox file. From Zoho, Outlook, Thunderbird or Apple Mail: export
-        to .mbox or .eml. Gmail labels become folders; stars, unread and Sent are kept. Large files are fine.
-      </p>
+      <h3>{t('import.title')}</h3>
+      <p className="fine">{t('import.intro')}</p>
       <input ref={input} type="file" accept=".mbox,.eml,.mbx,application/mbox,message/rfc822" multiple hidden
         onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ''; run(f); }} />
       {!state?.running
-        ? <Button size="sm" icon="download" className="start" onClick={() => input.current?.click()}>Choose files to import</Button>
+        ? <Button size="sm" icon="download" className="start" onClick={() => input.current?.click()}>{t('import.choose')}</Button>
         : (
           <div className="import-progress" role="status" aria-live="polite">
             <div className="bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div>
-            <span className="fine">{state.done.toLocaleString()} imported{state.failed ? ` · ${state.failed} skipped` : ''} · {pct}%</span>
-            <Button size="sm" onClick={() => { stop.current = true; }}>Stop</Button>
+            <span className="fine">{t(state.failed ? 'import.progressSkipped' : 'import.progress', { done: state.done, failed: state.failed, pct })}</span>
+            <Button size="sm" onClick={() => { stop.current = true; }}>{t('import.stop')}</Button>
           </div>
         )}
-      {msg && <p className={/stopped:/i.test(msg) ? 'error' : 'fine ok'} role="status">{msg}</p>}
+      {msg && <p className={failedRun ? 'error' : 'fine ok'} role="status">{msg}</p>}
     </section>
   );
 }

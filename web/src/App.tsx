@@ -10,7 +10,7 @@ import { adoptSso, canRememberDevice, forgetSession, Session, signedInAccounts, 
 import { applyDisplayPrefs, applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
-import { useLanguage } from './i18n';
+import { t, useLanguage } from './i18n';
 
 applyTheme(savedTheme());
 applyDisplayPrefs();
@@ -44,7 +44,7 @@ export default function App() {
 
   // A session that can't be renewed sends you back to sign in, with a reason, instead of a page of errors.
   useEffect(() => {
-    const expired = () => { cache.clear(); session.current = null; setClient(null); setError('Your session has ended. Please sign in again.'); };
+    const expired = () => { cache.clear(); session.current = null; setClient(null); setError(t('oauth.sessionEnded')); };
     window.addEventListener(SESSION_EXPIRED, expired);
     return () => window.removeEventListener(SESSION_EXPIRED, expired);
   }, []);
@@ -100,7 +100,7 @@ function Login({ initialError, onLogin, onCancel }: { initialError: string; onLo
   useEffect(() => { signupAvailable().then(setCanSignUp); canRememberDevice().then(setCanKeep); ssoProvider().then(setSso); }, []);
 
   if (signingUp) return <Signup onCancel={() => setSigningUp(false)}
-    onDone={(addr) => { setSigningUp(false); setEmail(addr); setNotice(`Your mailbox ${addr} is ready. Sign in to start using it.`); }} />;
+    onDone={(addr) => { setSigningUp(false); setEmail(addr); setNotice(t('login.mailboxReady', { address: addr })); }} />;
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -111,7 +111,7 @@ function Login({ initialError, onLogin, onCancel }: { initialError: string; onLo
       if (canKeep && keep) await s.rememberOnDevice(); // falls back to this-tab-only if the service says no
       onLogin(await Jmap.connect(s), s);
     } catch (err) {
-      setError(err instanceof JmapError || err instanceof Error ? err.message : 'Can’t reach the mail server. Check your connection and try again.');
+      setError(err instanceof JmapError || err instanceof Error ? err.message : t('login.cantReach'));
       setBusy(false);
     }
   }
@@ -120,34 +120,34 @@ function Login({ initialError, onLogin, onCancel }: { initialError: string; onLo
     <main className="login">
       <form onSubmit={submit}>
         <p className="wordmark">OpenMail</p>
-        <h1>{needCode ? 'Two-step verification' : onCancel ? 'Add another account' : 'Sign in to your mailbox'}</h1>
+        <h1>{needCode ? t('login.twoStep') : onCancel ? t('login.addAccount') : t('login.title')}</h1>
         {notice && <p className="banner banner--safe" role="status">{notice}</p>}
         {sso ? <>
           {/* With single sign-on the server takes no passwords at all (Stalwart's directory is server-wide). */}
-          <Button variant="primary" size="lg" onClick={() => location.assign('/api/sso/start')}>Sign in with {sso}</Button>
+          <Button variant="primary" size="lg" onClick={() => location.assign('/api/sso/start')}>{t('login.ssoButton', { provider: sso })}</Button>
           {error && <p className="error" role="alert">{error}</p>}
-          <p className="fine">You’ll sign in on {sso}’s page and come straight back. This device stays signed in until you sign out.</p>
-          {onCancel && <Button variant="link" className="alt" onClick={onCancel}>Back to your mail</Button>}
+          <p className="fine">{t('login.ssoNote', { provider: sso })}</p>
+          {onCancel && <Button variant="link" className="alt" onClick={onCancel}>{t('login.backToMail')}</Button>}
         </> : <>
         {!needCode ? <>
-          <label>Email address<input className="input" name="email" type="email" autoComplete="username" required autoFocus
+          <label>{t('login.email')}<input className="input" name="email" type="email" autoComplete="username" required autoFocus
             value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-          <label>Password<input className="input" name="password" type="password" autoComplete="current-password" required
+          <label>{t('login.password')}<input className="input" name="password" type="password" autoComplete="current-password" required
             value={password} onChange={(e) => setPassword(e.target.value)} /></label>
           {canKeep && <label className="inline keep"><input type="checkbox" className="check" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
-            Keep me signed in on this device</label>}
+            {t('login.keep')}</label>}
         </> : <>
-          <p className="fine">Enter the 6-digit code from your authenticator app for {email}.</p>
-          <label>Code<input className="input" name="code" inputMode="numeric" autoComplete="one-time-code" required autoFocus maxLength={7}
+          <p className="fine">{t('login.codeHelp', { email })}</p>
+          <label>{t('login.code')}<input className="input" name="code" inputMode="numeric" autoComplete="one-time-code" required autoFocus maxLength={7}
             value={code} onChange={(e) => setCode(e.target.value)} /></label>
         </>}
         {error && <p className="error" role="alert">{error}</p>}
-        <Button type="submit" variant="primary" size="lg" disabled={busy}>{busy ? 'Signing in…' : needCode ? 'Verify' : 'Sign in'}</Button>
-        {needCode && <Button variant="link" className="alt" onClick={() => { setNeedCode(false); setCode(''); setError(''); }}>Use a different account</Button>}
-        {!needCode && canSignUp && <Button variant="link" className="alt" onClick={() => setSigningUp(true)}>Create an account</Button>}
-        {onCancel && <Button variant="link" className="alt" onClick={onCancel}>Back to your mail</Button>}
+        <Button type="submit" variant="primary" size="lg" disabled={busy}>{busy ? t('login.signingIn') : needCode ? t('login.verify') : t('login.signIn')}</Button>
+        {needCode && <Button variant="link" className="alt" onClick={() => { setNeedCode(false); setCode(''); setError(''); }}>{t('login.differentAccount')}</Button>}
+        {!needCode && canSignUp && <Button variant="link" className="alt" onClick={() => setSigningUp(true)}>{t('login.createAccount')}</Button>}
+        {onCancel && <Button variant="link" className="alt" onClick={onCancel}>{t('login.backToMail')}</Button>}
         </>}
-        <p className="fine">No ads. No reading your mail. Open source.</p>
+        <p className="fine">{t('login.tagline')}</p>
       </form>
     </main>
   );

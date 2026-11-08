@@ -1,4 +1,5 @@
 import type { Address, Attachment, Draft, EmailFull } from './jmap';
+import { locale, t } from './i18n';
 
 const EMAIL = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
 
@@ -17,10 +18,12 @@ export function parseAddresses(input: string): { list: Address[]; invalid: strin
 export const formatAddress = (a: Address) => (a.name ? `${a.name} <${a.email}>` : a.email);
 export const formatAddresses = (as: Address[] | null) => (as ?? []).map(formatAddress).join(', ');
 export const displayName = (a: Address | undefined, me?: string) =>
-  a && me && a.email.toLowerCase() === me.toLowerCase() ? 'Me' : a?.name || a?.email || 'Unknown sender';
+  a && me && a.email.toLowerCase() === me.toLowerCase() ? t('mailutil.me') : a?.name || a?.email || t('mailutil.unknownSender');
 
+/** Units stay B/KB/MB in every language; the number follows it (1,5 MB in German). */
 export function fileSize(n: number) {
-  return n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+  const num = (x: number, d = 0) => x.toLocaleString(locale(), { minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: false });
+  return n < 1024 ? `${num(n)} B` : n < 1048576 ? `${num(Math.round(n / 1024))} KB` : `${num(n / 1048576, 1)} MB`;
 }
 
 // ── Large-file links (signup/files.mjs) ──────────────────
@@ -29,7 +32,7 @@ export function fileSize(n: number) {
 
 export const fileLinkHtml = (f: { url: string; name: string; size: number; expires: number | null }) =>
   `<div><a href="${escapeHtml(`${f.url}#n=${encodeURIComponent(f.name)}&s=${f.size}`)}">${escapeHtml(f.name)}</a> (${fileSize(f.size)}, ${
-    f.expires ? `download link until ${new Date(f.expires).toLocaleDateString([], { dateStyle: 'medium' })}` : 'download link'})</div>`;
+    f.expires ? t('mailutil.downloadLinkUntil', { date: new Date(f.expires).toLocaleDateString(locale(), { dateStyle: 'medium' }) }) : t('mailutil.downloadLink')})</div>`;
 
 /**
  * Large-file links in a message body (HTML or text), once each. Only links to this server (`origin`) count: anyone
@@ -131,13 +134,14 @@ export type ReplyMode = 'reply' | 'replyAll' | 'forward';
 
 /** mine: all addresses of this account (aliases too). Replies come from the one the message was sent to. */
 export function draftFor(mode: ReplyMode, e: EmailFull, me: string, mine: string[] = []): Draft {
-  const when = new Date(e.receivedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  const when = new Date(e.receivedAt).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' });
   if (mode === 'forward') {
-    const header = [`From: ${formatAddresses(e.from)}`, `Date: ${when}`, `Subject: ${e.subject ?? ''}`, `To: ${formatAddresses(e.to)}`]
+    const header = [t('mailutil.fwdFrom', { value: formatAddresses(e.from) }), t('mailutil.fwdDate', { value: when }),
+      t('mailutil.fwdSubject', { value: e.subject ?? '' }), t('mailutil.fwdTo', { value: formatAddresses(e.to) })]
       .map(escapeHtml).join('<br>');
     return {
       to: [], cc: [], subject: withPrefix('Fwd', e.subject), text: '',
-      html: `<div><br></div><div>---------- Forwarded message ----------<br>${header}</div><br>${originalHtml(e)}`,
+      html: `<div><br></div><div>${escapeHtml(t('mailutil.forwarded'))}<br>${header}</div><br>${originalHtml(e)}`,
       attachments: [...e.attachments.filter((a) => a.disposition !== 'inline'), ...embedded(e)], // forwards keep files + inline images
     };
   }
@@ -153,10 +157,17 @@ export function draftFor(mode: ReplyMode, e: EmailFull, me: string, mine: string
   const extra = mode === 'replyAll' ? uniq([...(e.to ?? []), ...(e.cc ?? [])]) : [];
   return {
     to, cc: extra, subject: withPrefix('Re', e.subject), text: '', ...(from && from.toLowerCase() !== me.toLowerCase() && { from }), attachments: embedded(e), // quoted images keep working
-    html: `<div><br></div><div>On ${escapeHtml(when)}, ${escapeHtml(displayName(e.from?.[0]))} wrote:</div><blockquote>${originalHtml(e)}</blockquote>`,
+    html: `<div><br></div><div>${escapeHtml(t('mailutil.replyLead', { when, name: displayName(e.from?.[0]) }))}</div><blockquote>${originalHtml(e)}</blockquote>`,
     inReplyTo: e.messageId ?? undefined,
     references: [...(e.references ?? []), ...(e.messageId ?? [])],
   };
+}
+
+/** Whether a line of text is the "On …, … wrote:" line above a quoted reply (in the current language). */
+export function isReplyLead(text: string | null | undefined) {
+  const [head, , tail] = t('mailutil.replyLead', { when: '\0', name: '\0' }).split('\0').map((x) => x.trim());
+  const s = text?.trim() ?? '';
+  return !!(head || tail) && s.startsWith(head) && s.endsWith(tail);
 }
 
 /** Reopen a saved draft in the editor. */
@@ -210,16 +221,16 @@ export function buildMdn(o: { from: string; to: string; subject: string; origina
   // Subject, recipient and Message-ID come from the received message, i.e. from a stranger: sanitize every one.
   const subject = oneLine(o.subject);
   const to = oneLine(o.to), from = oneLine(o.from);
-  if (!EMAIL.test(to) || !EMAIL.test(from)) throw new Error('Invalid address for a read receipt');
+  if (!EMAIL.test(to) || !EMAIL.test(from)) throw new Error(t('mailutil.badReceiptAddress'));
   const msgId = o.originalMessageId && /^[^\s<>]+@[^\s<>]+$/.test(o.originalMessageId) ? o.originalMessageId : null;
   const boundary = `mdn-${crypto.randomUUID()}`; // random per message, so no content can contain it
   const when = o.readAt.toUTCString();
   return [
-    `From: ${from}`, `To: ${to}`, `Subject: ${encodeHeader(`Read: ${subject}`)}`, `Date: ${when}`,
+    `From: ${from}`, `To: ${to}`, `Subject: ${encodeHeader(t('mailutil.receiptSubject', { subject }))}`, `Date: ${when}`,
     `Message-ID: <${oneLine(o.id)}@${oneLine(o.domain)}>`, 'MIME-Version: 1.0', 'Auto-Submitted: auto-replied',
     `Content-Type: multipart/report; report-type=disposition-notification; boundary="${boundary}"`, '',
     `--${boundary}`, 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '',
-    `Your message "${subject}" was read on ${when}.`, '',
+    t('mailutil.receiptBody', { subject, when }), '',
     `--${boundary}`, 'Content-Type: message/disposition-notification', '',
     'Reporting-UA: OpenMail', `Final-Recipient: rfc822;${from}`,
     ...(msgId ? [`Original-Message-ID: <${msgId}>`] : []),

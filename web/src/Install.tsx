@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from './Button';
 import { canInstall, changeServer, handleMailto, install, installed, shell } from './launch';
+import { t } from './i18n';
 
 export function InstallSection() {
   const [, redraw] = useState(0);
@@ -14,24 +15,24 @@ export function InstallSection() {
   const where = shell();
   return (
     <section>
-      <h3>App</h3>
+      <h3>{t('install.title')}</h3>
       {where === 'mobile' ? <>
-        <p className="fine">This app opens your mail on {location.host}.</p>
-        <Button className="start" onClick={changeServer}>Change server</Button>
+        <p className="fine">{t('install.opensOn', { host: location.host })}</p>
+        <Button className="start" onClick={changeServer}>{t('install.changeServer')}</Button>
       </> : where === 'desktop' ? (
-        <p className="fine">This app opens your mail on {location.host}. To use another server, choose File → Change Server.</p>
+        <p className="fine">{t('install.desktop', { host: location.host })}</p>
       ) : installed() ? (
-        <p className="fine">OpenMail is installed on this device.</p>
+        <p className="fine">{t('install.installed')}</p>
       ) : canInstall() ? <>
-        <Button className="start" onClick={async () => setNote((await install()) ? 'Installed. Open OpenMail from your apps from now on.' : '')}>Install the app</Button>
-        <p className="fine">Its own window, the unread count on its icon, and “Share to OpenMail” from other apps.</p>
+        <Button className="start" onClick={async () => setNote((await install()) ? t('install.done') : '')}>{t('install.install')}</Button>
+        <p className="fine">{t('install.why')}</p>
       </> : (
         <p className="fine">{/iPhone|iPad/.test(navigator.userAgent)
-          ? 'To install, tap Share, then “Add to Home Screen”.'
-          : 'To install, open your browser’s menu and choose “Install OpenMail” or “Add to Home screen”.'}</p>
+          ? t('install.ios')
+          : t('install.other')}</p>
       )}
       {!where && 'registerProtocolHandler' in navigator && (
-        <Button className="start" onClick={() => { handleMailto(); setNote('If your browser asks, allow it. Email links then open a new message here.'); }}>Open email links with OpenMail</Button>
+        <Button className="start" onClick={() => { handleMailto(); setNote(t('install.mailtoNote')); }}>{t('install.mailto')}</Button>
       )}
       {note && <p className="fine" role="status">{note}</p>}
     </section>

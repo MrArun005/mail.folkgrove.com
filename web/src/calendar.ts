@@ -1,4 +1,5 @@
 // Calendar date math and layout. Pure functions, no DOM, all in the browser's local time zone.
+import { locale } from './i18n';
 
 export interface CalEvent {
   id?: string;
@@ -119,4 +120,4 @@ export function allDayOn(events: CalEvent[], day: Date): CalEvent[] {
   return events.filter((e) => e.allDay).filter((e) => { const { start, end } = span(e); return +start < +d1 && +end > +d0; });
 }
 
-export const timeLabel = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+export const timeLabel = (d: Date) => d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });

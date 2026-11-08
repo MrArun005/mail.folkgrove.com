@@ -6,6 +6,7 @@ import { Jmap, type AppPassword } from './jmap';
 import { stepUp } from './oauth';
 import { newSecret, otpauthUrl, verifyTotp } from './totp';
 import { EncryptionSection } from './Encryption';
+import { locale, t } from './i18n';
 
 /**
  * Settings → Security. Nothing here works with the everyday session: "Manage security" asks for the password
@@ -38,15 +39,15 @@ export function SecuritySection({ username }: { username: string }) {
   return (
     // Lives inside the Settings <form>: Enter here must not save and close Settings, and nested forms aren't valid HTML.
     <section onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }}>
-      <h3>Security</h3>
+      <h3>{t('security.title')}</h3>
       {!sec ? <>
-        <p className="fine">Two-factor sign-in, app passwords, your password and encryption. You’ll be asked for your password again to change these.</p>
+        <p className="fine">{t('security.intro')}</p>
         {!asking
-          ? <Button size="sm" icon="shield" className="start" onClick={() => setAsking(true)}>Manage security</Button>
+          ? <Button size="sm" icon="shield" className="start" onClick={() => setAsking(true)}>{t('security.manage')}</Button>
           : <div className="row2">
-              <label>Your password<input className="input" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={enter} /></label>
-              {code !== null && <label>Code from your app<input className="input" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={enter} /></label>}
-              <Button size="sm" variant="primary" className="start" disabled={busy || !password || code === ''} onClick={unlock}>{busy ? 'Checking…' : 'Continue'}</Button>
+              <label>{t('security.yourPassword')}<input className="input" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={enter} /></label>
+              {code !== null && <label>{t('security.codeFromApp')}<input className="input" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={enter} /></label>}
+              <Button size="sm" variant="primary" className="start" disabled={busy || !password || code === ''} onClick={unlock}>{busy ? t('security.checking') : t('security.continue')}</Button>
             </div>}
       </> : state && <>
         <TwoFactor sec={sec} on={state.twoFactor} username={username} onChange={reload} />
@@ -69,45 +70,45 @@ function TwoFactor({ sec, on, username, onChange }: { sec: Jmap; on: boolean; us
   const qr = setup ? (() => { const q = qrcode(0, 'M'); q.addData(otpauthUrl(setup, username)); q.make(); return q.createDataURL(5, 2); })() : '';
 
   async function enable() {
-    if (!(await verifyTotp(setup!, code))) return setMsg('That code doesn’t match. Check the time on your phone and try the newest code.');
+    if (!(await verifyTotp(setup!, code))) return setMsg(t('security.codeWrong'));
     setBusy(true); setMsg('');
     try { await sec.setTwoFactor(password, otpauthUrl(setup!, username), code.trim()); setSetup(null); setCode(''); setPassword(''); onChange(); }
-    catch (e) { setMsg(`Couldn’t turn it on: ${(e as Error).message}. Check your current password.`); }
+    catch (e) { setMsg(t('security.couldntTurnOn', { error: (e as Error).message })); }
     finally { setBusy(false); }
   }
   async function disable() {
     setBusy(true); setMsg('');
     try { await sec.setTwoFactor(password, null, code.trim()); setCode(''); setPassword(''); onChange(); }
-    catch (e) { setMsg(`Couldn’t turn it off: ${(e as Error).message}. Check your password and code.`); }
+    catch (e) { setMsg(t('security.couldntTurnOff', { error: (e as Error).message })); }
     finally { setBusy(false); }
   }
 
   return (
     <div className="sec-block">
       <div className="sec-head">
-        <span><b>Two-factor sign-in</b> <span className={on ? 'pill on' : 'pill'}>{on ? 'On' : 'Off'}</span></span>
-        {!on && !setup && <Button size="sm" variant="primary" onClick={() => setSetup(newSecret())}>Turn on</Button>}
+        <span><b>{t('security.twoFactor')}</b> <span className={on ? 'pill on' : 'pill'}>{on ? t('common.on') : t('common.off')}</span></span>
+        {!on && !setup && <Button size="sm" variant="primary" onClick={() => setSetup(newSecret())}>{t('security.turnOn')}</Button>}
       </div>
-      {!on && !setup && <p className="fine">Ask for a code from an authenticator app (like Google Authenticator, 1Password or Aegis) when signing in.</p>}
+      {!on && !setup && <p className="fine">{t('security.twoFactorNote')}</p>}
       {setup && (
         <div className="totp-setup">
-          <img className="qr" src={qr} alt="QR code for your authenticator app" />
+          <img className="qr" src={qr} alt={t('security.qr')} />
           <div className="steps">
-            <p>1. Scan this with your authenticator app, or enter the key: <code className="key">{setup.match(/.{1,4}/g)!.join(' ')}</code></p>
-            <label>2. Enter the 6-digit code it shows<input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} /></label>
-            <label>3. Your current password<input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+            <p>{t('security.step1')} <code className="key">{setup.match(/.{1,4}/g)!.join(' ')}</code></p>
+            <label>{t('security.step2')}<input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} /></label>
+            <label>{t('security.step3')}<input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
             <div className="actions">
-              <Button size="sm" onClick={() => { setSetup(null); setMsg(''); }}>Cancel</Button>
-              <Button size="sm" variant="primary" disabled={busy || !code || !password} onClick={enable}>{busy ? 'Turning on…' : 'Turn on two-factor'}</Button>
+              <Button size="sm" onClick={() => { setSetup(null); setMsg(''); }}>{t('common.cancel')}</Button>
+              <Button size="sm" variant="primary" disabled={busy || !code || !password} onClick={enable}>{busy ? t('security.turningOn') : t('security.turnOnTwoFactor')}</Button>
             </div>
           </div>
         </div>
       )}
       {on && (
         <div className="row2">
-          <label>Current code<input className="input" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></label>
-          <label>Current password<input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-          <Button size="sm" className="start" disabled={busy || !code || !password} onClick={disable}>Turn off two-factor</Button>
+          <label>{t('security.currentCode')}<input className="input" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></label>
+          <label>{t('security.currentPassword')}<input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+          <Button size="sm" className="start" disabled={busy || !code || !password} onClick={disable}>{t('security.turnOffTwoFactor')}</Button>
         </div>
       )}
       {msg && <p className="error" role="alert">{msg}</p>}
@@ -120,34 +121,35 @@ function AppPasswords({ sec, list, onChange }: { sec: Jmap; list: AppPassword[];
   const [shown, setShown] = useState<{ name: string; secret: string } | null>(null);
   const [msg, setMsg] = useState('');
   useEffect(() => () => setShown(null), []);
+  const forName = t('security.passwordFor', { name: '\0' }).split('\0'); // the name goes in bold, wherever the language puts it
   return (
     <div className="sec-block">
-      <div className="sec-head"><b>App passwords</b></div>
-      <p className="fine">For mail apps that can’t use two-factor sign-in (Thunderbird, Outlook, a phone’s built-in mail). Each one can be revoked on its own.</p>
+      <div className="sec-head"><b>{t('security.appPasswords')}</b></div>
+      <p className="fine">{t('security.appPasswordsNote')}</p>
       {shown && (
         <p className="banner banner--safe" role="status">
-          <span className="grow">Password for <b>{shown.name}</b>: <code className="key">{shown.secret}</code> It won’t be shown again.</span>
-          <Button variant="link" onClick={() => navigator.clipboard?.writeText(shown.secret)}>Copy</Button>
+          <span className="grow">{forName[0]}<b>{shown.name}</b>{forName[1]} <code className="key">{shown.secret}</code> {t('security.notAgain')}</span>
+          <Button variant="link" onClick={() => navigator.clipboard?.writeText(shown.secret)}>{t('common.copy')}</Button>
         </p>
       )}
       {list.length > 0 && (
         <ul className="rule-list">
           {list.map((a) => (
             <li key={a.id}>
-              <span>{a.description}{a.createdAt && <span className="fine"> · added {new Date(a.createdAt).toLocaleDateString()}</span>}</span>
-              <Button variant="quiet" size="sm" icon="trash" label={`Revoke ${a.description}`}
-                onClick={async () => { if (await confirmIt({ title: `Revoke “${a.description}”?`, body: 'Apps using it are signed out.', confirm: 'Revoke', danger: true })) { await sec.deleteAppPassword(a.id); onChange(); } }} />
+              <span>{a.description}{a.createdAt && <span className="fine"> · {t('security.added', { date: new Date(a.createdAt).toLocaleDateString(locale()) })}</span>}</span>
+              <Button variant="quiet" size="sm" icon="trash" label={t('security.revoke', { name: a.description })}
+                onClick={async () => { if (await confirmIt({ title: t('security.revokeTitle', { name: a.description }), body: t('security.revokeBody'), confirm: t('security.revokeConfirm'), danger: true })) { await sec.deleteAppPassword(a.id); onChange(); } }} />
             </li>
           ))}
         </ul>
       )}
       <div className="inline-form">
-        <input className="input" placeholder="Name, e.g. Thunderbird on my laptop" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input" placeholder={t('security.appNamePlaceholder')} value={name} onChange={(e) => setName(e.target.value)} />
         <Button size="md" onClick={async () => {
-        if (!name.trim()) return setMsg('Give it a name, like “Thunderbird on my laptop”.');
+        if (!name.trim()) return setMsg(t('security.appNameNeeded'));
         try { const secret = await sec.createAppPassword(name.trim()); setShown({ name: name.trim(), secret }); setName(''); setMsg(''); onChange(); }
-        catch (err) { setMsg(`Couldn’t create it: ${(err as Error).message}`); }
-        }}>Create</Button>
+        catch (err) { setMsg(t('security.couldntCreate', { error: (err as Error).message })); }
+        }}>{t('security.create')}</Button>
       </div>
       {msg && <p className="error" role="alert">{msg}</p>}
     </div>
@@ -160,20 +162,20 @@ function ChangePassword({ sec }: { sec: Jmap }) {
   const [again, setAgain] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   async function change() {
-      if (next.length < 12) return setMsg({ ok: false, text: 'Use at least 12 characters. A few unrelated words work well.' });
-      if (next !== again) return setMsg({ ok: false, text: 'The new passwords don’t match.' });
-      try { await sec.changePassword(current, next); setCurrent(''); setNext(''); setAgain(''); setMsg({ ok: true, text: 'Password changed.' }); }
-      catch (err) { setMsg({ ok: false, text: `Couldn’t change it: ${(err as Error).message}. Check your current password.` }); }
+      if (next.length < 12) return setMsg({ ok: false, text: t('security.tooShort') });
+      if (next !== again) return setMsg({ ok: false, text: t('security.noMatch') });
+      try { await sec.changePassword(current, next); setCurrent(''); setNext(''); setAgain(''); setMsg({ ok: true, text: t('security.changed') }); }
+      catch (err) { setMsg({ ok: false, text: t('security.couldntChange', { error: (err as Error).message }) }); }
   }
   return (
     <div className="sec-block">
-      <div className="sec-head"><b>Password</b></div>
+      <div className="sec-head"><b>{t('security.password')}</b></div>
       <div className="row3">
-        <label>Current<input className="input" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} /></label>
-        <label>New<input className="input" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} /></label>
-        <label>New, again<input className="input" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} /></label>
+        <label>{t('security.current')}<input className="input" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} /></label>
+        <label>{t('security.new')}<input className="input" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} /></label>
+        <label>{t('security.again')}<input className="input" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} /></label>
       </div>
-      <Button size="sm" className="start" disabled={!current || !next} onClick={change}>Change password</Button>
+      <Button size="sm" className="start" disabled={!current || !next} onClick={change}>{t('security.changePassword')}</Button>
       {msg && <p className={msg.ok ? 'fine ok' : 'error'} role="status">{msg.text}</p>}
     </div>
   );

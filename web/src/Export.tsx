@@ -4,6 +4,7 @@ import { confirmIt, notify } from './Dialog';
 import { loadScript } from './Filters';
 import type { Jmap } from './jmap';
 import { labelsFor, mboxEntry, mergeCalendars } from './exporter';
+import { t } from './i18n';
 
 const PARALLEL = 4; // downloads in flight at once
 const PART = 1024 ** 3; // without a save dialog, mail downloads in 1 GB files (the browser holds each one in memory)
@@ -39,18 +40,18 @@ function blobSink(name: string): Sink {
  */
 export function ExportSection({ client }: { client: Jmap }) {
   const [state, setState] = useState<{ done: number; failed: number; total: number; running: boolean } | null>(null);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState(''), [bad, setBad] = useState(false);
   const stop = useRef(false);
 
   async function run() {
-    stop.current = false; setMsg('');
+    stop.current = false; setMsg(''); setBad(false);
     const name = `${client.username.replace(/[^\w.@-]/g, '_')}-${new Date().toISOString().slice(0, 10)}`;
     // The save dialog first: browsers only open it straight from the click.
     const pick = (window as unknown as { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
     let sink: Sink;
     if (pick) {
       let handle: FileSystemFileHandle;
-      try { handle = await pick({ suggestedName: `${name}.mbox`, types: [{ description: 'Mailbox (mbox)', accept: { 'application/mbox': ['.mbox'] } }] }); }
+      try { handle = await pick({ suggestedName: `${name}.mbox`, types: [{ description: t('export.mboxType'), accept: { 'application/mbox': ['.mbox'] } }] }); }
       catch { return; } // cancelled
       const w = await handle.createWritable();
       sink = { write: (b) => w.write(b.slice().buffer as ArrayBuffer), close: () => w.close() };
@@ -82,21 +83,21 @@ export function ExportSection({ client }: { client: Jmap }) {
       await Promise.all(inFlight);
       await sink.close();
       if (fatal) throw fatal;
-      if (stop.current) return setMsg(`Stopped. The file has the first ${done.toLocaleString()} messages.`);
+      if (stop.current) return setMsg(t('export.stopped', { count: done }));
 
       // The small files. Each one on its own: one missing doesn't lose the others.
-      const part = async (what: string, fn: () => Promise<void>) => { try { await fn(); } catch (e) { problems.push(`${what} (${(e as Error).message})`); } };
-      await part('contacts', async () => {
+      const part = async (what: string, fn: () => Promise<void>) => { try { await fn(); } catch (e) { problems.push(t('export.problem', { what, error: (e as Error).message })); } };
+      await part(t('export.contacts'), async () => {
         const cards = await client.davObjects('card');
         if (cards.length) save(new Blob(cards.map((c) => c.trimEnd() + '\r\n'), { type: 'text/vcard' }), `${name}-contacts.vcf`);
       });
-      await part('calendar', async () => {
+      await part(t('export.calendar'), async () => {
         const events = await client.davObjects('cal');
         if (events.length) save(new Blob([mergeCalendars(events)], { type: 'text/calendar' }), `${name}-calendar.ics`);
       });
-      await part('settings', async () => {
+      await part(t('export.settings'), async () => {
         const [script, identities, aliases] = await Promise.all([loadScript(client), client.identities(), client.aliases().catch(() => null)]);
-        const device = Object.fromEntries(['theme', 'palette', 'text', 'density', 'reading'].map((k) => { try { return [k, localStorage.getItem(`om:${k}`)]; } catch { return [k, null]; } }));
+        const device = Object.fromEntries(['theme', 'palette', 'text', 'density', 'reading', 'lang', 'pane'].map((k) => { try { return [k, localStorage.getItem(`om:${k}`)]; } catch { return [k, null]; } }));
         save(new Blob([JSON.stringify({
           account: client.username, exportedAt: new Date().toISOString(),
           identities: identities.map(({ name: n, email, textSignature, htmlSignature }) => ({ name: n, email, textSignature, htmlSignature })),
@@ -104,30 +105,28 @@ export function ExportSection({ client }: { client: Jmap }) {
           maskedAddresses: aliases, thisDevice: device,
         }, null, 2)], { type: 'application/json' }), `${name}-settings.json`);
       });
-      setMsg(`Done. ${done.toLocaleString()} messages saved${failed ? `, ${failed.toLocaleString()} couldn’t be read` : ''}.`
-        + (problems.length ? ` Not saved: ${problems.join('; ')}.` : ''));
-    } catch (e) { setMsg(`Export stopped: ${(e as Error).message}`); }
+      setBad(problems.length > 0);
+      setMsg((failed ? t('export.doneFailed', { count: done, failed }) : t('export.done', { count: done }))
+        + (problems.length ? ' ' + t('export.notSaved', { list: problems.join('; ') }) : ''));
+    } catch (e) { setBad(true); setMsg(t('export.error', { error: (e as Error).message })); }
     finally { setState((s) => s && { ...s, running: false }); }
   }
 
   const pct = state ? Math.min(100, Math.round(((state.done + state.failed) / Math.max(state.total, 1)) * 100)) : 0;
   return (
     <section>
-      <h3>Export your data</h3>
-      <p className="fine">
-        Download a copy of everything: all your mail as one .mbox file (with folders, stars and unread), your contacts
-        (.vcf), your calendar (.ics) and your settings (.json). Any mail app can open the .mbox; Import mail here reads it back.
-      </p>
+      <h3>{t('export.title')}</h3>
+      <p className="fine">{t('export.intro')}</p>
       {!state?.running
-        ? <Button size="sm" icon="download" className="start" onClick={run}>Export everything</Button>
+        ? <Button size="sm" icon="download" className="start" onClick={run}>{t('export.button')}</Button>
         : (
           <div className="import-progress" role="status" aria-live="polite">
             <div className="bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div>
-            <span className="fine">{state.done.toLocaleString()} of {state.total.toLocaleString()} messages{state.failed ? ` · ${state.failed} skipped` : ''} · {pct}%</span>
-            <Button size="sm" onClick={() => { stop.current = true; }}>Stop</Button>
+            <span className="fine">{t(state.failed ? 'export.progressSkipped' : 'export.progress', { done: state.done, count: state.total, failed: state.failed, pct })}</span>
+            <Button size="sm" onClick={() => { stop.current = true; }}>{t('export.stop')}</Button>
           </div>
         )}
-      {msg && <p className={/stopped:|not saved/i.test(msg) ? 'error' : 'fine ok'} role="status">{msg}</p>}
+      {msg && <p className={bad ? 'error' : 'fine ok'} role="status">{msg}</p>}
     </section>
   );
 }
@@ -148,12 +147,12 @@ export function DeleteAccountSection({ client, onDeleted }: { client: Jmap; onDe
 
   async function remove() {
     if (!ready || busy) return;
-    if (!(await confirmIt({ title: 'Delete your account for good?', danger: true, confirm: 'Delete my account',
-      body: `All mail, contacts, calendars and settings in ${me} are erased from this server. This can’t be undone. The address will never be given to anyone else.` }))) return;
+    if (!(await confirmIt({ title: t('deleteacct.confirmTitle'), danger: true, confirm: t('deleteacct.confirm'),
+      body: t('deleteacct.confirmBody', { me }) }))) return;
     setBusy(true); setError('');
     try {
       await client.deleteAccount({ password, confirm: typed.trim(), ...(code && { code: code.trim() }) });
-      await notify('Your account has been deleted', 'You’re now signed out.');
+      await notify(t('deleteacct.deletedTitle'), t('deleteacct.deletedBody'));
       onDeleted();
     } catch (e) {
       if ((e as { code?: string }).code === 'code_required') setCode('');
@@ -164,19 +163,19 @@ export function DeleteAccountSection({ client, onDeleted }: { client: Jmap; onDe
   return (
     // Inside the Settings <form>: Enter here must not save and close Settings.
     <section className="delete-account" onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') { e.preventDefault(); remove(); } }}>
-      <h3>Delete your account</h3>
-      <p className="fine">Erases your mail, contacts, calendars and settings from this server. Export your data first if you want a copy. Your address is retired, never reused.</p>
+      <h3>{t('deleteacct.title')}</h3>
+      <p className="fine">{t('deleteacct.intro')}</p>
       {!open
-        ? <Button size="sm" icon="trash" className="start" onClick={() => setOpen(true)}>Delete account…</Button>
+        ? <Button size="sm" icon="trash" className="start" onClick={() => setOpen(true)}>{t('deleteacct.open')}</Button>
         : <>
             <div className="row2">
-              <label>Your password<input className="input" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-              {code !== null && <label>Code from your app<input className="input" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} /></label>}
+              <label>{t('deleteacct.password')}<input className="input" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+              {code !== null && <label>{t('deleteacct.code')}<input className="input" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} /></label>}
             </div>
-            <label>Type your address, {me}, to confirm<input className="input" autoComplete="off" spellCheck={false} value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={me} /></label>
+            <label>{t('deleteacct.typeAddress', { me })}<input className="input" autoComplete="off" spellCheck={false} value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={me} /></label>
             <div className="actions">
-              <Button size="sm" onClick={() => { setOpen(false); setPassword(''); setTyped(''); setCode(null); setError(''); }}>Cancel</Button>
-              <Button size="sm" disabled={!ready || busy} onClick={remove}>{busy ? 'Deleting…' : 'Delete account'}</Button>
+              <Button size="sm" onClick={() => { setOpen(false); setPassword(''); setTyped(''); setCode(null); setError(''); }}>{t('common.cancel')}</Button>
+              <Button size="sm" disabled={!ready || busy} onClick={remove}>{busy ? t('deleteacct.deleting') : t('deleteacct.submit')}</Button>
             </div>
           </>}
       {error && <p className="error" role="alert">{error}</p>}

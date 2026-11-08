@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from './Button';
 import { notify } from './Dialog';
+import { t } from './i18n';
 import type { Jmap, SendingStatus } from './jmap';
 
 /**
@@ -24,9 +25,9 @@ export function SendingBlocked({ client }: { client: Jmap }) {
     try {
       await client.unblockSending();
       setS({ suspended: false });
-      await notify('Sending is back on', 'Please keep within the sending limits. If it happens again this week, an administrator has to switch it back on.');
+      await notify(t('sending.backOn'), t('sending.backOnBody'));
     } catch (e) {
-      await notify('Sending is still off', (e as Error).message);
+      await notify(t('sending.stillOff'), (e as Error).message);
       client.sendingStatus().then(setS, () => {});
     } finally { setBusy(false); }
   }
@@ -35,12 +36,12 @@ export function SendingBlocked({ client }: { client: Jmap }) {
   return (
     <div className="banner banner--warn" role="alert">
       <span className="grow">
-        <b>Sending is switched off for your account.</b> {s.reason} You can still read your mail.{' '}
-        {s.unblock === 'ok' && 'If that wasn’t you, change your password first.'}
-        {s.unblock === 'wait' && `You can ask to switch it back on in about ${hours} hour${hours === 1 ? '' : 's'}.`}
-        {s.unblock === 'admin' && 'An administrator has to switch it back on. Write to them from another address and say what happened.'}
+        <b>{t('sending.switchedOff')}</b> {s.reason} {t('sending.canStillRead')}{' '}
+        {s.unblock === 'ok' && t('sending.changePassword')}
+        {s.unblock === 'wait' && t('sending.waitHours', { count: hours })}
+        {s.unblock === 'admin' && t('sending.admin')}
       </span>
-      {s.unblock === 'ok' && <Button variant="link" disabled={busy} onClick={unblock}>{busy ? 'Switching on…' : 'Switch sending back on'}</Button>}
+      {s.unblock === 'ok' && <Button variant="link" disabled={busy} onClick={unblock}>{busy ? t('sending.switching') : t('sending.switchBackOn')}</Button>}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 // Filters ("rules") as data, compiled to a Sieve script (RFC 5228) that the mail server runs on delivery.
 // The rules are also stored inside the script as a JSON comment, so the app can read them back exactly.
+import { t, type Key, type Vars } from './i18n';
+import { en } from './i18n/en';
 
 export type RuleAction = 'move' | 'read' | 'star' | 'trash' | 'block' | 'forward';
 export interface Rule {
@@ -41,17 +43,24 @@ const MARK = '# openmail-rules: ';
 
 const q = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
-export function describeRule(r: Rule): string {
-  const when = [r.from && (r.fromExact ? `from is “${r.from}”` : `from contains “${r.from}”`), r.to && `to contains “${r.to}”`, r.subject && `subject contains “${r.subject}”`]
-    .filter(Boolean).join(' and ') || 'every message';
-  const then = { move: `move to ${r.folder}`, read: 'mark as read', star: 'star it', trash: 'delete it', block: 'block it (send to Junk)', forward: `forward to ${r.forwardTo}` }[r.action];
-  return `If ${when}, ${then}`;
+type Tr = (k: Key, v?: Vars) => string;
+/** The script is data, not interface: its comments stay English whatever language is on screen. */
+const english: Tr = (k, v) => (en[k] as string).replace(/\{(\w+)\}/g, (all, n: string) => (v && n in v ? String(v[n]) : all));
+
+export function describeRule(r: Rule, tr: Tr = t): string {
+  const when = [r.from && tr(r.fromExact ? 'rules.fromIs' : 'rules.fromContains', { value: r.from }), r.to && tr('rules.toContains', { value: r.to }),
+    r.subject && tr('rules.subjectContains', { value: r.subject })].filter(Boolean).join(tr('rules.and')) || tr('rules.every');
+  const then = {
+    move: () => tr('rules.move', { folder: r.folder ?? '' }), read: () => tr('rules.read'), star: () => tr('rules.star'), trash: () => tr('rules.trash'),
+    block: () => tr('rules.block'), forward: () => tr('rules.forward', { address: r.forwardTo ?? '' }),
+  }[r.action]();
+  return tr('rules.if', { when, then });
 }
 
 export function validateRule(r: Rule): string | null {
-  if (!r.from?.trim() && !r.to?.trim() && !r.subject?.trim()) return 'Add at least one condition (from, to or subject).';
-  if (r.action === 'move' && !r.folder) return 'Choose a folder to move messages to.';
-  if (r.action === 'forward' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.forwardTo ?? '')) return 'Enter a valid address to forward to.';
+  if (!r.from?.trim() && !r.to?.trim() && !r.subject?.trim()) return t('rules.needCondition');
+  if (r.action === 'move' && !r.folder) return t('rules.needFolder');
+  if (r.action === 'forward' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.forwardTo ?? '')) return t('rules.needAddress');
   return null;
 }
 
@@ -90,7 +99,7 @@ export function toSieve(data: ScriptData, folders: { trash: string; junk: string
       block: () => `fileinto ${q(folders.junk)}; addflag "\\\\Seen"; stop;`,
       forward: () => `redirect :copy ${q(r.forwardTo!)};`,
     }[r.action]();
-    lines.push(`# ${describeRule(r).replace(/\n/g, ' ')}`, `if allof(${tests.join(', ')}) { ${body} }`, '');
+    lines.push(`# ${describeRule(r, english).replace(/\n/g, ' ')}`, `if allof(${tests.join(', ')}) { ${body} }`, '');
   }
   emitVacation();
   if (data.screener?.on) {

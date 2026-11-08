@@ -62,7 +62,11 @@ describe('t()', () => {
 
 // No English left in JSX: text between tags, and the common text props. Strings that are the same in every language
 // (the brand, symbols, technical names) go in ALLOWED.
-const ALLOWED = new Set(['OpenMail']);
+const ALLOWED = new Set([
+  'OpenMail',                               // the brand
+  'https://…',                              // example link in the Add link box
+  '-----BEGIN PGP PUBLIC KEY BLOCK-----',   // OpenPGP armor, shown as a placeholder
+]);
 describe('no hard-coded English in the interface', () => {
   const dir = join(__dirname, '..');
   const files = readdirSync(dir).filter((f) => f.endsWith('.tsx'));
@@ -80,7 +84,7 @@ describe('no hard-coded English in the interface', () => {
     const found: string[] = [];
     for (const re of patterns) for (const m of src.matchAll(re)) {
       const s = (m[1] ?? m[2] ?? '').trim();
-      if (!s || ALLOWED.has(s) || /=>|&&|\|\||;|===|\)\s*$|^[(:)?]/.test(s)) continue; // code, not text
+      if (!s || ALLOWED.has(s) || /^[a-z][\w-]*(\.\w+)*$/.test(s) /* a catalog key or a setting value */ || /=>|&&|\|\||;|===|\)\s*$|^[(:)?]/.test(s)) continue; // code, not text
       found.push(s);
     }
     expect(found).toEqual([]);
