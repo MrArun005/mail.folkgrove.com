@@ -73,11 +73,16 @@ describe('who sent it', () => {
   it('verified only when DMARC passed for the From domain', () => {
     expect(trust(m('Ann', 'ann@example.org', ar('dmarc=pass header.from=example.org')), 'me@ours.test').verified).toBe(true);
     expect(trust(m('Ann', 'ann@example.org', ar('dkim=pass header.d=example.org')), 'me@ours.test').verified).toBe(false); // DKIM alone: no mark
-    expect(trust(m('Bo', 'bo@ours.test'), 'me@ours.test').verified).toBe(true); // between accounts here
+    expect(trust(m('Bo', 'bo@ours.test'), 'me@ours.test').verified).toBe(false); // between accounts here: no outside check, no mark
   });
   it('a big brand in the name on unverified mail is a warning', () => {
     expect(trust(m('PayPal Security', 'service@paypa1.example', ar('dmarc=fail header.from=paypa1.example')), 'me@ours.test').brand).toBe('PayPal');
     expect(trust(m('PayPal', 'service@paypal.com', ar('dmarc=pass header.from=paypal.com')), 'me@ours.test').brand).toBeNull();
     expect(trust(m('Grapple Inc', 'x@grapple.example', ar('dmarc=fail')), 'me@ours.test').brand).toBeNull(); // word, not substring
+    // A lookalike domain that passes its own DMARC still gets the warning; the brand's real domain doesn't.
+    expect(trust(m('PayPal', 'help@paypal-support.example', ar('dmarc=pass header.from=paypal-support.example')), 'me@ours.test').brand).toBe('PayPal');
+    expect(trust(m('PayPal', 'service@mail.paypal.com', ar('dmarc=pass header.from=mail.paypal.com')), 'me@ours.test').brand).toBeNull();
+    // A colleague here naming themselves "PayPal" is warned about too (nothing outside checked it).
+    expect(trust(m('PayPal Support', 'bo@ours.test'), 'me@ours.test').brand).toBe('PayPal');
   });
 });

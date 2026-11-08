@@ -47,7 +47,7 @@ export function sanitizeSvg(text) {
     }
     return out;
   };
-  const re = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<![^>]*>|<\?[\s\S]*?\?>|<\/\s*([a-zA-Z][\w:.-]*)\s*>|<([a-zA-Z][\w:.-]*)((?:\s+[^\s=/>]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*(\/?)>|([^<]+)|</g;
+  const re = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<![^>]*>|<\?[\s\S]*?\?>|<\/\s*([a-zA-Z][\w:.-]*)\s*>|<([a-zA-Z][\w:.-]*)((?:\s+[^\s=/>"'<]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*(\/?)>|([^<]+)|</g;
   let out = '', root = false, skip = 0;
   const open = [];
   for (const [, close, name, rawAttrs, selfClose, chars] of text.matchAll(re)) {
@@ -93,13 +93,19 @@ async function defaultFetch(url) {
       res.on('end', () => ok(Buffer.concat(parts).toString('utf8')));
       res.on('error', fail);
     });
-    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('timeout', () => req.destroy(new Error('timeout'))); // 5 s of silence
+    // And 8 s in all, however slowly the bytes keep coming.
+    const deadline = setTimeout(() => req.destroy(new Error('took too long')), 8000);
+    req.on('close', () => clearTimeout(deadline));
     req.on('error', fail);
     req.end();
   });
 }
 
-export function bimiRoutes({ RateLimiter, ipOf, txt = resolveTxt, fetchSvg = defaultFetch, now = Date.now }) {
+export function bimiRoutes({ RateLimiter, ipOf, txt = resolveTxt, fetchSvg = defaultFetch, now = Date.now, enabled = true }) {
+  // ponytail: no VMC check (the trademark certificate Gmail and Apple require), so any domain with a strict DMARC policy
+  // could show any brand's logo, and a fresh lookup tells the sender's DNS that someone opened the mail. Off unless
+  // BIMI_LOGOS=on (server.mjs); the verified mark and the brand warning don't need it.
   const lookups = new RateLimiter(30, 60e3); // fresh lookups (not cached answers) per network a minute
   const cache = new Map(); // domain → { svg: string | null, until }
   const record = async (name) => (await txt(name).catch(() => [])).map((chunks) => chunks.join(''));
@@ -131,6 +137,7 @@ export function bimiRoutes({ RateLimiter, ipOf, txt = resolveTxt, fetchSvg = def
   return async function handle(req, res, url) {
     const m = url.pathname.match(/^\/api\/bimi\/([^/]{1,253})$/);
     if (!m) return false;
+    if (!enabled) return reply(res, 404, '', undefined, 86400), true;
     if (req.method !== 'GET' && req.method !== 'HEAD') return reply(res, 405), true;
     const domain = decodeURIComponent(m[1]).toLowerCase().replace(/\.$/, '');
     if (!/^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/.test(domain)) return reply(res, 400), true;

@@ -33,6 +33,7 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `MAX_FILE_BYTES` | `2147483648` (2 GiB) | Biggest file one link can hold. |
 | `FILES_QUOTA_BYTES` | `5368709120` (5 GiB) | All of one user's live links together. Their Stalwart storage quota applies as well. |
 | `FILES_PER_HOUR`, `DOWNLOADS_PER_HOUR` | `20`, `200` | Uploads per user, and downloads per client IP (IPv6: per /64), per hour. |
+| `BIMI_LOGOS` | off | `on` shows senders' brand logos (BIMI). Off by default: without checking the VMC trademark certificate a lookalike domain could show a real brand's logo, and a fresh lookup tells the sender's DNS the mail was opened. |
 | `CUSTOM_DOMAINS` | on | `off` hides Settings → Your domain (`/api/domains` answers 404). |
 | `MAX_DOMAINS`, `MAX_DOMAIN_ADDRESSES` | `3`, `10` | Domains per account; addresses per domain (the owner's own name included). |
 | `RESERVED_DOMAINS` | | Extra domains (and their subdomains) users may not add, comma-separated. `DOMAIN` and the mail host are always refused. |

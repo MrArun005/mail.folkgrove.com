@@ -173,12 +173,24 @@ export function findWhen(text: string, ref: Date, lang = 'en'): { start: Date; a
 
 // ── Who sent it ───────────────────────────────────────────────────────
 
-// ponytail: names phishers borrow most. A display name with one of them on mail that fails DMARC gets a warning;
-// lookalike domains that pass DMARC (paypal-support.example) are not caught by this.
-const BRANDS = ['PayPal', 'Apple', 'iCloud', 'Amazon', 'Google', 'Gmail', 'Microsoft', 'Outlook', 'Office 365', 'Netflix', 'Facebook',
-  'Meta', 'Instagram', 'WhatsApp', 'LinkedIn', 'DHL', 'FedEx', 'UPS', 'USPS', 'Royal Mail', 'DocuSign', 'Dropbox', 'Coinbase',
-  'Binance', 'eBay', 'Spotify', 'Bank of America', 'Chase', 'Wells Fargo', 'Citibank', 'HSBC', 'Barclays', 'Visa', 'Mastercard',
-  'American Express', 'IRS', 'HMRC', 'Steam', 'Adobe', 'OpenMail'];
+// Names phishers borrow most, with the domains each really sends from. A display name claiming one of them, on mail
+// from any other domain, gets a warning even when that domain passes DMARC (paypal-support.example can pass its own).
+// ponytail: a fixed list; a brand not on it gets no warning.
+const BRANDS: [string, string[]][] = [
+  ['PayPal', ['paypal.com']], ['Apple', ['apple.com', 'icloud.com']], ['iCloud', ['icloud.com', 'apple.com']],
+  ['Amazon', ['amazon.com', 'amazon.in', 'amazon.co.uk', 'amazon.de', 'amazonses.com']], ['Google', ['google.com', 'gmail.com']],
+  ['Gmail', ['gmail.com', 'google.com']], ['Microsoft', ['microsoft.com', 'outlook.com']], ['Outlook', ['outlook.com', 'microsoft.com']],
+  ['Office 365', ['microsoft.com']], ['Netflix', ['netflix.com']], ['Facebook', ['facebook.com', 'facebookmail.com']],
+  ['Meta', ['meta.com', 'facebookmail.com']], ['Instagram', ['instagram.com', 'facebookmail.com']], ['WhatsApp', ['whatsapp.com']],
+  ['LinkedIn', ['linkedin.com']], ['DHL', ['dhl.com']], ['FedEx', ['fedex.com']], ['UPS', ['ups.com']], ['USPS', ['usps.com']],
+  ['Royal Mail', ['royalmail.com']], ['DocuSign', ['docusign.net', 'docusign.com']], ['Dropbox', ['dropbox.com']],
+  ['Coinbase', ['coinbase.com']], ['Binance', ['binance.com']], ['eBay', ['ebay.com']], ['Spotify', ['spotify.com']],
+  ['Bank of America', ['bankofamerica.com', 'bofa.com']], ['Chase', ['chase.com']], ['Wells Fargo', ['wellsfargo.com']],
+  ['Citibank', ['citi.com', 'citibank.com']], ['HSBC', ['hsbc.com', 'hsbc.co.uk']], ['Barclays', ['barclays.com', 'barclays.co.uk']],
+  ['Visa', ['visa.com']], ['Mastercard', ['mastercard.com']], ['American Express', ['americanexpress.com', 'aexp.com']],
+  ['IRS', ['irs.gov']], ['HMRC', ['hmrc.gov.uk']], ['Steam', ['steampowered.com']], ['Adobe', ['adobe.com']],
+];
+const ownedBy = (domain: string, real: string[]) => real.some((d) => domain === d || domain.endsWith('.' + d));
 
 export interface Trust {
   domain: string;
@@ -191,7 +203,9 @@ export function trust(m: Pick<EmailFull, 'from' | 'authResults' | 'received'>, m
   const from = m.from?.[0];
   if (!from?.email) return { domain: '', verified: false, brand: null };
   const domain = from.email.slice(from.email.lastIndexOf('@') + 1).toLowerCase();
-  const verified = senderAuthenticated(from.email, m.authResults?.[0], me.split('@')[1] ?? '', { received: m.received ?? null, dmarcOnly: true });
-  const brand = verified ? null : BRANDS.find((b) => new RegExp(`(?<![\\p{L}\\d])${esc(b)}(?![\\p{L}\\d])`, 'iu').test(from.name ?? '')) ?? null;
+  // The mark means an outside check passed: mail between accounts here (no Authentication-Results) gets none.
+  const verified = !!m.authResults?.[0] && senderAuthenticated(from.email, m.authResults[0], me.split('@')[1] ?? '', { received: m.received ?? null, dmarcOnly: true });
+  const claimed = BRANDS.find(([b]) => new RegExp(`(?<![\\p{L}\\d])${esc(b)}(?![\\p{L}\\d])`, 'iu').test(from.name ?? ''));
+  const brand = claimed && !(verified && ownedBy(domain, claimed[1])) ? claimed[0] : null;
   return { domain, verified, brand };
 }

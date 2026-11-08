@@ -64,7 +64,8 @@ export function configFromEnv(env = process.env) {
     secureCookies: env.INSECURE_COOKIES !== 'true', // only for plain-http testing
     maxAliasesTotal: Number(env.MAX_ALIASES_TOTAL || 1000), // lifetime, retired included
     aliasesPerHour: Number(env.ALIASES_PER_HOUR || 30),
-    retiredFile: env.RETIRED_FILE || null, // names of deleted accounts, never given out again (account.mjs)
+    retiredFile: env.RETIRED_FILE || null,
+    bimiLogos: env.BIMI_LOGOS === 'on', // brand logos (bimi.mjs): off until VMC certificates are checked // names of deleted accounts, never given out again (account.mjs)
     // Admin console (/admin): usernames on DOMAIN allowed to use it. Empty = console off.
     admins: (env.ADMINS || '').split(',').map((s) => s.trim().toLowerCase().replace(/@.*$/, '')).filter(Boolean),
     // Large-file links (files.mjs): where links are kept, biggest file, total per user, uploads per user and downloads
@@ -326,7 +327,7 @@ export function createApp(cfg) {
   // Re-check every claimed domain's TXT record every 6 hours (a missing one pauses the domain after 7 days).
   if (domains) setInterval(() => domains.recheckAll().catch((e) => console.error('domains:', e.message)), 6 * 3600e3).unref();
   const wkd = wkdRoutes({ cfg, jmap, getDomainId, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
-  const bimi = bimiRoutes({ RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
+  const bimi = bimiRoutes({ RateLimiter, ipOf: (req) => ipKey(clientIp(req)), enabled: cfg.bimiLogos === true });
   const sharing = sharingRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter });
   const mailJmap = (calls) => jmap(calls, ['urn:ietf:params:jmap:mail']); // retention reads and destroys mail
   const retention = retentionRoutes({ cfg, jmap: mailJmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)), store: retentionStore });
