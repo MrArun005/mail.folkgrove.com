@@ -482,6 +482,29 @@ if [ -n "$hook_id" ]; then api "[[\"x:MtaHook/set\",{\"update\":{$(jstr "$hook_i
 else api "[[\"x:MtaHook/set\",{\"create\":{\"h\":{$hook}}},\"h\"]]" >/dev/null; fi
 api "[[\"x:MtaStageAuth/set\",{\"update\":{\"singleton\":{\"mustMatchSender\":{\"match\":{\"0\":{\"if\":\"authenticated_as == '$admin_login'\",\"then\":\"false\"}},\"else\":\"true\"}}}},\"a\"]]" >/dev/null
 
+# abuse@ and postmaster@: one team mailbox (a Stalwart group). Feedback loops (Yahoo, Microsoft JMRP) and people send
+# complaints to abuse@, DMARC and TLS reports go to postmaster@. The account service reads it for spam complaints
+# (signup/arf.mjs) and keeps the ADMINS in it, so they open it from the web app's account menu; the first mailbox
+# below joins it too. An existing postmaster@ (older installs put it on the first mailbox) stays where it is.
+domains=$(api '[["x:Domain/get",{"ids":null,"properties":["name"]},"d"]]')
+domain_id=$(jget "next(d['id'] for d in r[0][1]['list'] if d['name'] == '$MAIL_DOMAIN')" <<<"$domains")
+accounts=$(api '[["x:Account/get",{"ids":null,"properties":["name","aliases"]},"a"]]')
+taken() { jget "any(a.get('name') == '$1' or any(x['name'] == '$1' and x['domainId'] == '$domain_id' for x in (a.get('aliases') or {}).values()) for a in r[0][1]['list'])" <<<"$accounts"; }
+if [ "$(taken abuse)" = False ]; then
+  pm=""; [ "$(taken postmaster)" = False ] && pm=",\"aliases\":{\"0\":{\"name\":\"postmaster\",\"domainId\":$(jstr "$domain_id"),\"enable\":true}}"
+  api "[[\"x:Account/set\",{\"create\":{\"g\":{\"@type\":\"Group\",\"name\":\"abuse\",\"domainId\":$(jstr "$domain_id"),
+    \"description\":\"abuse@ and postmaster@: complaints and reports (install.sh)\"$pm}}},\"g\"]]" >/dev/null
+  say "Team mailbox abuse@$MAIL_DOMAIN${pm:+ (also postmaster@)} created"
+fi
+
+# Mail to an inactive account an admin has blocked is refused at RCPT: the account service lists its addresses
+# (lookup namespace "inactive-accounts"), this system Sieve script answers them with 550 5.2.1.
+sieve=$(api '[["x:SieveSystemScript/get",{"ids":null,"properties":["name"]},"s"]]' | jget "next((s['id'] for s in r[0][1]['list'] if s['name'] == 'openmail-inactive'), None)")
+script='"name":"openmail-inactive","isActive":true,"contents":"require \"reject\";\nreject \"550 5.2.1 This mailbox is inactive and no longer receives mail.\";\n"'
+if [ -n "$sieve" ]; then api "[[\"x:SieveSystemScript/set\",{\"update\":{$(jstr "$sieve"):{$script}}},\"s\"]]" >/dev/null
+else api "[[\"x:SieveSystemScript/set\",{\"create\":{\"s\":{$script}}},\"s\"]]" >/dev/null; fi
+api '[["x:MtaStageRcpt/set",{"update":{"singleton":{"script":{"match":{"0":{"if":"key_exists('"'"'inactive-accounts'"'"', rcpt)","then":"'"'"'openmail-inactive'"'"'"}},"else":"false"}}}},"r"]]' >/dev/null
+
 # Login abuse: Stalwart bans an IP after 100 failed sign-ins a day, by default forever. Forever locks out whole offices or
 # schools behind one shared IP (one phone with an old password is enough); an hour still stops password guessing.
 api '[["x:Security/set",{"update":{"singleton":{"authBanPeriod":3600000,"abuseBanPeriod":86400000,"loiterBanPeriod":86400000}}},"s"]]' >/dev/null
@@ -511,16 +534,19 @@ if [ -n "$USER_NAME" ]; then
   fi
   domains=$(api '[["x:Domain/get",{"ids":null,"properties":["name"]},"d"]]')
   domain_id=$(jget "next(d['id'] for d in r[0][1]['list'] if d['name'] == '$MAIL_DOMAIN')" <<<"$domains")
-  accounts=$(api '[["x:Account/get",{"ids":null,"properties":["name","emailAddress","aliases"]},"a"]]')
+  accounts=$(api '[["x:Account/get",{"ids":null,"properties":["@type","name","emailAddress","aliases"]},"a"]]')
   if [ "$(jget "any(a.get('emailAddress') == '$USER_NAME@$MAIL_DOMAIN' for a in r[0][1]['list'])" <<<"$accounts")" = True ]; then
     say "$USER_NAME@$MAIL_DOMAIN already exists (password unchanged)"
   else
-    # postmaster@ is where DMARC and TLS reports go, so it lands in this first mailbox.
+    # postmaster@ is where DMARC and TLS reports go: normally on the abuse@ team mailbox above, which this mailbox
+    # joins; only if that's missing does postmaster@ land on this mailbox itself.
     alias=""
     [ "$(jget "any(a.get('emailAddress') == 'postmaster@$MAIL_DOMAIN' or any(x['name'] == 'postmaster' and x['domainId'] == '$domain_id'
       for x in (a.get('aliases') or {}).values()) for a in r[0][1]['list'])" <<<"$accounts")" = False ] \
       && [ "$USER_NAME" != postmaster ] \
       && alias=",\"aliases\":{\"0\":{\"name\":\"postmaster\",\"domainId\":$(jstr "$domain_id")}}"
+    abuse_id=$(jget "next((a['id'] for a in r[0][1]['list'] if a.get('name') == 'abuse' and a.get('@type') == 'Group'), None)" <<<"$accounts")
+    [ -n "$abuse_id" ] && alias="$alias,\"memberGroupIds\":{$(jstr "$abuse_id"):true}"
     api "[[\"x:Account/set\",{\"create\":{\"u\":{\"@type\":\"User\",\"name\":$(jstr "$USER_NAME"),
       \"domainId\":$(jstr "$domain_id"),\"roles\":{\"@type\":\"User\"},
       $([ -n "${OIDC_ISSUER:-}" ] || echo "\"credentials\":{\"0\":{\"@type\":\"Password\",\"secret\":$(jstr "$USER_PASS")}},")\"description\":\"First mailbox (install.sh)\"$alias}}},\"a\"]]" >/dev/null

@@ -102,6 +102,10 @@ await jmap(admin, [['x:Security/set', { update: { singleton: { authBanRate: { co
   }
 }
 
+// abuse@ and postmaster@ (as install.sh): a team mailbox the account service reads for spam complaints (signup/arf.mjs)
+// and keeps ADMINS in, and mail to blocked inactive accounts refused at RCPT (signup/abuse.mjs).
+await abuseSetup(admin);
+
 // 3. Test user.
 const [[, doms]] = await jmap(admin, [['x:Domain/get', { ids: null, properties: ['name'] }, 'd']]);
 const domainId = doms.list.find((d) => d.name === DOMAIN).id;
@@ -210,6 +214,19 @@ if (created) {
   ].join('\r\n');
   await importRaw(rich, 1);
   console.log(`Seeded ${seeds.length + 3} emails`);
+}
+
+async function abuseSetup(admin) {
+  const [[, d]] = await jmap(admin, [['x:Domain/get', { ids: null, properties: ['name'] }, 'd']]);
+  const domainId = d.list.find((x) => x.name === DOMAIN).id;
+  const [[, g]] = await jmap(admin, [['x:Account/query', { filter: { name: 'abuse', domainId } }, 'q']]);
+  if (!g.ids.length) await jmap(admin, [['x:Account/set', { create: { g: { '@type': 'Group', name: 'abuse', domainId,
+    description: 'abuse@ and postmaster@: complaints and reports (dev-setup)', aliases: { 0: { name: 'postmaster', domainId, enable: true } } } } }, 'g']]);
+  const [[, s]] = await jmap(admin, [['x:SieveSystemScript/query', { filter: { name: 'openmail-inactive' } }, 'q']]);
+  const script = { name: 'openmail-inactive', isActive: true, contents: 'require "reject";\nreject "550 5.2.1 This mailbox is inactive and no longer receives mail.";\n' };
+  await jmap(admin, [['x:SieveSystemScript/set', s.ids.length ? { update: { [s.ids[0]]: script } } : { create: { s: script } }, 's'],
+    ['x:MtaStageRcpt/set', { update: { singleton: { script: { match: { 0: { if: "key_exists('inactive-accounts', rcpt)", then: "'openmail-inactive'" } }, else: 'false' } } } }, 'r'],
+    ['x:Action/set', { create: { r: { '@type': 'ReloadSettings' } } }, 'r']]);
 }
 
 console.log(`

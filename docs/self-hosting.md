@@ -63,7 +63,7 @@ It then:
 3. starts Stalwart and Caddy
 4. sets up Stalwart
 5. saves the admin password to `deploy/production/.admin-credentials`, readable by root only. Copy it to your password manager.
-6. creates your mailbox. It also receives mail sent to `postmaster@`, which is where DMARC and TLS reports go.
+6. creates a team mailbox for `abuse@` and `postmaster@` (where complaints, DMARC and TLS reports go), then your mailbox, which is a member: open the team mailbox from the account menu in the web app
 7. prints the DNS records you need to add
 
 To install without prompts, for example on Oracle Cloud with a Brevo relay:
@@ -148,6 +148,10 @@ OpenMail's own admin console is at `https://mx.example.com/admin`: users (create
 **Users' own domains.** Anyone with an account can add a domain they own in Settings → Your domain: they prove it with a TXT record, then add MX, SPF (`include:` your main domain), DKIM and DMARC records, which the page lists and checks live. The account service creates the domain in Stalwart (with its DKIM keys) and the user's address on it. Defaults: 3 domains per account (`MAX_DOMAINS`), 10 addresses per domain (`MAX_DOMAIN_ADDRESSES`); `CUSTOM_DOMAINS=off` turns it off; `RESERVED_DOMAINS` refuses more domains besides your own. The admin console's Domains tab lists them with owner and status. The checks use the server's DNS resolver (`DNS_SERVERS=1.1.1.1` to pick one); if a domain's TXT record is gone for 7 days, its addresses pause until it's back. For your *own* extra domains, use Stalwart's admin as before.
 
 **Outgoing spam is held for review.** Every message your users send passes a spam check first (Stalwart's spam filter, called by the account service). Likely spam isn't sent: the sender sees "This message looks like spam, so it is held for review", and it waits under **Held mail** in the console, where you send it on or delete it. When one person has 3 messages waiting, their sending is paused (they can still read mail) until you click **Let them send** on the Users tab. `install.sh` sets this up (an MTA hook to the account service, secret in `.hold.env`, held mail in `signup-data/held/`, included in backups). While the account service is down, sending waits and mail apps retry. Tuning (`HOLD_SCORE`, `HOLD_SUSPEND_AFTER`) and how it works: [signup/README.md](../signup/README.md#outgoing-spam-held-for-review).
+
+**Spam complaints.** Join the big providers' feedback loops (Yahoo CFL, Microsoft JMRP) with `abuse@` your domain as the address. The account service reads that team mailbox every 5 minutes (and puts everyone in `ADMINS` in it). A complaint counts only if the report passes DKIM/DMARC for its sender (or comes from an IP in `ARF_REPORTERS`) and the reported message carries your DKIM signature or Message-ID, so forged reports don't count. 5 complaints about one account in 24 hours (`ARF_LIMIT`, `ARF_WINDOW_HOURS`) suspend its sending, listed under **Suspended & inactive**; only an admin can lift it. Once you've joined the loops, set `ARF_REPORTERS=yahoo.com,…` (their report domains) in `.env`. Details: [signup/README.md](../signup/README.md#spam-complaints-arf-reports).
+
+**Inactive accounts.** When you disable an account the inactive list shows as due, mail to it is refused too (`550 5.2.1 This mailbox is inactive`); enabling it again accepts mail again. [docs/legal/inactive-accounts.md](legal/inactive-accounts.md) has the policy.
 
 Stalwart's full admin interface is at `https://mx.example.com/admin/` (note the slash at the end). Sign in with the details in `.admin-credentials`. From there you can manage everything else: settings, spam filter, logs.
 

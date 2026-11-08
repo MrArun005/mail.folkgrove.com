@@ -16,6 +16,7 @@ import { fileRoutes } from './files.mjs';
 import { domainRoutes } from './domains.mjs';
 import { abuseRoutes } from './abuse.mjs';
 import { holdRoutes } from './hold.mjs';
+import { arfJob } from './arf.mjs';
 import { wkdRoutes } from './wkd.mjs';
 import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
@@ -90,6 +91,11 @@ export function configFromEnv(env = process.env) {
     abuseLimitHits: Number(env.ABUSE_LIMIT_HITS || 10), // throttle refusals per hour before sending is suspended
     abuseBounces: Number(env.ABUSE_BOUNCES || 20), // hard bounces per hour before sending is suspended
     inactiveMonths: env.INACTIVE_MONTHS ? Number(env.INACTIVE_MONTHS) : signupEnabled ? 12 : 0, // 0 = off
+    // Spam complaints (arf.mjs): ARF reports in the abuse@ team mailbox; ARF_LIMIT of them in ARF_WINDOW_HOURS suspend sending.
+    arf: env.ARF_MAILBOX === 'off' ? null : { mailbox: (env.ARF_MAILBOX || 'abuse').toLowerCase(),
+      reporters: (env.ARF_REPORTERS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) },
+    arfLimit: Number(env.ARF_LIMIT || 5),
+    arfWindowHours: Number(env.ARF_WINDOW_HOURS || 24),
     // Outgoing spam held for review (hold.mjs): on when HOLD_HOOK_SECRET is set (install.sh sets it and the hook).
     hold: env.HOLD_HOOK_SECRET ? {
       secret: env.HOLD_HOOK_SECRET, dir: env.HOLD_DIR || null, score: Number(env.HOLD_SCORE || 5), suspendAfter: Number(env.HOLD_SUSPEND_AFTER || 3),
@@ -308,6 +314,11 @@ export function createApp(cfg) {
   const retentionStore = policyStore(cfg.retentionFile);
   const files = fileRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
   const abuse = abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, clientIp, ipOf: (req) => ipKey(clientIp(req)) });
+  const arf = cfg.arf ? arfJob({ cfg, jmap, getDomainId, complaint: abuse.complaint }) : null;
+  if (arf && cfg.eventsUrl) { // with the rest of the abuse jobs (a service started without EVENTS_URL is a test or a sidecar)
+    const run = () => arf().catch((e) => console.error('arf:', e.message));
+    setTimeout(run, 30_000).unref(); setInterval(run, 5 * 60e3).unref();
+  }
   const hold = holdRoutes({ cfg, jmap, getDomainId, send, fail, readJson, abuse });
   const admin = adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, abuse, hold, ipOf: (req) => ipKey(clientIp(req)), retention: retentionStore });
   const domains = cfg.customDomains === false ? null : domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf: (req) => ipKey(clientIp(req)) });
@@ -357,7 +368,7 @@ export function createApp(cfg) {
       console.error('unhandled:', e);
       if (!res.headersSent) fail(res, 500, 'internal', 'Something went wrong on our side. Please try again.');
     }
-  }), { domains, abuse }); // tests drive the domain re-check and the abuse jobs directly
+  }), { domains, abuse, arf }); // tests drive the domain re-check and the abuse jobs directly
   server.requestTimeout = 0; // the timer above replaces it (headersTimeout still applies)
   return server;
 }
