@@ -178,3 +178,18 @@ it('large-file links: written into the message, found again by the reader', () =
   for (const spoof of ['https://mail.example.com.evil.test', 'https://evil.test', 'http://mail.example.com', 'https://mail.example.com:8443'])
     expect(fileLinks(`<a href="${spoof}/f/AbCdEfGhIjKlMnOpQrStUv_-#n=invoice.pdf&s=1">x</a>`, origin)).toEqual([]);
 });
+
+it('cleanHtml keeps the editor’s colours, sizes, tables and image sizes, and nothing riskier', () => {
+  const out = cleanHtml('<span style="color: rgb(217, 48, 37); background-color: #fff59d; position: fixed">red</span>'
+    + '<span style="font-size: x-large; background: url(https://t.example/x.gif)">big</span><span style="color: expression(alert(1))">x</span>'
+    + '<font color="#1a73e8" size="2">small blue</font><font face="Comic Sans">plain</font>'
+    + '<table style="border-collapse: collapse; width: 9999px"><tr><td style="border: 1px solid #ccc; padding: 4px 8px; background-image: url(x)">a</td></tr></table>'
+    + '<img src="cid:a@x" style="width: 200px; max-width: 100%; height: 1px" onerror="x()"><p style="color: #f00">p</p>');
+  expect(out).toContain('<span style="color: rgb(217, 48, 37); background-color: #fff59d">red</span>');
+  expect(out).toContain('<span style="font-size: x-large">big</span><span>x</span>');
+  expect(out).toContain('<span style="color: #1a73e8; font-size: small">small blue</span>plain');
+  expect(out).toContain('<table style="border-collapse: collapse"><tbody><tr><td style="border: 1px solid #ccc; padding: 4px 8px">a</td></tr></tbody></table>');
+  expect(out).toContain('<img src="cid:a@x" style="width: 200px; max-width: 100%">');
+  expect(out).toContain('<p>p</p>');
+  for (const bad of ['url(', 'expression', 'position', 'onerror', 'height', 'face', 'font ']) expect(out).not.toContain(bad);
+});

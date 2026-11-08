@@ -397,6 +397,48 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     expect((await c.addressBook()).some((x) => x.id === id)).toBe(false);
   });
 
+  it('emoji reaction (RFC 9078): Content-Disposition: reaction, In-Reply-To, the emoji as text/plain; read back as a reaction', async () => {
+    const { reactionDraft } = await import('./reactions');
+    const c = await login();
+    const boxes = await c.mailboxes();
+    const subject = `reaction ${Date.now()}`;
+    await c.send({ to: [ALICE], cc: [], subject, html: '<div>Ship it?</div>', text: 'Ship it?', attachments: [] }, boxes);
+    const find = async (n: number) => {
+      for (let i = 0; i < 60; i++) {
+        const l = (await c.threads({ text: subject })).filter((e) => e.subject?.endsWith(subject));
+        if (l.length) { const all = await c.thread(l[0].threadId); if (all.length >= n) return all; }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      throw new Error('not delivered');
+    };
+    const original = (await find(2)).find((m) => m.mailboxIds[boxes[0].id])!;
+    await c.send(reactionDraft(original, '🎉', 'nobody@openmail.test'), boxes);
+    const all = await find(4);
+    const reactions = all.filter((m) => m.reaction);
+    expect(reactions.length).toBe(2); // Sent copy + the delivered one
+    expect(reactions[0]).toMatchObject({ reaction: '🎉', inReplyTo: original.messageId, subject: `Re: ${subject}` });
+    const raw = new TextDecoder().decode(await c.rawMessage(reactions[0].blobId));
+    expect(raw).toMatch(/^Content-Disposition: reaction/m);
+    expect(raw).toMatch(/^Content-Type: text\/plain/m);
+    expect(raw).toContain(`In-Reply-To: <${original.messageId![0]}>`);
+    expect(raw).not.toMatch(/multipart|text\/html/i);
+    await c.call([['Email/set', { accountId: c.accountId, destroy: all.map((m) => m.id) }, 'd']]);
+  }, 60_000);
+
+  it('contact groups: members by uid (given to cards made without one), read back as card ids, edited and deleted', async () => {
+    const c = await login();
+    const a = await c.saveContact({ given: 'T-compose', surname: 'One', emails: ['t-compose-1@example.org'], phones: [], org: '', note: '' });
+    const b = await c.saveContact({ given: 'T-compose', surname: 'Two', emails: ['t-compose-2@example.org'], phones: [], org: '', note: '' });
+    const g = await c.saveContact({ kind: 'group', members: [a, b], given: 'T-compose team', surname: '', emails: [], phones: [], org: '', note: '' });
+    let book = await c.addressBook();
+    expect(book.find((x) => x.id === g)).toMatchObject({ kind: 'group', given: 'T-compose team', members: [a, b] });
+    expect(book.find((x) => x.id === a)!.kind).toBeUndefined();
+    await c.saveContact({ id: g, kind: 'group', members: [b], given: 'T-compose crew', surname: '', emails: [], phones: [], org: '', note: '' });
+    book = await c.addressBook();
+    expect(book.find((x) => x.id === g)).toMatchObject({ given: 'T-compose crew', members: [b] });
+    for (const id of [g, a, b]) await c.deleteContact(id);
+  });
+
   it('delete-all-from-sender matches the exact address only and never touches Sent', async () => {
     const c = await login();
     const boxes = await c.mailboxes();

@@ -1,13 +1,19 @@
 import { useId, useMemo, useState } from 'react';
 import type { Address } from './jmap';
 import { formatAddress } from './mailutil';
+import { t } from './i18n';
+
+type Option = Address | { name: string; members: Address[] };
+const isGroup = (o: Option): o is { name: string; members: Address[] } => 'members' in o;
 
 /**
  * Comma-separated recipients with suggestions for the address being typed.
  * Follows the ARIA combobox pattern: arrows move, Enter/Tab picks, Esc closes.
  */
-export function RecipientInput({ value, onChange, contacts, inputRef, label }: {
+export function RecipientInput({ value, onChange, contacts, groups = [], inputRef, label }: {
   value: string; onChange: (v: string) => void; contacts: Address[];
+  /** Contact groups: picking one adds all its members (each an address of its own, editable like any other). */
+  groups?: { name: string; members: Address[] }[];
   inputRef?: React.Ref<HTMLInputElement>; label: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -17,14 +23,17 @@ export function RecipientInput({ value, onChange, contacts, inputRef, label }: {
   const head = value.slice(0, value.lastIndexOf(',') + 1); // everything before the address being typed
   const term = value.slice(head.length).trim().toLowerCase();
   const already = useMemo(() => new Set(head.toLowerCase().match(/[^\s<>,;]+@[^\s<>,;]+/g) ?? []), [head]);
-  const matches = useMemo(() => !term ? [] : contacts
-    .filter((c) => !already.has(c.email.toLowerCase()))
-    .filter((c) => c.email.toLowerCase().includes(term) || c.name?.toLowerCase().split(/\s+/).some((w) => w.startsWith(term)))
-    .slice(0, 6), [term, contacts, already]);
+  const matches = useMemo((): Option[] => !term ? [] : [
+    ...groups.filter((g) => g.members.length && g.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(term))).slice(0, 3),
+    ...contacts
+      .filter((c) => !already.has(c.email.toLowerCase()))
+      .filter((c) => c.email.toLowerCase().includes(term) || c.name?.toLowerCase().split(/\s+/).some((w) => w.startsWith(term)))
+      .slice(0, 6)], [term, contacts, groups, already]);
   const show = open && matches.length > 0;
 
-  function pick(a: Address) {
-    onChange(`${head}${head ? ' ' : ''}${formatAddress(a)}, `);
+  function pick(o: Option) {
+    const add = isGroup(o) ? o.members.filter((m) => !already.has(m.email.toLowerCase())) : [o];
+    onChange(`${head}${head ? ' ' : ''}${add.map(formatAddress).join(', ')}, `);
     setOpen(false);
   }
 
@@ -45,10 +54,10 @@ export function RecipientInput({ value, onChange, contacts, inputRef, label }: {
       {show && (
         <ul className="suggestions" role="listbox" id={listId}>
           {matches.map((c, i) => (
-            <li key={c.email} id={`${listId}-${i}`} role="option" aria-selected={i === active}
+            <li key={isGroup(c) ? `group:${c.name}` : c.email} id={`${listId}-${i}`} role="option" aria-selected={i === active}
               onMouseDown={(e) => { e.preventDefault(); pick(c); }} onMouseEnter={() => setActive(i)}>
-              <span className="sname">{c.name ?? c.email}</span>
-              {c.name && <span className="semail">{c.email}</span>}
+              <span className="sname">{isGroup(c) ? c.name : c.name ?? c.email}</span>
+              {isGroup(c) ? <span className="semail">{t('contacts.groupOf', { count: c.members.length })}</span> : c.name && <span className="semail">{c.email}</span>}
             </li>
           ))}
         </ul>

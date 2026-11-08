@@ -9,6 +9,9 @@ import { canRewrite, rewrite, type RewriteStyle } from './ai';
 import { Menu, TimeChoices } from './Menu';
 import { ensureUnlocked, useRecipientKeys } from './Encryption';
 import { t } from './i18n';
+import { useSmartCompose } from './SmartCompose';
+import { FormatBar, ImageSize, ScheduleMenu } from './ComposeExtras';
+import type { CalEvent } from './calendar';
 
 export interface ComposeApi {
   upload: (f: File) => Promise<Attachment>;
@@ -23,7 +26,13 @@ export interface ComposeApi {
   share?: (f: File, expiresDays: 7 | 30 | 0) => Promise<SharedFile>;
   /** Biggest attachment the server takes (session maxSizeUpload). */
   maxUpload?: number;
+  /** Your calendar, for "Help me schedule" (absent: no calendar). */
+  events?: (from: Date, to: Date) => Promise<CalEvent[]>;
 }
+
+/** A contact group offered in recipient autocomplete; picking it adds every member. */
+export interface RecipientGroup { name: string; members: Address[] }
+const phone = () => typeof matchMedia === 'function' && matchMedia('(max-width: 860px)').matches;
 
 // Most mail servers (Gmail, Outlook) refuse messages over 25 MB, and attachments grow by a third on the way.
 const LINK_OVER = 25 * 1024 * 1024;
@@ -35,11 +44,17 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 // and it's a few lines instead of an editor framework. Swap for a real editor model if we need tables or images.
 const exec = (cmd: string, arg?: string) => document.execCommand(cmd, false, arg);
 
-export function Compose({ initial, contacts, api, signatures, identities, onSend, onClose }: {
-  initial: Draft; contacts: Address[]; api: ComposeApi; signatures: Signature[];
+export function Compose({ initial, contacts, groups, api, signatures, identities, onSend, onClose, minimized, onMinimize, onPopOut, onSaved }: {
+  initial: Draft; contacts: Address[]; groups?: RecipientGroup[]; api: ComposeApi; signatures: Signature[];
   /** Addresses this account can send from; the first is the main one. A From menu appears when there are several. */
   identities: { name: string; email: string }[];
   onSend: (d: Draft, sendAt?: Date) => void; onClose: (outcome: 'saved' | 'discarded' | 'closed') => void;
+  /** Several drafts at once: shown as a bar along the bottom (absent: Esc closes, as in a popped-out window). */
+  minimized?: boolean; onMinimize?: (min: boolean) => void;
+  /** Open this draft in its own window (after saving it). */
+  onPopOut?: (draftId: string) => void;
+  /** Every autosave's new draft id (each save replaces the previous copy). */
+  onSaved?: (id: string) => void;
 }) {
   const [to, setTo] = useState(formatAddresses(initial.to));
   const [cc, setCc] = useState(formatAddresses(initial.cc));
@@ -66,6 +81,32 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
   const draftId = useRef(initial.id);
   const saving = useRef<Promise<void>>(Promise.resolve());
   const changed = () => { setEdits((n) => n + 1); setError(''); };
+  const smart = useSmartCompose(editor);
+  const [moreFmt, setMoreFmt] = useState(false);
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  // Menus take focus; formatting from them goes back to where the cursor was.
+  const lastRange = useRef<Range | null>(null);
+  const restore = () => {
+    const ed = editor.current!, sel = getSelection();
+    ed.focus();
+    if (lastRange.current && ed.contains(lastRange.current.startContainer)) { sel?.removeAllRanges(); sel?.addRange(lastRange.current); }
+  };
+  /** Colour and size as inline styles (cleanHtml keeps those); bold and the rest stay plain tags. */
+  const styled = (cmd: string, arg: string) => { restore(); exec('styleWithCSS', 'true'); exec(cmd, arg); exec('styleWithCSS', 'false'); changed(); };
+  const insertHtml = (html: string) => { restore(); exec('insertHTML', html); changed(); };
+  const insertText = (text: string) => { restore(); exec('insertText', text); changed(); };
+  /** A pasted picture goes into the text (an inline cid: image), shown at once and uploaded behind it. */
+  const blobUrls = useRef<string[]>([]);
+  useEffect(() => () => blobUrls.current.forEach((u) => URL.revokeObjectURL(u)), []);
+  async function embed(f: File) {
+    const cid = `${crypto.randomUUID()}@openmail`, url = URL.createObjectURL(f);
+    blobUrls.current.push(url);
+    exec('insertHTML', `<img src="${url}" data-cid="${cid}" alt="" style="max-width: 100%">`);
+    setUploading((n) => n + 1);
+    try { const a = await api.upload(f); setFiles((fs) => [...fs, { ...a, cid, disposition: 'inline' }]); changed(); }
+    catch (e) { editor.current?.querySelector(`img[data-cid="${cid}"]`)?.remove(); setError(t('compose.fileError', { name: f.name, error: (e as Error).message })); }
+    finally { setUploading((n) => n - 1); }
+  }
 
   useEffect(() => {
     const ed = editor.current!;
@@ -130,6 +171,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
   const snapshot = (): Draft => {
     // Back from blob: previews to cid: references; drop embedded images the user deleted from the text.
     const copy = editor.current!.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('[data-ghost]').forEach((g) => g.remove()); // a Smart Compose suggestion isn't text yet
     copy.querySelectorAll('img[data-cid]').forEach((img) => { img.setAttribute('src', `cid:${img.getAttribute('data-cid')}`); img.removeAttribute('data-cid'); });
     const html = copy.innerHTML;
     const attachments = files.filter((a) => !a.cid || html.includes(`cid:${a.cid}`));
@@ -144,7 +186,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
     // Saves run one after another, each replacing the previous copy in Drafts.
     saving.current = saving.current.then(async () => {
       setStatus(t('common.saving'));
-      try { draftId.current = await api.save(snapshot()); setStatus(t('compose.draftSaved')); }
+      try { draftId.current = await api.save(snapshot()); setStatus(t('compose.draftSaved')); onSaved?.(draftId.current); }
       catch { setStatus(t('compose.couldntSaveDraft')); }
     });
     return saving.current;
@@ -188,6 +230,14 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
 
   async function close() {
     if (edits) { await save(); onClose('saved'); } else onClose('closed');
+  }
+
+  /** Esc: down to a bar along the bottom (several drafts side by side); on phones and in its own window, close. */
+  const minimize = () => (onMinimize && !phone() ? onMinimize(true) : close());
+
+  async function popOut() {
+    await save();
+    if (draftId.current) onPopOut?.(draftId.current);
   }
 
   async function discard() {
@@ -236,18 +286,23 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
   const mod = isMac ? '⌘' : 'Ctrl+';
 
   return (
-    <section className={`compose${dragging ? ' dragging' : ''}`} role="dialog" aria-label={subject || t('compose.newMessage')}
+    <section className={`compose${dragging ? ' dragging' : ''}${minimized ? ' min' : ''}${onMinimize ? '' : ' popped'}`} role="dialog" aria-label={subject || t('compose.newMessage')}
       onKeyDown={(e) => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
         else if (e.key === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); link(); }
-        else if (e.key === 'Escape') { e.preventDefault(); close(); }
+        else if (e.key === 'Escape' && !minimized) { e.preventDefault(); minimize(); }
       }}
       onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
       onDrop={(e) => { e.preventDefault(); setDragging(false); attach(e.dataTransfer.files); }}>
-      <header>
+      <header onClick={minimized ? () => onMinimize?.(false) : undefined}>
         <h2>{subject.trim() || t('compose.newMessage')}</h2>
-        <Button variant="quiet" icon="close" label={t('compose.saveAndClose')} shortcut="Esc" onClick={close} />
+        <span className="compose-win" onClick={(e) => e.stopPropagation()}>
+          {onMinimize && <Button variant="quiet" icon={minimized ? 'expand' : 'minimize'} label={minimized ? t('compose.expand') : t('compose.minimize')}
+            shortcut={minimized ? undefined : 'Esc'} onClick={() => onMinimize(!minimized)} className="not-mobile" />}
+          {onPopOut && <Button variant="quiet" icon="popOut" label={t('compose.popOut')} onClick={popOut} className="not-mobile" />}
+          <Button variant="quiet" icon="close" label={t('compose.saveAndClose')} shortcut={onMinimize ? undefined : 'Esc'} onClick={close} />
+        </span>
       </header>
 
       {identities.length > 1 && (
@@ -259,18 +314,18 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
       )}
       <label className="field">
         <span>{t('compose.to')}</span>
-        <RecipientInput label={t('compose.to')} inputRef={toRef} value={to} onChange={(v) => { setTo(v); changed(); }} contacts={contacts} />
+        <RecipientInput label={t('compose.to')} inputRef={toRef} value={to} onChange={(v) => { setTo(v); changed(); }} contacts={contacts} groups={groups} />
         {!showCc && <Button variant="link" onClick={() => setShowCc(true)}>{t('compose.cc')}</Button>}
         {!showBcc && <Button variant="link" onClick={() => setShowBcc(true)}>{t('compose.bcc')}</Button>}
       </label>
       {showCc && (
         <label className="field"><span>{t('compose.cc')}</span>
-          <RecipientInput label={t('compose.cc')} value={cc} onChange={(v) => { setCc(v); changed(); }} contacts={contacts} />
+          <RecipientInput label={t('compose.cc')} value={cc} onChange={(v) => { setCc(v); changed(); }} contacts={contacts} groups={groups} />
         </label>
       )}
       {showBcc && (
         <label className="field"><span>{t('compose.bcc')}</span>
-          <RecipientInput label={t('compose.bcc')} value={bcc} onChange={(v) => { setBcc(v); changed(); }} contacts={contacts} />
+          <RecipientInput label={t('compose.bcc')} value={bcc} onChange={(v) => { setBcc(v); changed(); }} contacts={contacts} groups={groups} />
         </label>
       )}
       <label className="field"><span>{t('compose.subject')}</span>
@@ -278,14 +333,26 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
       </label>
 
       <div ref={editor} className="editor" contentEditable role="textbox" aria-multiline="true" aria-label={t('compose.message')}
-        onInput={changed}
+        onInput={() => { changed(); smart.onInput(); }}
+        onKeyDown={(e) => smart.onKeyDown(e)}
+        onMouseDown={smart.clear}
+        onBlur={() => {
+          smart.clear();
+          const sel = getSelection();
+          if (sel?.rangeCount && editor.current?.contains(sel.anchorNode)) lastRange.current = sel.getRangeAt(0).cloneRange();
+        }}
+        onClick={(e) => setImg(e.target instanceof HTMLImageElement ? e.target : null)}
         onPaste={(e) => {
           e.preventDefault();
+          const pics = [...e.clipboardData.files];
+          if (pics.length && pics.every((f) => /^image\/(png|jpe?g|gif|webp)$/.test(f.type))) return void pics.forEach(embed);
           if (e.clipboardData.files.length) return void attach(e.clipboardData.files);
           const html = e.clipboardData.getData('text/html');
           if (html) exec('insertHTML', cleanHtml(html)); else exec('insertText', e.clipboardData.getData('text/plain'));
         }} />
 
+      {img && editor.current?.contains(img) && <ImageSize img={img} onChange={changed} />}
+      {moreFmt && <FormatBar apply={styled} insert={insertHtml} text={insertText} />}
       {(files.some((f) => !f.cid) || uploading > 0) && (
         <ul className="chips" aria-label={t('compose.attachments')}>
           {files.filter((f) => !f.cid).map((f) => ( /* embedded images live in the text, not here */
@@ -313,6 +380,7 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
           {tool('numbers', t('compose.numbers'), () => exec('insertOrderedList'))}
           {tool('quote', t('compose.quote'), () => exec('formatBlock', 'blockquote'))}
           {tool('clearFormat', t('compose.clearFormat'), () => exec('removeFormat'))}
+          <Button variant="quiet" icon="textStyle" label={t('fmt.more')} pressed={moreFmt} onMouseDown={(e) => e.preventDefault()} onClick={() => setMoreFmt(!moreFmt)} />
           <Button variant="quiet" icon="clip" label={t('compose.attachFiles')} onClick={() => fileInput.current?.click()} />
           <Button variant="quiet" icon="receipt" label={receipt ? t('compose.receiptOn') : t('compose.receiptOff')} pressed={receipt}
             onClick={() => { setReceipt(!receipt); changed(); }} />
@@ -344,6 +412,11 @@ export function Compose({ initial, contacts, api, signatures, identities, onSend
                 ))}
                 <p className="menu-note">{t('compose.onDevice')}</p>
               </>}
+            </Menu>
+          )}
+          {api.events && (
+            <Menu label={t('schedule.title')} up align="right" button={<Button variant="quiet" icon="calendar" label={t('schedule.title')} onMouseDown={(e) => e.preventDefault()} />}>
+              {(close) => <ScheduleMenu events={api.events!} close={close} onInsert={insertHtml} onError={setError} />}
             </Menu>
           )}
           <Menu label={t('compose.remindMe')} up align="right" button={<Button variant="quiet" icon="bell" pressed={!!followUp}

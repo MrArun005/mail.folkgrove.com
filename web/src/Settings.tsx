@@ -14,6 +14,7 @@ import { InstallSection } from './Install';
 import { disablePush, enablePush, notifyOn, notifySupported, setNotify } from './notify';
 import { chooseSignature, textToHtml, type Signature } from './mailutil';
 import { DelegatesSection } from './Sharing';
+import { SmartComposeSetting } from './SmartCompose';
 import { LANGUAGES, languagePref, pickLanguage, setLanguage, t, type Key, type Lang } from './i18n';
 
 export type Theme = 'system' | 'light' | 'dark';
@@ -161,6 +162,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
         <ExportSection client={client} />
         <RetentionSection client={client} />
 
+        <SmartComposeSetting />
         {notifySupported() && (
           <section>
             <h3>{t('settings.notifications')}</h3>
