@@ -19,13 +19,14 @@ test('system mailer delivers through our own server (SMTP submission, TLS, AUTH)
     { from: 'OpenMail <alice@openmail.test>', to: 'alice@openmail.test', subject, text: 'Your code is 123456.\n.leading dot line' });
   const jmap = async (m) => (await (await fetch(`${STALWART}/jmap/`, { method: 'POST', headers: { Authorization: basic('alice@openmail.test', 'alice-dev-pass'), 'Content-Type': 'application/json' },
     body: JSON.stringify({ using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'], methodCalls: m }) })).json()).methodResponses;
+  const accountId = (await (await fetch(`${STALWART}/jmap/session`, { headers: { Authorization: basic('alice@openmail.test', 'alice-dev-pass') } })).json()).primaryAccounts['urn:ietf:params:jmap:mail'];
   let found = [];
   for (let i = 0; i < 30 && !found.length; i++) {
     await new Promise((r) => setTimeout(r, 300));
-    found = (await jmap([['Email/query', { accountId: 'c', filter: { subject } }, 'q']]))[0][1].ids;
+    found = (await jmap([['Email/query', { accountId, filter: { subject } }, 'q']]))[0][1].ids ?? [];
   }
   assert.equal(found.length, 1, 'delivered');
-  await jmap([['Email/set', { accountId: 'c', destroy: found }, 'd']]);
+  await jmap([['Email/set', { accountId, destroy: found }, 'd']]);
   await assert.rejects(() => sendMail({ host: 'localhost', port: 1465, user: 'x', pass: 'y', insecure: true }, { from: 'a@b.c', to: 'x@y.z\r\nBcc: evil@z', subject: 's', text: 't' }), /header injection/);
 });
 
