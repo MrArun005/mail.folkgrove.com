@@ -216,6 +216,28 @@ if ! command -v docker >/dev/null; then
   case ${ans:-y} in [Yy]*) curl -fsSL https://get.docker.com | sh ;; *) die "Docker is required" ;; esac
 fi
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required (docker compose version)"
+
+# Server housekeeping (a real Linux server, as root; skipped for --local-test).
+if [ "$(uname -s)" = Linux ] && [ "$(id -u)" = 0 ] && [ "${LOCAL_TEST:-0}" != 1 ]; then
+  # Oracle Cloud's Ubuntu images reject everything but SSH in the host firewall, on top of the cloud's Security List.
+  # Open the mail and web ports there too, and keep the rules across reboots.
+  if command -v iptables >/dev/null && iptables -S INPUT 2>/dev/null | grep -q -- '-j REJECT'; then
+    for p in 25 80 443 465 587 993; do
+      iptables -C INPUT -p tcp -m state --state NEW --dport "$p" -j ACCEPT 2>/dev/null && continue
+      at=$(iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" {print $1; exit}') # just before the catch-all REJECT
+      iptables -I INPUT "${at:-1}" -p tcp -m state --state NEW --dport "$p" -j ACCEPT
+    done
+    command -v netfilter-persistent >/dev/null && netfilter-persistent save >/dev/null 2>&1
+    say "Opened ports 25, 80, 443, 465, 587, 993 in the host firewall"
+  fi
+  # Small machines (Oracle's free AMD shape has 1 GB): add swap so building and Stalwart's spam filter fit.
+  if [ "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" -lt 2000000 ] && [ "$(awk 'NR > 1' /proc/swaps | wc -l)" = 0 ]; then
+    if fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile; then
+      grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+      say "Added 2 GB of swap (this machine has under 2 GB of memory)"
+    else warn "Couldn't add swap; with under 2 GB of memory, building the web client may fail"; fi
+  fi
+fi
 docker info >/dev/null 2>&1 || die "Can't talk to Docker. Run as root, or add yourself to the docker group."
 
 if [ "$MODE" != install ]; then
