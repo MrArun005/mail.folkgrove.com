@@ -342,6 +342,9 @@ say "Starting the stack"
 mkdir -p signup-data && { chown 1000:1000 signup-data 2>/dev/null || warn "Not root: the account service may be unable to write signup-data"; }   # it runs as uid 1000 (node)
 # First run: Stalwart (and its stores) only. The account service mounts .admin-credentials, and Docker would
 # create a missing file as an empty directory; the full stack starts once bootstrap has written it.
+# The account service is built from this checkout: rebuild it every run, or an update (git pull) would keep the old
+# image (compose only builds when no image exists). Seconds: it just copies the files.
+dc build -q signup >/dev/null
 if [ -f .admin-credentials ]; then dc up -d; else dc up -d stalwart; fi
 wait_for_stalwart
 
@@ -547,9 +550,12 @@ if [ -n "$USER_NAME" ]; then
       && alias=",\"aliases\":{\"0\":{\"name\":\"postmaster\",\"domainId\":$(jstr "$domain_id")}}"
     abuse_id=$(jget "next((a['id'] for a in r[0][1]['list'] if a.get('name') == 'abuse' and a.get('@type') == 'Group'), None)" <<<"$accounts")
     [ -n "$abuse_id" ] && alias="$alias,\"memberGroupIds\":{$(jstr "$abuse_id"):true}"
+    # Built in a plain variable: JSON braces inside a nested $(...) get brace-expanded by some bash versions.
+    creds=""
+    [ -n "${OIDC_ISSUER:-}" ] || creds="\"credentials\":{\"0\":{\"@type\":\"Password\",\"secret\":$(jstr "$USER_PASS")}},"
     api "[[\"x:Account/set\",{\"create\":{\"u\":{\"@type\":\"User\",\"name\":$(jstr "$USER_NAME"),
       \"domainId\":$(jstr "$domain_id"),\"roles\":{\"@type\":\"User\"},
-      $([ -n "${OIDC_ISSUER:-}" ] || echo "\"credentials\":{\"0\":{\"@type\":\"Password\",\"secret\":$(jstr "$USER_PASS")}},")\"description\":\"First mailbox (install.sh)\"$alias}}},\"a\"]]" >/dev/null
+      $creds\"description\":\"First mailbox (install.sh)\"$alias}}},\"a\"]]" >/dev/null
     say "Created $USER_NAME@$MAIL_DOMAIN${NEW_PASS:+ with password: $USER_PASS  (shown once)}"
   fi
 fi
