@@ -14,6 +14,7 @@ import { InstallSection } from './Install';
 import { disablePush, enablePush, notifyOn, notifySupported, setNotify } from './notify';
 import { chooseSignature, textToHtml, type Signature } from './mailutil';
 import { DelegatesSection } from './Sharing';
+import { LANGUAGES, languagePref, pickLanguage, setLanguage, t, type Key, type Lang } from './i18n';
 
 export type Theme = 'system' | 'light' | 'dark';
 
@@ -26,12 +27,12 @@ export const savedTheme = (): Theme => { try { return (localStorage.getItem('om:
 
 /** Display preferences, per device (like light/dark): each one is a data-* attribute on <html> read by styles.css. */
 export const DISPLAY = {
-  palette: { label: 'Theme', options: [['clean', 'Clean'], ['paper', 'Paper']] },
-  text: { label: 'Text size', options: [['small', 'Small'], ['default', 'Default'], ['large', 'Large'], ['larger', 'Larger']] },
-  density: { label: 'Density', options: [['comfortable', 'Comfortable'], ['default', 'Default'], ['compact', 'Compact']] },
-  reading: { label: 'Message font', options: [['sans', 'Sans'], ['serif', 'Serif']] },
-  pane: { label: 'Reading pane', options: [['full', 'Full screen'], ['split', 'Beside the list']] },
-} as const;
+  palette: { label: 'display.theme', options: [['clean', 'display.clean'], ['paper', 'display.paper']] },
+  text: { label: 'display.text', options: [['small', 'display.small'], ['default', 'display.default'], ['large', 'display.large'], ['larger', 'display.larger']] },
+  density: { label: 'display.density', options: [['comfortable', 'display.comfortable'], ['default', 'display.default'], ['compact', 'display.compact']] },
+  reading: { label: 'display.font', options: [['sans', 'display.sans'], ['serif', 'display.serif']] },
+  pane: { label: 'display.pane', options: [['full', 'display.full'], ['split', 'display.split']] },
+} as const satisfies Record<string, { label: Key; options: readonly (readonly [string, Key])[] }>;
 export type DisplayKey = keyof typeof DISPLAY;
 const DEFAULTS: Record<DisplayKey, string> = { palette: 'clean', text: 'default', density: 'default', reading: 'sans', pane: 'full' };
 export const displayPref = (k: DisplayKey) => { try { return localStorage.getItem(`om:${k}`) || DEFAULTS[k]; } catch { return DEFAULTS[k]; } };
@@ -55,6 +56,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
   const [theme, setTheme] = useState<Theme>(savedTheme());
   const [display, setDisplay] = useState(() => Object.fromEntries((Object.keys(DISPLAY) as DisplayKey[]).map((k) => [k, displayPref(k)])) as Record<DisplayKey, string>);
   const [notify, setNotifyState] = useState(notifyOn());
+  const [langPref, setLangPref] = useState(languagePref);
   const [pushNote, setPushNote] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -187,16 +189,24 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
           </div>
           {(Object.keys(DISPLAY) as DisplayKey[]).map((k) => (
             <div key={k} className="pref-row">
-              <span className="pref-label">{DISPLAY[k].label}</span>
-              <div className="segmented" role="radiogroup" aria-label={DISPLAY[k].label}>
-                {DISPLAY[k].options.map(([v, t]) => (
+              <span className="pref-label">{t(DISPLAY[k].label)}</span>
+              <div className="segmented" role="radiogroup" aria-label={t(DISPLAY[k].label)}>
+                {DISPLAY[k].options.map(([v, label]) => (
                   <label key={v} className={display[k] === v ? 'on' : ''}>
-                    <input type="radio" name={k} value={v} checked={display[k] === v} onChange={() => { setDisplayPref(k, v); setDisplay({ ...display, [k]: v }); }} />{t}
+                    <input type="radio" name={k} value={v} checked={display[k] === v} onChange={() => { setDisplayPref(k, v); setDisplay({ ...display, [k]: v }); }} />{t(label)}
                   </label>
                 ))}
               </div>
             </div>
           ))}
+          <div className="pref-row">
+            <label className="pref-label" htmlFor="pref-lang">{t('lang.label')}</label>
+            {/* Applies at once, like the rows above; each language name is written in that language. */}
+            <select id="pref-lang" className="input" value={langPref} onChange={(e) => { const v = e.target.value as Lang | 'auto'; setLangPref(v); setLanguage(v); }}>
+              <option value="auto">{t('lang.auto', { language: LANGUAGES[pickLanguage(navigator.languages ?? [])] })}</option>
+              {(Object.keys(LANGUAGES) as Lang[]).map((l) => <option key={l} value={l} lang={l}>{LANGUAGES[l]}</option>)}
+            </select>
+          </div>
           <p className="fine">Saved on this device. Your browser’s zoom (⌘ +/−) works too.</p>
         </section>
 

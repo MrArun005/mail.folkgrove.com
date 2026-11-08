@@ -1,5 +1,6 @@
 // Minimal JMAP client (RFC 8620 core, 8621 mail + submission). Talks to Stalwart directly; we have no backend.
 import { SCRIPT_NAME, UPDATES } from './rules';
+import { serverText, t } from './i18n';
 import { isOffline, offlineStore } from './offline';
 import type { CalEvent } from './calendar';
 import { buildReply, parseInvite, replyWord, type Invite, type PartStat } from './ics';
@@ -134,7 +135,7 @@ export interface SharedFile { id: string; url: string; name: string; size: numbe
 export interface SendingStatus { suspended: boolean; reason?: string; since?: string | null; unblock?: 'ok' | 'wait' | 'admin'; retryAfter?: number }
 async function aliasReply(r: Response) {
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.ok) throw Object.assign(new JmapError(j.error?.message ?? `The server returned an error (${r.status})`), { code: j.error?.code as string | undefined });
+  if (!r.ok || !j.ok) throw Object.assign(new JmapError(j.error?.message ? serverText(j.error.code, j.error.message) : t('common.serverError', { status: r.status })), { code: j.error?.code as string | undefined });
   return j;
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from './Button';
+import { t } from './i18n';
 
 /**
  * The app's own confirm / prompt / alert, instead of the browser's grey boxes. Promise-based so call sites stay
@@ -34,7 +35,7 @@ export const promptIt = (a: { title: string; body?: string; label: string; value
 export const chooseIt = (a: { title: string; body?: string; label: string; value: string; options: [string, string][]; confirm: string }) =>
   open({ title: a.title, body: a.body, confirm: a.confirm, choose: { label: a.label, value: a.value, options: a.options } })
     .then((v) => (typeof v === 'string' ? v : null));
-export const notify = (title: string, body?: string) => open({ title, body, confirm: 'OK', cancel: false }).then(() => undefined);
+export const notify = (title: string, body?: string) => open({ title, body, confirm: t('common.ok'), cancel: false }).then(() => undefined);
 
 export function DialogHost() {
   const [ask, setAsk] = useState<Ask | null>(null);
@@ -69,9 +70,9 @@ export function DialogHost() {
           </label>
         )}
         <div className="dialog-actions">
-          {ask.cancel !== false && <Button onClick={() => done(false)}>{ask.cancel ?? 'Cancel'}</Button>}
+          {ask.cancel !== false && <Button onClick={() => done(false)}>{ask.cancel ?? t('common.cancel')}</Button>}
           <Button ref={confirmRef} variant="primary" className={ask.danger ? 'btn--danger' : ''} disabled={!!ask.input && !value.trim()} onClick={ok}>
-            {ask.confirm ?? 'OK'}
+            {ask.confirm ?? t('common.ok')}
           </Button>
         </div>
       </div>

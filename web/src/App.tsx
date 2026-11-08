@@ -10,11 +10,13 @@ import { adoptSso, canRememberDevice, forgetSession, Session, signedInAccounts, 
 import { applyDisplayPrefs, applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
+import { useLanguage } from './i18n';
 
 applyTheme(savedTheme());
 applyDisplayPrefs();
 
 export default function App() {
+  useLanguage(); // a new language re-renders everything below
   const [client, setClient] = useState<Jmap | null>(null);
   const [booting, setBooting] = useState(true);
   const [error, setError] = useState('');
