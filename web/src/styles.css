@@ -1144,3 +1144,25 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
 .privacy-week p { color: var(--ink); }
 .badged { position: relative; display: inline-flex; }
 .badge { position: absolute; top: -2px; inset-inline-end: -4px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: var(--r-full); background: var(--safe); color: var(--paper); font: 700 9px/14px var(--ui); text-align: center; pointer-events: none; }
+
+/* ═══ Feed: newsletters as one page ════════════════════ */
+.feed { overflow: auto; min-height: 0; background: var(--paper); }
+@media (min-width: 861px) { .feed { margin-block: var(--s2); margin-inline: 0 var(--s2); border-radius: var(--r-lg); } }
+.feed-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s4); max-width: 760px; margin: 0 auto; padding: var(--s6) var(--gutter-reader) var(--s4); }
+.feed-head h2 { font: 500 var(--t-h1)/1.2 var(--read); letter-spacing: -.012em; }
+.feed-items { display: grid; gap: var(--s6); max-width: 760px; margin: 0 auto; padding: 0 var(--gutter-reader) var(--s10); }
+.feed-item { display: grid; gap: var(--s3); padding-top: var(--s6); border-top: 1px solid var(--rule); min-width: 0; }
+.feed-item > header { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.feed-item .avatar { width: 32px; height: 32px; font-size: calc(13px * var(--scale)); flex: none; }
+.feed-item .who { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--s2); color: var(--ink-2); }
+.feed-item .who b { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-item .who time { flex: none; color: var(--muted); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.feed-item .acts { display: flex; gap: 2px; color: var(--ink-2); }
+.feed-title { font: 500 var(--t-h2)/1.25 var(--read); text-wrap: balance; color: var(--ink); text-align: start; }
+.feed-title:hover { color: var(--accent); }
+.feed-item.unread .feed-title { font-weight: 650; }
+.feed-item.unread .who b::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-inline-end: var(--s2); border-radius: var(--r-full); background: var(--accent); vertical-align: 1px; }
+.feed-preview { color: var(--muted); }
+.feed-body { border: 1px solid var(--rule); border-radius: var(--r-md); overflow: hidden; background: var(--white); }
+.feed-body iframe { display: block; width: 100%; height: 48px; border: 0; } /* starts short: the frame then grows to its content */
+@media (max-width: 860px) { .feed-head { align-items: flex-start; flex-direction: column; padding: var(--s4); } .feed-head h2 { display: none; } .feed-items { padding: 0 var(--s4) var(--s10); } }

@@ -15,6 +15,7 @@ import { canAsk } from './ai';
 import { SubscriptionsList } from './Subscriptions';
 import { ContactList, ContactPanel, fullName, groupAddresses } from './Contacts';
 import { CalendarView } from './CalendarView';
+import { FeedView } from './FeedView';
 import { Reader, type Action } from './Reader';
 import { TaskList } from './Tasks';
 import { NotesView } from './Notes';
@@ -40,8 +41,8 @@ const UNDO_MS = 7000; // how long "Archived · Undo" stays
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
 const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
 // Virtual folders: views that aren't mailboxes on the server.
-const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks', NOTES = 'notes';
-const VIRTUAL = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS, NOTES];
+const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks', NOTES = 'notes', FEED = 'feed';
+const VIRTUAL = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS, NOTES, FEED];
 
 
 type Toast = { text: string; undo?: () => void } | null;
@@ -207,7 +208,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       if (box === SCHEDULED) { setScheduled(await client.scheduled()); return; }
       if (box === SUBSCRIPTIONS) { setSubs(await client.subscriptions()); return; }
       if (box === CONTACTS) { setPeople(await client.addressBook()); return; }
-      if (box === CALENDAR || box === TASKS || box === NOTES) return; // these load their own data
+      if (box === CALENDAR || box === TASKS || box === NOTES || box === FEED) return; // these load their own data
       const isInbox = b.find((x) => x.id === box)?.role === 'inbox';
       const filter: Filter = query ? parseSearch(query, b) : box === STARRED ? { hasKeyword: '$flagged' }
         : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box },
@@ -583,6 +584,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     ...boxes.slice(1).flatMap((b) => (b.role === 'drafts' && !opened ? [b, { id: SCHEDULED, name: SCHEDULED, role: SCHEDULED, unreadEmails: 0, sortOrder: 0 }] : [b])),
     // Someone else's mailbox shows its mail only; your contacts, calendar, tasks and notes stay in yours.
     ...(opened ? [] : [
+      { id: FEED, name: FEED, role: FEED, unreadEmails: 0, sortOrder: 0 },
       { id: SUBSCRIPTIONS, name: SUBSCRIPTIONS, role: SUBSCRIPTIONS, unreadEmails: 0, sortOrder: 0 },
       { id: CONTACTS, name: CONTACTS, role: CONTACTS, unreadEmails: 0, sortOrder: 0 },
       { id: CALENDAR, name: CALENDAR, role: CALENDAR, unreadEmails: 0, sortOrder: 0 },
@@ -684,7 +686,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   );
 
   return (
-    <div className={`app${role === CALENDAR || role === NOTES ? ' calendar-mode' : ''}${threadId || (role === CONTACTS && (personId || editingPerson)) ? ' reading' : ''}${navOpen ? ' nav-open' : ''}`}
+    <div className={`app${role === CALENDAR || role === NOTES || role === FEED ? ' calendar-mode' : ''}${threadId || (role === CONTACTS && (personId || editingPerson)) ? ' reading' : ''}${navOpen ? ' nav-open' : ''}`}
       onKeyDown={(e) => { if (e.key === 'Escape' && navOpen) { e.stopPropagation(); setNavOpen(false); } }}>
       {/* Phones only: the way to the folders, the account and Settings (the rail is a drawer there). */}
       <header className="topbar">
@@ -701,7 +703,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         onSettings={() => { setNavOpen(false); setOverlay('settings'); }} onPalette={() => { setNavOpen(false); setOverlay('palette'); }} onPrivacy={() => { setNavOpen(false); setOverlay('privacy'); }} blockedThisWeek={week(readTally(own.username)).total}
         takesDrop={takesDrop} dropOn={dropOn} onDropOver={setDropOn} onDrop={drop} />
 
-      {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : role === NOTES ? <NotesView client={client} say={(text) => say({ text })} /> : <>
+      {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : role === FEED ? <FeedView client={client} say={(text) => say({ text })} onOpen={(tid) => openRef.current(tid)} /> : role === NOTES ? <NotesView client={client} say={(text) => say({ text })} /> : <>
       <section className="list" aria-label={t('mail.conversations')} onScroll={(e) => {
         const el = e.currentTarget;
         if (hasMore && el.scrollTop + el.clientHeight > el.scrollHeight - 600) loadMore();

@@ -73,4 +73,4 @@ export function Icon({ name, size = 18, filled = false, className }: { name: Ico
 }
 
 export const roleIcon = (role: string | null): IconName =>
-  (({ inbox: 'inbox', drafts: 'drafts', sent: 'sent', archive: 'archive', junk: 'junk', trash: 'trash', snoozed: 'clock', starred: 'star', scheduled: 'clock', subscriptions: 'unread', contacts: 'person', calendar: 'calendar', tasks: 'check', notes: 'note' } as const)[role ?? ''] ?? 'folder');
+  (({ inbox: 'inbox', drafts: 'drafts', sent: 'sent', archive: 'archive', junk: 'junk', trash: 'trash', snoozed: 'clock', starred: 'star', scheduled: 'clock', subscriptions: 'unread', feed: 'bullets', contacts: 'person', calendar: 'calendar', tasks: 'check', notes: 'note' } as const)[role ?? ''] ?? 'folder');

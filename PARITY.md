@@ -13,6 +13,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Conversation view | ✅ | ✅ | Paper-trail layout: newest open, older folded |
 | Unified folders + labels (tags) | ✅ | ✅ | A conversation can live in several folders (JMAP), no tag/folder split |
 | Star / flag | ✅ | ✅ | |
+| Private notes on a conversation | 🟡 | ✅ | A note to yourself under any conversation: synced (a hidden folder in your mailbox), never sent |
 | Snooze | 🟡 (reminders) | ✅ | Real snooze: leaves the inbox, returns unread |
 | Archive, delete, spam / not spam | ✅ | ✅ | Auto-advance to the next conversation; Undo on the toast (or `z`) puts it back |
 | Multi-select + bulk actions | ✅ | ✅ | Shift-click ranges, keyboard `x` |
@@ -35,7 +36,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Inline images | ✅ | ✅ | Kept in replies and forwards, shown inside the editor |
 | Drafts autosave | ✅ | ✅ | |
 | Undo send | ✅ | ✅ | Server-side hold: works even if the tab closes |
-| Schedule send | ✅ | ✅ | Scheduled view to edit or cancel |
+| Schedule send | ✅ | ✅ | Scheduled view to edit or cancel; a first choice for when the recipient is usually at their mail (from when their last 30 messages reached you; needs at least 3 with a pattern) |
 | Recipient autocomplete | ✅ | ✅ | Ranks people you write to above people who write to you |
 | Signatures | ✅ (many) | ✅ | Named signatures synced on the server; separate defaults for new messages and replies; switch or remove per message |
 | Send-as / aliases | ✅ | ✅ | From menu for every address you own; replies come from the address the mail was sent to |
@@ -48,10 +49,11 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 
 | Feature | Zoho | Us | Better because |
 |---|---|---|---|
-| Filters / rules | ✅ | ✅ | Sieve (open standard): run on the server, visible to any client; "filter messages like this" |
+| Filters / rules | ✅ | ✅ | Sieve (open standard): run on the server, visible to any client; "filter messages like this"; while you write a rule it shows which of your last 100 Inbox conversations it would have caught (Cc isn't checked in the preview) |
 | Block sender | ✅ | ✅ | Exact-address match; goes to Junk, never silently lost |
 | One-click unsubscribe | 🟡 | ✅ | RFC 8058 one-click, mailto fallback |
 | Subscriptions manager | ⬜ | ✅ | Every newsletter in one list: unsubscribe or delete everything from a sender |
+| Newsletter feed | ⬜ | ✅ | Rail → More → Feed: the Inbox's newsletters and updates as one page, each shown whole in the reader's locked-down frame; nothing is marked read or moved until you say so |
 | Vacation / out-of-office | ✅ | ✅ | Date range, once per sender |
 | Forwarding | ✅ | ✅ | Per-filter forwarding (keeps a copy) |
 | Folder management (rename, nest, delete) | ✅ | ✅ | Folders inside folders, in the rail, menus and filters; drag conversations onto a folder; each folder has a colour on its icon and its chips: pick one in Settings → Folders (synced), or it gets one from its name |
