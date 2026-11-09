@@ -10,11 +10,12 @@ misaligned, every action where the hand expects it. These rules are binding for 
    crisp. Geist Mono for addresses, keys and codes. A serif (Newsreader) for messages is a per-device setting.
    **Headings are never italic.** Sizes scale with Settings → Text size (and with browser zoom): every font size is
    `calc(<px> * var(--scale))`.
-2. **Clean by default, one blue.** Theme "Clean": white panes floating on a cool, very light canvas, Gmail-style blue
-   (`--accent`) for "you can act here" or "this is new". "Paper" (warm off-white) is an option. Dark is neutral
-   charcoal. Compose is a soft tonal button so Send stays the one strong blue button. Gold only for stars, green
-   only for privacy protections, red only for errors and destructive confirmations.
-   **Unread is weight plus a dot, never a coloured stripe on the row edge.**
+2. **Grove by default, one accent.** Theme "Grove" (our own): white panes floating on a very light canvas with a
+   breath of green, deep green (`--accent`) for "you can act here" or "this is new". "Clean" (Gmail-style blue) and
+   "Paper" (warm off-white) are options. Dark is near-neutral charcoal. Compose is a soft tonal button so Send stays the one strong blue button. Gold only for stars, `--safe`
+   (blue in Grove, green in Clean and Paper) only for privacy protections, red only for errors and destructive confirmations.
+   **Unread is weight plus a dot, never a coloured stripe on the row edge.** A row leads with the sender's initial
+   (colour from their address); it becomes the checkbox under the pointer, while selecting, and when tapped.
 3. **Every pane has one left edge.** Each pane defines a gutter (`--gutter-*`). Titles, search, rows, toolbars and
    body text all start on it. Icon-only toolbars are *optically* aligned: the icon, not the button, sits on the edge.
 4. **Messages have one text column.** Inside a message, the avatar sits on the pane gutter and everything else

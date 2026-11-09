@@ -19,7 +19,7 @@ export const shown = (b: { role?: string | null; name: string }) => (!b.role && 
 export type RailItem = { id: string; name: string; role: string | null; unreadEmails: number; depth?: number };
 
 export function Rail({ items, current, query, open, onToggle, onFolder, onCompose, opened, sharing, onOpenShared, onError, saved, onSavedSearch, onRemoveSearch,
-  name, username, accounts, onSwitch, onAddAccount, onLogout, onSettings, onPalette, takesDrop, dropOn, onDropOver, onDrop }: {
+  name, username, accounts, onSwitch, onAddAccount, onLogout, onSettings, onPalette, onPrivacy, takesDrop, dropOn, onDropOver, onDrop }: {
   /** Folders and places, in order; `current` is the one on screen (null while searching). */
   items: RailItem[]; current: string | null; query: string;
   /** "More" unfolded. */
@@ -30,7 +30,7 @@ export function Rail({ items, current, query, open, onToggle, onFolder, onCompos
   saved: { name: string; query: string }[]; onSavedSearch: (query: string) => void; onRemoveSearch: (name: string) => void;
   /** The account footer: display name, sign-in name, every account signed in on this tab. */
   name: string; username: string; accounts: string[]; onSwitch: (username: string) => void; onAddAccount: () => void; onLogout: () => void;
-  onSettings: () => void; onPalette: () => void;
+  onSettings: () => void; onPalette: () => void; onPrivacy: () => void;
   /** Dragging conversations onto a folder: which folders take the drop, and the one under the pointer. */
   takesDrop: (b: RailItem) => boolean; dropOn: string | null; onDropOver: (id: string | null) => void; onDrop: (b: RailItem) => void;
 }) {
@@ -112,7 +112,8 @@ export function Rail({ items, current, query, open, onToggle, onFolder, onCompos
           </>}
         </Menu>
         <span className="links">
-          <Button variant="quiet" size="sm" icon="settings" label={t('mail.settings')} onClick={onSettings} />
+          <Button variant="quiet" size="sm" icon="shield" label={t('privacy.title')} onClick={onPrivacy} />
+      <Button variant="quiet" size="sm" icon="settings" label={t('mail.settings')} onClick={onSettings} />
           <Button variant="quiet" size="sm" icon="command" label={t('mail.findAnyAction')} shortcut="⌘K" onClick={onPalette} />
           <Button variant="quiet" size="sm" icon="logout" label={t('mail.signOutOf', { address: username })} onClick={onLogout} />
         </span>

@@ -34,6 +34,8 @@ import { locale, t } from './i18n';
 import { clearRoute, readRoute, writeRoute, type Route } from './route';
 import { useSwipe } from './Swipe';
 import { Rail, ShortcutsHelp, shown } from './Rail';
+import { PrivacyReport } from './PrivacyReport';
+import { readTally } from './privacy';
 
 const PAGE = 50;
 const UNDO_MS = 7000; // how long "Archived · Undo" stays
@@ -104,7 +106,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const [messages, setMessages] = useState<EmailFull[] | null>(null);
   const [readerError, setReaderError] = useState('');
   const [toast, setToast] = useState<Toast>(null);
-  const [overlay, setOverlay] = useState<'help' | 'settings' | 'palette' | null>(null);
+  const [overlay, setOverlay] = useState<'help' | 'settings' | 'palette' | 'privacy' | null>(null);
   const [threadVersion, setThreadVersion] = useState(0); // bump to reload the open conversation
   const [contacts, setContacts] = useState<Address[]>(() => cache.get(key('contacts')) ?? []);
   const [identity, setIdentity] = useState<Identity | null>(null);
@@ -487,6 +489,8 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         frame.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden';
         frame.onload = () => { frame.contentWindow?.print(); setTimeout(() => frame.remove(), 1000); };
         document.body.appendChild(frame);
+      } else if (what === 'fromSender') {
+        setQuery(`from:${sender}`); setThreadId(null);
       } else if (what === 'task') {
         await client.addTask(m.subject?.replace(/^((re|fwd?)\s*:\s*)+/i, '') || t('mail.followUp'), { threadId: m.threadId });
         say({ text: t('mail.addedToTasks') });
@@ -712,6 +716,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       { id: 'snooze', label: t('mail.cmdSnooze'), icon: 'clock' as const, run: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); act({ snooze: d }); } },
     ] : []),
     { id: 'settings', label: t('mail.cmdSettings'), icon: 'settings', run: () => setOverlay('settings') },
+    { id: 'privacy', label: t('privacy.title'), icon: 'shield', run: () => setOverlay('privacy') },
     { id: 'theme-dark', label: t('mail.cmdThemeDark'), icon: 'settings', run: () => applyTheme('dark') },
     { id: 'theme-light', label: t('mail.cmdThemeLight'), icon: 'settings', run: () => applyTheme('light') },
     { id: 'theme-system', label: t('mail.cmdThemeSystem'), icon: 'settings', run: () => applyTheme('system') },
@@ -776,6 +781,8 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const inScreener = !role && currentBox?.name === SCREENER;
   /** Folders you made (labels): shown as chips on rows that are also filed there. */
   const userFolders = useMemo(() => new Map(boxes.filter((b) => !b.role && b.name !== SCREENER).map((b) => [b.id, b.name])), [boxes]);
+  /** Whose face a row shows: the sender, or in Sent and Drafts the person it's going to. */
+  const who = (e: EmailSummary) => (role === 'sent' || role === 'drafts' ? e.to?.[0] : e.from?.[0]);
   const emptyText = query ? t('mail.noMatches', { query })
     : role === 'inbox' ? t('mail.caughtUp')
     : role === STARRED ? t('mail.starredEmpty')
@@ -806,7 +813,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         saved={saved} onSavedSearch={(q) => { setQuery(q); setThreadId(null); setNavOpen(false); }} onRemoveSearch={removeSearch}
         name={identity?.name && identity.name !== identity.email ? identity.name : client.username} username={client.username}
         accounts={accounts} onSwitch={onSwitch} onAddAccount={onAddAccount} onLogout={onLogout}
-        onSettings={() => { setNavOpen(false); setOverlay('settings'); }} onPalette={() => { setNavOpen(false); setOverlay('palette'); }}
+        onSettings={() => { setNavOpen(false); setOverlay('settings'); }} onPalette={() => { setNavOpen(false); setOverlay('palette'); }} onPrivacy={() => { setNavOpen(false); setOverlay('privacy'); }}
         takesDrop={takesDrop} dropOn={dropOn} onDropOver={setDropOn} onDrop={drop} />
 
       {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : role === NOTES ? <NotesView client={client} say={(text) => say({ text })} /> : <>
@@ -886,7 +893,9 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
             {list === null && <div className="rows-loading" aria-busy="true">{[0, 1, 2, 3, 4].map((i) => <span key={i} />)}</div>}
             {opened && currentBox?.myRights && !currentBox.myRights.mayRemoveItems && <p className="list-note">{t('mail.readOnlyShared')}</p>}
             {inScreener && !!list?.length && <p className="list-note">{t('mail.screenerNote')}</p>}
-            {list?.length === 0 && <p className="empty">{inScreener ? t('mail.screenerEmpty') : emptyText}</p>}
+            {list?.length === 0 && (role === 'inbox' && !query && (!categories || tab === 'primary')
+              ? <InboxZero blocked={readTally(own.username).trackers} onCompose={newMessage} />
+              : <p className="empty">{inScreener ? t('mail.screenerEmpty') : emptyText}</p>)}
             <ul className={`rows${selected.size ? ' selecting' : ''}`}>
               {list?.map((e, i) => (<Fragment key={e.threadId}>
                 {important > 0 && (i === 0 || i === important) && <li className="list-section" role="presentation">{t(i === 0 ? 'mail.importantUnread' : 'mail.everythingElse')}</li>}
@@ -899,8 +908,12 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
                   } : undefined} onDragEnd={() => { setDragging(null); setDropOn(null); }}
                   left={role === 'archive' ? t('common.delete') : t('mail.archive')} onLeft={() => act(role === 'archive' ? 'trash' : 'archive', [e.threadId])}
                   right={t(e.keywords.$seen ? 'mail.markUnread' : 'mail.markRead')} onRight={() => act(e.keywords.$seen ? 'unread' : 'read', [e.threadId])}>
-                  <input type="checkbox" className="check" checked={selected.has(e.threadId)} aria-label={e.subject ? t('mail.selectSubject', { subject: e.subject }) : t('mail.selectConversation')}
-                    onChange={() => {}} onClick={(ev) => toggleSelect(e.threadId, ev.shiftKey)} />
+                  {/* The sender's initial; it turns into the checkbox under the pointer, while selecting, and when tapped. */}
+                  <span className="lead">
+                    <span className="avatar" aria-hidden="true" style={{ '--h': hue(who(e)?.email ?? '') } as React.CSSProperties}>{(displayName(who(e)) || '?').slice(0, 1).toUpperCase()}</span>
+                    <input type="checkbox" className="check" checked={selected.has(e.threadId)} aria-label={e.subject ? t('mail.selectSubject', { subject: e.subject }) : t('mail.selectConversation')}
+                      onChange={() => {}} onClick={(ev) => toggleSelect(e.threadId, ev.shiftKey)} />
+                  </span>
                   <button className="open" onClick={(ev) => (ev.shiftKey || selected.size ? toggleSelect(e.threadId, ev.shiftKey) : openThread(e.threadId))}>
                     <span className="from">{role === 'sent' || role === 'drafts'
                       ? t('mail.toNames', { names: e.to?.map((a) => displayName(a)).join(', ') || t('mail.noRecipients') }) : displayName(e.from?.[0], client.username)}</span>
@@ -973,6 +986,22 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         onClose={() => { setOverlay(null); setRulePrefill(undefined); reloadCategories(); }} onFoldersChanged={refresh} onIdentitiesChanged={loadIdentity} onAccountDeleted={onLogout}
         onSaved={(m) => { setOverlay(null); setRulePrefill(undefined); say({ text: m }); loadIdentity(); reloadCategories(); }} />}
       {overlay === 'help' && <ShortcutsHelp onClose={() => setOverlay(null)} />}
+      {overlay === 'privacy' && <PrivacyReport user={own.username} onClose={() => setOverlay(null)} onSearch={(q) => { setOverlay(null); setQuery(q); setThreadId(null); }} />}
+    </div>
+  );
+}
+
+/** Nothing left in the Inbox: say so like it's good news, and show what was kept away meanwhile. */
+function InboxZero({ blocked, onCompose }: { blocked: number; onCompose: () => void }) {
+  return (
+    <div className="inbox-zero">
+      <svg viewBox="0 0 120 120" width="120" height="120" aria-hidden="true">
+        <circle cx="60" cy="60" r="52" className="iz-ring" />
+        <path d="M38 62l15 15 30-34" className="iz-tick" />
+      </svg>
+      <h3>{t('mail.zeroTitle')}</h3>
+      <p>{blocked > 0 ? t('mail.zeroBlocked', { count: blocked }) : t('mail.zeroBody')}</p>
+      <Button onClick={onCompose} icon="compose">{t('mail.compose')}</Button>
     </div>
   );
 }

@@ -28,14 +28,14 @@ export const savedTheme = (): Theme => { try { return (localStorage.getItem('om:
 
 /** Display preferences, per device (like light/dark): each one is a data-* attribute on <html> read by styles.css. */
 export const DISPLAY = {
-  palette: { label: 'display.theme', options: [['clean', 'display.clean'], ['paper', 'display.paper']] },
+  palette: { label: 'display.theme', options: [['grove', 'display.grove'], ['clean', 'display.clean'], ['paper', 'display.paper']] },
   text: { label: 'display.text', options: [['small', 'display.small'], ['default', 'display.default'], ['large', 'display.large'], ['larger', 'display.larger']] },
   density: { label: 'display.density', options: [['comfortable', 'display.comfortable'], ['default', 'display.default'], ['compact', 'display.compact']] },
   reading: { label: 'display.font', options: [['sans', 'display.sans'], ['serif', 'display.serif']] },
   pane: { label: 'display.pane', options: [['full', 'display.full'], ['split', 'display.split']] },
 } as const satisfies Record<string, { label: Key; options: readonly (readonly [string, Key])[] }>;
 export type DisplayKey = keyof typeof DISPLAY;
-const DEFAULTS: Record<DisplayKey, string> = { palette: 'clean', text: 'default', density: 'default', reading: 'sans', pane: 'full' };
+const DEFAULTS: Record<DisplayKey, string> = { palette: 'grove', text: 'default', density: 'default', reading: 'sans', pane: 'full' };
 export const displayPref = (k: DisplayKey) => { try { return localStorage.getItem(`om:${k}`) || DEFAULTS[k]; } catch { return DEFAULTS[k]; } };
 export function setDisplayPref(k: DisplayKey, v: string) {
   if (v === DEFAULTS[k]) document.documentElement.removeAttribute(`data-${k}`); else document.documentElement.setAttribute(`data-${k}`, v);

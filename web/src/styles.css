@@ -62,6 +62,17 @@
   --tonal: oklch(91% 0.03 266); --tonal-ink: oklch(28% 0.06 266);
 }
 
+/* Theme "Grove" (the default: no data-palette): our own colour. Deep green for "you can act here", a canvas with a
+   breath of green in its greys, and blue (not green) for privacy protections so the two never read as one. */
+:root:not([data-palette]) {
+  --rail: oklch(97.3% 0.008 155); --rule: oklch(92.2% 0.008 155); --hover: oklch(95.6% 0.012 155); --field: oklch(95% 0.014 155);
+  --ink: oklch(22% 0.012 160); --ink-2: oklch(40% 0.012 160); --muted: oklch(54% 0.012 160);
+  --accent: oklch(45% 0.11 158); --accent-hover: oklch(39% 0.1 158); --accent-wash: oklch(93.5% 0.04 158);
+  --tonal: oklch(90.5% 0.065 152); --tonal-ink: oklch(26% 0.05 158);
+  --safe: oklch(50% 0.11 230); --toast-link: oklch(84% 0.1 155);
+  --lift: 0 18px 50px -12px oklch(20% 0.02 160 / .24), 0 2px 6px oklch(20% 0.02 160 / .07);
+}
+
 /* Dark: neutral charcoal, the blue lifted for contrast. Device setting (unless Light is chosen), or Dark in Settings. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -86,6 +97,20 @@
   --toast: oklch(93% 0.004 255); --toast-ink: oklch(18% 0.004 255); --toast-link: oklch(50% 0.19 260);
   --lift: 0 18px 50px -12px oklch(0% 0 0 / .6), 0 2px 6px oklch(0% 0 0 / .3); --lift-sm: 0 1px 2px oklch(0% 0 0 / .4);
   color-scheme: dark;
+}
+
+/* Grove in the dark. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-palette]) {
+    --rail: oklch(16.5% 0.006 160); --rule: oklch(29% 0.008 160); --hover: oklch(26% 0.01 160); --field: oklch(25% 0.012 160); --paper: oklch(21% 0.006 160); --list: oklch(21% 0.006 160);
+    --accent: oklch(80% 0.12 158); --accent-hover: oklch(86% 0.1 158); --accent-ink: oklch(20% 0.04 160); --accent-wash: oklch(31% 0.05 158);
+    --tonal: oklch(34% 0.05 158); --tonal-ink: oklch(92% 0.03 155); --safe: oklch(78% 0.1 230); --toast-link: oklch(45% 0.11 158);
+  }
+}
+:root[data-theme="dark"]:not([data-palette]) {
+    --rail: oklch(16.5% 0.006 160); --rule: oklch(29% 0.008 160); --hover: oklch(26% 0.01 160); --field: oklch(25% 0.012 160); --paper: oklch(21% 0.006 160); --list: oklch(21% 0.006 160);
+    --accent: oklch(80% 0.12 158); --accent-hover: oklch(86% 0.1 158); --accent-ink: oklch(20% 0.04 160); --accent-wash: oklch(31% 0.05 158);
+    --tonal: oklch(34% 0.05 158); --tonal-ink: oklch(92% 0.03 155); --safe: oklch(78% 0.1 230); --toast-link: oklch(45% 0.11 158);
 }
 
 /* ═══ Base ═════════════════════════════════════════════ */
@@ -1014,3 +1039,60 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
   .cal-nav .btn--primary { margin-inline-start: auto; }
   .cal-hours span { white-space: nowrap; font-size: calc(11px * var(--scale)); inset-inline-end: var(--s1); }
 }
+
+/* ═══ Rows: the sender's initial, which becomes the checkbox ═══ */
+.row { grid-template-columns: 32px 1fr; }
+.row:not(:has(.lead)) { grid-template-columns: 1fr; }
+.row .lead { position: relative; width: 32px; height: 32px; margin-top: 3px; display: grid; place-items: center; }
+.row .lead .avatar { width: 32px; height: 32px; font-size: calc(13px * var(--scale)); }
+/* The checkbox covers the initial (so a tap or click there selects) and shows in its place when it matters. */
+.row .lead .check { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; }
+.row:hover .lead .check, .rows.selecting .lead .check, .row .lead .check:focus-visible, .row .lead .check:checked { inset: 8px; width: 16px; height: 16px; opacity: 1; }
+.row:hover .lead .avatar, .rows.selecting .lead .avatar, .row .lead:has(.check:focus-visible) .avatar, .row .lead:has(.check:checked) .avatar { visibility: hidden; }
+/* Unread: the dot sits beside the initial now, so it stays put under the pointer and while selecting. */
+.row.unread::before { inset-inline-start: 4px; top: calc(var(--row-pad) + 15px); }
+.row.unread:hover::before, .rows.selecting .row.unread::before, .row.unread.selected::before { display: block; }
+@media (hover: none) {
+  .row:hover .lead .check { inset: 0; width: 100%; height: 100%; opacity: 0; }
+  .row:hover .lead .avatar { visibility: visible; }
+  .rows.selecting .row .lead .check, .row .lead .check:checked { inset: 8px; width: 16px; height: 16px; opacity: 1; }
+  .rows.selecting .row .lead .avatar { visibility: hidden; }
+}
+
+/* ═══ Inbox zero ═══════════════════════════════════════ */
+.inbox-zero { display: grid; justify-items: center; gap: var(--s3); padding: var(--s10) var(--s6); text-align: center; color: var(--ink-2); }
+.inbox-zero h3 { font: 600 var(--t-h2)/1.2 var(--ui); color: var(--ink); }
+.inbox-zero p { max-width: 34ch; text-wrap: balance; }
+.inbox-zero .btn { margin-top: var(--s2); }
+.iz-ring { fill: var(--accent-wash); }
+.iz-tick { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 70; stroke-dashoffset: 70; animation: iz-draw 520ms var(--ease-out) 120ms forwards; }
+@keyframes iz-draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .iz-tick { stroke-dashoffset: 0; } }
+
+/* ═══ Privacy report ═══════════════════════════════════ */
+.sheet.privacy { width: min(560px, 100%); display: grid; gap: var(--s4); max-height: min(86vh, 760px); overflow: auto; }
+.privacy-head { display: flex; align-items: center; gap: var(--s3); }
+.privacy-head h2 { flex: 1; }
+.privacy-mark { display: grid; place-items: center; width: var(--h-lg); height: var(--h-lg); border-radius: var(--r-full); background: color-mix(in oklch, var(--safe) 16%, transparent); color: var(--safe); }
+.privacy-empty { color: var(--ink-2); line-height: 1.5; }
+.privacy-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s3); }
+.privacy-stats p { display: grid; gap: var(--s1); padding: var(--s4); border-radius: var(--r-md); background: var(--hover); color: var(--ink-2); font-size: var(--t-sm); }
+.privacy-stats b { font: 600 var(--t-h1)/1 var(--ui); color: var(--ink); font-variant-numeric: tabular-nums; }
+.privacy h3 { font-size: var(--t-sm); font-weight: 600; color: var(--ink-2); }
+.privacy-list { display: grid; }
+.privacy-list li { display: flex; align-items: center; gap: var(--s3); min-height: 52px; }
+.privacy-list li + li { border-top: 1px solid var(--rule); }
+.privacy-list .avatar { width: 32px; height: 32px; font-size: calc(13px * var(--scale)); flex: none; }
+.privacy-list .who { flex: 1; min-width: 0; display: grid; gap: var(--s1); }
+.privacy-list .who b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.privacy-list .bar { height: 4px; width: var(--w); min-width: 4px; border-radius: var(--r-full); background: var(--safe); }
+.privacy-list .n { flex: none; color: var(--muted); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
+.privacy-list .btn--link { flex: none; font-size: var(--t-sm); }
+.privacy-hosts { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.privacy .btn.start { justify-self: start; }
+@media (max-width: 860px) { .privacy-stats { grid-template-columns: 1fr; } .privacy-stats p { grid-template-columns: auto 1fr; align-items: baseline; gap: var(--s3); padding: var(--s3) var(--s4); } }
+
+/* Rail footer: the account name gives way (…) to the buttons beside it, never runs under them. */
+.me > .menu { min-width: 0; }
+.me .account-btn { display: flex; align-items: center; gap: var(--s1); min-width: 0; max-width: 100%; overflow: hidden; }
+.me .account-btn .addr { min-width: 0; }

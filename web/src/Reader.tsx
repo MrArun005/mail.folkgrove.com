@@ -8,6 +8,7 @@ import { displayName, fileLinks, fileSize, formatAddresses, type ReplyMode } fro
 import { ConfidentialSent } from './Confidential';
 import { canSuggestReplies, canSummarize, canTranslate, languageName, suggestReplies, summarize, translate, visibleText } from './ai';
 import { buildSrcdoc } from './safeHtml';
+import { recordTrackers } from './privacy';
 import { span, type CalEvent } from './calendar';
 import type { PartStat } from './ics';
 import { Menu, TimeChoices } from './Menu';
@@ -18,7 +19,7 @@ import { groupReactions } from './reactions';
 import { EmojiPicker } from './EmojiPicker';
 
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
-export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task';
+export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task' | 'fromSender';
 
 export function Reader({ client, me, messages: all, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt, onReact, footer }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
@@ -96,6 +97,7 @@ export function Reader({ client, me, messages: all, error, inTrash, inJunk, fold
               {item('print', 'print', t('reader.print'))}
               {item('original', 'file', t('reader.showOriginal'))}
               {sender && sender.toLowerCase() !== me.toLowerCase() && <>
+                {item('fromSender', 'search', t('reader.allFromSender'))}
                 {item('addContact', 'compose', t('reader.addContact'))}
                 {item('filter', 'tag', t('reader.filterLike'))}
                 {item('block', 'junk', t('reader.block', { sender }))}
@@ -168,6 +170,8 @@ function Message({ client, m, me, inJunk, onFold, onUnsubscribe, onRsvp, onRecei
     return () => { live = false; };
   }, [embedded]);
   const html = useMemo(() => (shown.html ? buildSrcdoc(shown.html, showImages, { ...inline, ...secure.state?.inline }) : null), [shown.html, showImages, inline, secure.state]);
+  // The privacy report counts what was removed (on this device only).
+  useEffect(() => { if (html?.trackers.length) recordTrackers(me, m.id, m.from?.[0], html.trackers); }, [html, m.id]);
   const files = secure.state?.mail ? [] /* SecureBanner lists the checked files */ : m.attachments.filter((a) => !embedded.includes(a) && !(secure.kind && isCryptoPart(a)));
   // Large files sent as download links (signup/files.mjs) look like attachments too.
   const links = useMemo(() => fileLinks(`${shown.html ?? ''} ${shown.text ?? ''}`, location.origin), [shown.html, shown.text]);

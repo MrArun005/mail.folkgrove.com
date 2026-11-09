@@ -62,7 +62,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 |---|---|---|---|
 | No ads, no content scanning | ✅ (paid) | ✅ | Free tier included; code is public, so it's checkable |
 | Remote images blocked | 🟡 | ✅ | Default on |
-| Tracking pixels removed | ⬜ | ✅ | Removed even after "Load images", and the sender is named |
+| Tracking pixels removed | ⬜ | ✅ | Removed even after "Load images", and the sender is named. Privacy report (the shield in the rail, or ⌘K): how many trackers were removed, who tracks you most and which services they use; counted on the device, never sent anywhere |
 | Link tracking parameters stripped | ⬜ | ✅ | utm_*, fbclid, gclid, … |
 | Hostile HTML isolation | ✅ | ✅ | Sandboxed frame + strict CSP, tested |
 | 2FA / passkeys | ✅ | ✅ | Settings → Security: fresh sign-in → security token in memory only; QR enrolment with the code checked before saving; app passwords limited to IMAP/SMTP/POP/DAV (a leaked one can't change the password or 2FA); password change. Passkeys: not possible on Stalwart 1.0.3 (no WebAuthn credential type or sign-in route; checked 2026-11-08), see below |
