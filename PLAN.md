@@ -51,6 +51,7 @@ Tracked row by row in [PARITY.md](PARITY.md).
 
 ### Phase 3: One-command self-hosting ✅
 `install.sh`, production compose (Caddy + Stalwart + account service), backups (age-encrypted, restore tested), [self-hosting guide](docs/self-hosting.md).
+CI installs it on every push (`installer` job: `install.sh --local-test`, every container healthy, webmail and `/api` over HTTPS). That run found the account service unable to read `.admin-credentials` on Linux (fixed 2026-11-09); it had only ever been run on macOS, where Docker ignores file ownership. Still not run on a real public server.
 
 ### Phase 4: Public hosted instance (blocked by Gate 1)
 - [x] Sign-up: invite codes, per-IP limits, reserved names, quotas, optional Turnstile

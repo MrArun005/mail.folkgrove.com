@@ -22,6 +22,7 @@ Open http://localhost:5173 and sign in as `alice@openmail.test` / `alice-dev-pas
 - Start over: `node deploy/dev-setup.mjs --reset`
 - Stalwart admin UI: http://localhost:8080/admin. The credentials are in `deploy/.dev-admin.json`.
 - Tests: `cd web && npm test`. These are integration tests against the local server; they skip if it isn't running.
+- Browser tests: `cd web && npm run e2e` (Playwright, `web/e2e/`): Back and links, the phone drawer, swipe, drag to a folder, Undo, notes, the feed, and accessibility checks (axe-core). They use the same local server and put back what they move.
 
 ## Layout
 
@@ -29,7 +30,9 @@ Open http://localhost:5173 and sign in as `alice@openmail.test` / `alice-dev-pas
 web/                 React + TypeScript + Vite client (design rules: web/DESIGN.md)
   src/jmap.ts        JMAP client: mail, submission, push, Sieve filters
   src/safeHtml.ts    hostile-HTML rendering (sandboxed iframe + CSP, tracker removal)
-  src/Mail.tsx       the mailbox screen
+  src/Mail.tsx       the mailbox screen (Rail.tsx, Rows.tsx, messageActions.ts: its rail, its rows, per-message actions)
+  src/route.ts       where you are, in the URL (Back, reload and links)
+  e2e/               browser tests
 deploy/              local dev mail server (docker-compose + dev-setup.mjs)
 deploy/production/   self-hosting kit: install.sh, check-dns.sh, backup.sh, Caddy
 signup/              public sign-up API for a hosted instance

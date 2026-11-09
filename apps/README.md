@@ -9,7 +9,7 @@ works with any OpenMail server and updates when the server does.
 |---|---|---|
 | PWA | `web/public/manifest.webmanifest`, `sw.js` | Install prompt (Settings → App), Compose/Inbox shortcuts, “Share to OpenMail” (text, links, files), unread badge, mailto handler |
 | Desktop (macOS, Windows, Linux) | `desktop/` (Electron) | Builds and runs on macOS; mailto handler. Unsigned |
-| iOS, Android | `mobile/` (Capacitor 8) | Projects generated, **not built yet** (no Xcode or Android SDK on the machine that made them) |
+| iOS, Android | `mobile/` (Capacitor 8) | Android: CI builds a debug APK on every push (the `android` job; download it from the run's artifacts). Unsigned, never run on a device yet. iOS: project generated, **not built** (needs a Mac with Xcode) |
 
 Tooling needs Node 22+. Icons for all of them come from one mark: `cd desktop && npx electron ../make-icons.js`.
 

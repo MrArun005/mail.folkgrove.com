@@ -64,3 +64,46 @@ test('the privacy report opens from the rail and closes with Escape', async ({ p
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Privacy report' })).toHaveCount(0);
 });
+
+test('a private note stays with the conversation, and can be deleted', async ({ page }) => {
+  await signIn(page);
+  await row(page, SEEDED).locator('.open').click();
+  await page.getByRole('button', { name: 'Add a private note' }).click();
+  const text = `note ${Date.now()}`;
+  await page.locator('.team-comments textarea').fill(text);
+  await page.getByRole('button', { name: 'Save note' }).click();
+  await expect(page.locator('.comment-text')).toHaveText(text);
+
+  // Still there after closing and reopening the conversation.
+  await page.goBack();
+  await row(page, SEEDED).locator('.open').click();
+  await expect(page.locator('.comment-text')).toHaveText(text);
+
+  await page.locator('.comment').getByRole('button', { name: 'Delete note' }).click();
+  await expect(page.locator('.comment-text')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add a private note' })).toBeVisible();
+});
+
+test('the feed shows newsletters whole and opens the conversation', async ({ page }) => {
+  await signIn(page);
+  if (await page.locator('.nav-more[aria-expanded=false]').count()) await page.locator('.nav-more').click();
+  await page.locator('.rail .nav-item', { hasText: 'Feed' }).click();
+  await expect(page).toHaveURL(/#\/in\/feed/);
+  const first = page.locator('.feed-item').first();
+  await expect(first.locator('.feed-body iframe')).toBeVisible(); // the message itself, not just a preview
+  const title = await first.locator('.feed-title').innerText();
+  await first.locator('.feed-title').click();
+  await expect(page.locator('.thread .subject')).toHaveText(title);
+});
+
+test('a filter being written shows what it would have caught', async ({ page }) => {
+  await signIn(page);
+  await page.locator('.me').getByRole('button', { name: 'Settings' }).click();
+  await page.locator('.settings-link', { hasText: 'Filters' }).click();
+  await page.getByRole('button', { name: 'New filter' }).click();
+  await page.locator('.rule-form input').first().fill('priya@example.org');
+  await expect(page.locator('.rule-preview')).toContainText('would have caught');
+  await expect(page.locator('.rule-preview li').first()).toContainText('Priya');
+  await page.locator('.rule-form input').first().fill('nobody-at-all@nowhere.example');
+  await expect(page.locator('.rule-preview')).toContainText('would not have caught any');
+});
