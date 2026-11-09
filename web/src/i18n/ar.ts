@@ -244,7 +244,7 @@ export default {
   'mail.undone': 'تم التراجع', // review: new
   'mail.zeroTitle': 'صندوق الوارد فارغ', // review: new
   'mail.zeroBody': 'لا شيء بانتظارك. استمتع بذلك.', // review: new
-  'mail.zeroBlocked': { one: 'لا شيء بانتظارك. أُبعد متتبّع واحد عن بريدك حتى الآن.', other: 'لا شيء بانتظارك. أُبعد {count} متتبّعًا عن بريدك حتى الآن.' }, // review: new
+  'mail.zeroBlocked': { zero: 'لا شيء بانتظارك.', one: 'لا شيء بانتظارك. أُبعد متتبّع واحد عن بريدك حتى الآن.', two: 'لا شيء بانتظارك. أُبعد متتبّعان عن بريدك حتى الآن.', few: 'لا شيء بانتظارك. أُبعدت {count} متتبّعات عن بريدك حتى الآن.', many: 'لا شيء بانتظارك. أُبعد {count} متتبّعًا عن بريدك حتى الآن.', other: 'لا شيء بانتظارك. أُبعد {count} متتبّع عن بريدك حتى الآن.' }, // review: new
   'reader.allFromSender': 'كل ما ورد من هذا المرسل', // review: new
   'settings.sections': 'الأقسام', // review: new
   'folders.colour': 'لون {name}', // review: new
@@ -260,12 +260,12 @@ export default {
   'colour.pink': 'وردي', // review: new
   'privacy.title': 'تقرير الخصوصية', // review: new
   'privacy.empty': 'لم يُعثر على متتبّعات في البريد الذي فتحته على هذا الجهاز. عندما تحاول رسالة الإبلاغ بأنك قرأتها، يُزال المتتبّع ويُحصى هنا.', // review: new
-  'privacy.statTrackers': { one: 'متتبّع أُزيل', other: 'متتبّعات أُزيلت' }, // review: new
-  'privacy.statMessages': { one: 'رسالة حاولت تتبّعك', other: 'رسائل حاولت تتبّعك' }, // review: new
-  'privacy.statSenders': { one: 'مرسل', other: 'مرسلين' }, // review: new
+  'privacy.statTrackers': { zero: 'متتبّعات أُزيلت', one: 'متتبّع أُزيل', two: 'متتبّعان أُزيلا', few: 'متتبّعات أُزيلت', many: 'متتبّعًا أُزيل', other: 'متتبّع أُزيل' }, // review: new
+  'privacy.statMessages': { zero: 'رسائل حاولت تتبّعك', one: 'رسالة حاولت تتبّعك', two: 'رسالتان حاولتا تتبّعك', few: 'رسائل حاولت تتبّعك', many: 'رسالة حاولت تتبّعك', other: 'رسالة حاولت تتبّعك' }, // review: new
+  'privacy.statSenders': { zero: 'مرسلين', one: 'مرسل', two: 'مرسلان', few: 'مرسلين', many: 'مرسلًا', other: 'مرسل' }, // review: new
   'privacy.whoTracks': 'من يتتبّعك أكثر', // review: new
   'privacy.companies': 'خدمات التتبّع التي يستخدمونها', // review: new
-  'privacy.messages': { one: 'رسالة واحدة', other: '{count} رسائل' }, // review: new
+  'privacy.messages': { zero: 'لا رسائل', one: 'رسالة واحدة', two: 'رسالتان', few: '{count} رسائل', many: '{count} رسالة', other: '{count} رسالة' }, // review: new
   'privacy.show': 'عرض بريدهم', // review: new
   'privacy.note': 'يُحصى على هذا الجهاز منذ {date} عند فتح البريد. لا يغادر هذا المتصفّح أبدًا.', // review: new
   'privacy.reset': 'بدء العدّ من جديد', // review: new

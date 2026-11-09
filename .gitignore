@@ -12,3 +12,5 @@ deploy/production/.system-mail.env
 deploy/production/.hold.env
 deploy/production/.metrics-password
 .claude/
+test-results/
+playwright-report/

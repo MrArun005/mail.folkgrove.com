@@ -32,6 +32,11 @@ jobs:
         working-directory: web
         run: npm run build
 
+      # Back, links, the phone drawer, swipe, drag to a folder, Undo: in a real browser against the same mail server.
+      - name: Web client — browser tests
+        working-directory: web
+        run: npx playwright install --with-deps chromium && npm run e2e
+
       - name: Signup service — tests
         working-directory: signup
         run: npm test
