@@ -242,6 +242,35 @@ export default {
   'mail.settings': '设置',
   'mail.openMenu': '文件夹和账户', // review: new
   'mail.undone': '已撤销', // review: new
+  'mail.zeroTitle': '收件箱已清空', // review: new
+  'mail.zeroBody': '没有待处理的邮件。好好享受吧。', // review: new
+  'mail.zeroBlocked': { other: '没有待处理的邮件。到目前为止，已为你拦截 {count} 个跟踪器。' }, // review: new
+  'reader.allFromSender': '此发件人的所有邮件', // review: new
+  'settings.sections': '分区', // review: new
+  'folders.colour': '{name} 的颜色', // review: new
+  'folders.colourTitle': '文件夹颜色', // review: new
+  'folders.colourAuto': '自动（根据名称）', // review: new
+  'colour.red': '红色', // review: new
+  'colour.orange': '橙色', // review: new
+  'colour.yellow': '黄色', // review: new
+  'colour.green': '绿色', // review: new
+  'colour.teal': '青色', // review: new
+  'colour.blue': '蓝色', // review: new
+  'colour.purple': '紫色', // review: new
+  'colour.pink': '粉色', // review: new
+  'privacy.title': '隐私报告', // review: new
+  'privacy.empty': '在此设备上打开的邮件中未发现跟踪器。当邮件试图报告你已阅读时，跟踪器会被移除并在此计数。', // review: new
+  'privacy.statTrackers': { other: '个跟踪器已移除' }, // review: new
+  'privacy.statMessages': { other: '封邮件试图跟踪你' }, // review: new
+  'privacy.statSenders': { other: '位发件人' }, // review: new
+  'privacy.whoTracks': '谁跟踪你最多', // review: new
+  'privacy.companies': '他们使用的跟踪服务', // review: new
+  'privacy.messages': { other: '{count} 封邮件' }, // review: new
+  'privacy.show': '查看其邮件', // review: new
+  'privacy.note': '自 {date} 起在此设备上打开邮件时计数。数据不会离开此浏览器。', // review: new
+  'privacy.reset': '重新开始计数', // review: new
+  'privacy.resetTitle': '清除隐私报告？', // review: new
+  'privacy.resetBody': '此设备上的计数将归零。你的邮件不会改变。', // review: new
   'mail.findAnyAction': '查找任意操作',
   'mail.signOutOf': '退出 {address}',
   'mail.conversations': '会话',

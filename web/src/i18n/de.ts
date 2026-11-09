@@ -242,6 +242,35 @@ export default {
   'mail.settings': 'Einstellungen',
   'mail.openMenu': 'Ordner und Konto', // review: new
   'mail.undone': 'Rückgängig gemacht', // review: new
+  'mail.zeroTitle': 'Posteingang leer', // review: new
+  'mail.zeroBody': 'Nichts wartet auf Sie. Genießen Sie es.', // review: new
+  'mail.zeroBlocked': { one: 'Nichts wartet auf Sie. Bisher wurde {count} Tracker aus Ihrer Post entfernt.', other: 'Nichts wartet auf Sie. Bisher wurden {count} Tracker aus Ihrer Post entfernt.' }, // review: new
+  'reader.allFromSender': 'Alles von diesem Absender', // review: new
+  'settings.sections': 'Abschnitte', // review: new
+  'folders.colour': 'Farbe von {name}', // review: new
+  'folders.colourTitle': 'Ordnerfarbe', // review: new
+  'folders.colourAuto': 'Automatisch (nach dem Namen)', // review: new
+  'colour.red': 'Rot', // review: new
+  'colour.orange': 'Orange', // review: new
+  'colour.yellow': 'Gelb', // review: new
+  'colour.green': 'Grün', // review: new
+  'colour.teal': 'Blaugrün', // review: new
+  'colour.blue': 'Blau', // review: new
+  'colour.purple': 'Violett', // review: new
+  'colour.pink': 'Rosa', // review: new
+  'privacy.title': 'Datenschutzbericht', // review: new
+  'privacy.empty': 'In der auf diesem Gerät geöffneten Post wurden keine Tracker gefunden. Wenn eine Nachricht melden will, dass Sie sie gelesen haben, wird der Tracker entfernt und hier gezählt.', // review: new
+  'privacy.statTrackers': { one: 'Tracker entfernt', other: 'Tracker entfernt' }, // review: new
+  'privacy.statMessages': { one: 'Nachricht wollte Sie verfolgen', other: 'Nachrichten wollten Sie verfolgen' }, // review: new
+  'privacy.statSenders': { one: 'Absender', other: 'Absender' }, // review: new
+  'privacy.whoTracks': 'Wer Sie am häufigsten verfolgt', // review: new
+  'privacy.companies': 'Verwendete Tracking-Dienste', // review: new
+  'privacy.messages': { one: '{count} Nachricht', other: '{count} Nachrichten' }, // review: new
+  'privacy.show': 'Nachrichten anzeigen', // review: new
+  'privacy.note': 'Auf diesem Gerät seit dem {date} gezählt, beim Öffnen der Post. Es verlässt diesen Browser nie.', // review: new
+  'privacy.reset': 'Neu zählen', // review: new
+  'privacy.resetTitle': 'Datenschutzbericht löschen?', // review: new
+  'privacy.resetBody': 'Die Zähler auf diesem Gerät beginnen wieder bei null. Ihre Post bleibt unverändert.', // review: new
   'mail.findAnyAction': 'Aktion suchen',
   'mail.signOutOf': 'Von {address} abmelden',
   'mail.conversations': 'Unterhaltungen',

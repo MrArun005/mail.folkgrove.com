@@ -1,4 +1,4 @@
-import { Fragment, Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SendingBlocked } from './Sending';
 import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
@@ -12,11 +12,11 @@ import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { canAsk } from './ai';
 import { SubscriptionsList } from './Subscriptions';
-import { ContactList, ContactPanel, fullName, groupAddresses, hue } from './Contacts';
+import { ContactList, ContactPanel, fullName, groupAddresses } from './Contacts';
 import { CalendarView } from './CalendarView';
 import { localZone } from './calendar';
 import type { PartStat } from './ics';
-import { Reader, shortDate, type Action, type MoreAction } from './Reader';
+import { Reader, type Action, type MoreAction } from './Reader';
 import { TaskList } from './Tasks';
 import { NotesView } from './Notes';
 import { addRule, loadScript, saveScript } from './Filters';
@@ -32,7 +32,7 @@ import { describe } from './when';
 import { TeamComments, useShared } from './Sharing';
 import { locale, t } from './i18n';
 import { clearRoute, readRoute, writeRoute, type Route } from './route';
-import { useSwipe } from './Swipe';
+import { ConversationRows, InboxZero } from './Rows';
 import { Rail, ShortcutsHelp, shown } from './Rail';
 import { PrivacyReport } from './PrivacyReport';
 import { readTally } from './privacy';
@@ -296,7 +296,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   }, [client]);
   useEffect(() => { loadContacts(); loadIdentity(); }, [loadContacts, loadIdentity]);
 
-  const [sigData, setSigData] = useState<Pick<ScriptData, 'signatures' | 'sigNew' | 'sigReply'>>({});
+  const [sigData, setSigData] = useState<Pick<ScriptData, 'signatures' | 'sigNew' | 'sigReply' | 'colors'>>({});
   // Accounts from before named signatures: the identity's one signature is the only one.
   const signatures: Signature[] = sigData.signatures ?? (identity?.textSignature?.trim() ? [{ name: t('mail.signature'), text: identity.textSignature }] : []);
   const showTabs = (data: ScriptData) => {
@@ -781,8 +781,6 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const inScreener = !role && currentBox?.name === SCREENER;
   /** Folders you made (labels): shown as chips on rows that are also filed there. */
   const userFolders = useMemo(() => new Map(boxes.filter((b) => !b.role && b.name !== SCREENER).map((b) => [b.id, b.name])), [boxes]);
-  /** Whose face a row shows: the sender, or in Sent and Drafts the person it's going to. */
-  const who = (e: EmailSummary) => (role === 'sent' || role === 'drafts' ? e.to?.[0] : e.from?.[0]);
   const emptyText = query ? t('mail.noMatches', { query })
     : role === 'inbox' ? t('mail.caughtUp')
     : role === STARRED ? t('mail.starredEmpty')
@@ -809,7 +807,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       </header>
       {navOpen && <div className="nav-scrim" onClick={() => setNavOpen(false)} />}
       <Rail items={navItems} current={current} query={query} open={railOpen} onToggle={toggleRail} onFolder={openFolder} onCompose={newMessage}
-        opened={opened} sharing={sharing} onOpenShared={onOpenShared} onError={fail}
+        opened={opened} sharing={sharing} onOpenShared={onOpenShared} onError={fail} colors={opened ? undefined : sigData.colors}
         saved={saved} onSavedSearch={(q) => { setQuery(q); setThreadId(null); setNavOpen(false); }} onRemoveSearch={removeSearch}
         name={identity?.name && identity.name !== identity.email ? identity.name : client.username} username={client.username}
         accounts={accounts} onSwitch={onSwitch} onAddAccount={onAddAccount} onLogout={onLogout}
@@ -896,49 +894,10 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
             {list?.length === 0 && (role === 'inbox' && !query && (!categories || tab === 'primary')
               ? <InboxZero blocked={readTally(own.username).trackers} onCompose={newMessage} />
               : <p className="empty">{inScreener ? t('mail.screenerEmpty') : emptyText}</p>)}
-            <ul className={`rows${selected.size ? ' selecting' : ''}`}>
-              {list?.map((e, i) => (<Fragment key={e.threadId}>
-                {important > 0 && (i === 0 || i === important) && <li className="list-section" role="presentation">{t(i === 0 ? 'mail.importantUnread' : 'mail.everythingElse')}</li>}
-                <SwipeRow className={`row${e.keywords.$seen ? '' : ' unread'}${e.threadId === threadId ? ' active' : ''}${selected.has(e.threadId) ? ' selected' : ''}`}
-                  off={!!selected.size || inScreener || role === 'trash'}
-                  onDragStart={canDrag && !inScreener ? (ev) => {
-                    const ids = selected.has(e.threadId) ? [...selected] : [e.threadId];
-                    ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', e.subject ?? '');
-                    setDragging(ids);
-                  } : undefined} onDragEnd={() => { setDragging(null); setDropOn(null); }}
-                  left={role === 'archive' ? t('common.delete') : t('mail.archive')} onLeft={() => act(role === 'archive' ? 'trash' : 'archive', [e.threadId])}
-                  right={t(e.keywords.$seen ? 'mail.markUnread' : 'mail.markRead')} onRight={() => act(e.keywords.$seen ? 'unread' : 'read', [e.threadId])}>
-                  {/* The sender's initial; it turns into the checkbox under the pointer, while selecting, and when tapped. */}
-                  <span className="lead">
-                    <span className="avatar" aria-hidden="true" style={{ '--h': hue(who(e)?.email ?? '') } as React.CSSProperties}>{(displayName(who(e)) || '?').slice(0, 1).toUpperCase()}</span>
-                    <input type="checkbox" className="check" checked={selected.has(e.threadId)} aria-label={e.subject ? t('mail.selectSubject', { subject: e.subject }) : t('mail.selectConversation')}
-                      onChange={() => {}} onClick={(ev) => toggleSelect(e.threadId, ev.shiftKey)} />
-                  </span>
-                  <button className="open" onClick={(ev) => (ev.shiftKey || selected.size ? toggleSelect(e.threadId, ev.shiftKey) : openThread(e.threadId))}>
-                    <span className="from">{role === 'sent' || role === 'drafts'
-                      ? t('mail.toNames', { names: e.to?.map((a) => displayName(a)).join(', ') || t('mail.noRecipients') }) : displayName(e.from?.[0], client.username)}</span>
-                    <time dateTime={e.receivedAt}>{e.keywords.$flagged && <span className="starmark" aria-label={t('folder.starred')}><Icon name="star" size={13} filled /></span>}{shortDate(e.receivedAt)}</time>
-                    <span className="subject">{e.keywords.$nudge && role === 'inbox' && <span className="pill pill--warn">{t('mail.noReplyYet')}</span>}
-                      {Object.keys(e.mailboxIds ?? {}).filter((id) => id !== current && userFolders.has(id)).slice(0, 2).map((id) => <span key={id} className="pill pill--label" style={{ '--h': hue(userFolders.get(id)!) } as React.CSSProperties}>{userFolders.get(id)}</span>)}
-                      {e.subject || t('mail.noSubject')}{e.hasAttachment && <Icon name="clip" size={14} />}</span>
-                    <span className="preview">{e.preview}</span>
-                  </button>
-                  {inScreener && !selected.size && e.from?.[0] && (
-                    <span className="row-actions screen-actions">
-                      <Button size="sm" variant="primary" onClick={() => screen(e.from![0].email, true)}>{t('mail.allow')}</Button>
-                      <Button size="sm" onClick={() => screen(e.from![0].email, false)}>{t('mail.block')}</Button>
-                    </span>
-                  )}
-                  {role !== 'trash' && !inScreener && !selected.size && (
-                    <span className="row-actions">
-                      <Button variant="quiet" size="sm" icon="star" iconFilled={!!e.keywords.$flagged} label={t(e.keywords.$flagged ? 'mail.unstar' : 'mail.star')} shortcut="s" onClick={() => act('star', [e.threadId])} />
-                      <Button variant="quiet" size="sm" icon="archive" label={t('mail.archive')} shortcut="e" onClick={() => act('archive', [e.threadId])} />
-                      <Button variant="quiet" size="sm" icon="trash" label={t('common.delete')} shortcut="#" onClick={() => act('trash', [e.threadId])} />
-                    </span>
-                  )}
-                </SwipeRow>
-              </Fragment>))}
-            </ul>
+            <ConversationRows list={list ?? []} important={important} role={role} current={current} threadId={threadId} selected={selected}
+              me={client.username} inScreener={inScreener} canDrag={canDrag} labels={userFolders} colors={sigData.colors}
+              onOpen={openThread} onSelect={toggleSelect} onAct={(a, tid) => act(a, [tid])} onScreen={screen}
+              onDragStart={setDragging} onDragEnd={() => { setDragging(null); setDropOn(null); }} />
             {hasMore && <div className="list-more"><Button variant="link" onClick={loadMore}>{t('mail.showMore')}</Button></div>}
           </>
         )}
@@ -989,32 +948,6 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       {overlay === 'privacy' && <PrivacyReport user={own.username} onClose={() => setOverlay(null)} onSearch={(q) => { setOverlay(null); setQuery(q); setThreadId(null); }} />}
     </div>
   );
-}
-
-/** Nothing left in the Inbox: say so like it's good news, and show what was kept away meanwhile. */
-function InboxZero({ blocked, onCompose }: { blocked: number; onCompose: () => void }) {
-  return (
-    <div className="inbox-zero">
-      <svg viewBox="0 0 120 120" width="120" height="120" aria-hidden="true">
-        <circle cx="60" cy="60" r="52" className="iz-ring" />
-        <path d="M38 62l15 15 30-34" className="iz-tick" />
-      </svg>
-      <h3>{t('mail.zeroTitle')}</h3>
-      <p>{blocked > 0 ? t('mail.zeroBlocked', { count: blocked }) : t('mail.zeroBody')}</p>
-      <Button onClick={onCompose} icon="compose">{t('mail.compose')}</Button>
-    </div>
-  );
-}
-
-/** A conversation row you can swipe on a touch screen: left and right each do one thing, named as you drag. */
-function SwipeRow({ className, off, left, right, onLeft, onRight, onDragStart, onDragEnd, children }: {
-  className: string; off: boolean; left: string; right: string; onLeft: () => void; onRight: () => void;
-  /** With a mouse: drag the row onto a folder in the rail. */
-  onDragStart?: (e: React.DragEvent<HTMLLIElement>) => void; onDragEnd?: () => void; children: ReactNode;
-}) {
-  const swipe = useSwipe<HTMLLIElement>({ off, onLeft, onRight });
-  return <li ref={swipe} className={className} data-swipe-left={left} data-swipe-right={right}
-    draggable={!!onDragStart} onDragStart={onDragStart} onDragEnd={onDragEnd}>{children}</li>;
 }
 
 const TAB_ICON = { primary: 'inbox', promotions: 'tag', social: 'person', updates: 'bell', forums: 'replyAll' } as const;

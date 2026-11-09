@@ -242,6 +242,35 @@ export default {
   'mail.settings': 'ಸೆಟ್ಟಿಂಗ್‌ಗಳು',
   'mail.openMenu': 'ಫೋಲ್ಡರ್‌ಗಳು ಮತ್ತು ಖಾತೆ', // review: new
   'mail.undone': 'ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ', // review: new
+  'mail.zeroTitle': 'ಇನ್‌ಬಾಕ್ಸ್ ಖಾಲಿ', // review: new
+  'mail.zeroBody': 'ನಿಮಗಾಗಿ ಏನೂ ಕಾಯುತ್ತಿಲ್ಲ. ಆನಂದಿಸಿ.', // review: new
+  'mail.zeroBlocked': { one: 'ನಿಮಗಾಗಿ ಏನೂ ಕಾಯುತ್ತಿಲ್ಲ. ಇದುವರೆಗೆ ನಿಮ್ಮ ಮೇಲ್‌ನಿಂದ {count} ಟ್ರ್ಯಾಕರ್ ತೆಗೆದುಹಾಕಲಾಗಿದೆ.', other: 'ನಿಮಗಾಗಿ ಏನೂ ಕಾಯುತ್ತಿಲ್ಲ. ಇದುವರೆಗೆ ನಿಮ್ಮ ಮೇಲ್‌ನಿಂದ {count} ಟ್ರ್ಯಾಕರ್‌ಗಳನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ.' }, // review: new
+  'reader.allFromSender': 'ಈ ಕಳುಹಿಸಿದವರ ಎಲ್ಲಾ ಮೇಲ್', // review: new
+  'settings.sections': 'ವಿಭಾಗಗಳು', // review: new
+  'folders.colour': '{name} ಬಣ್ಣ', // review: new
+  'folders.colourTitle': 'ಫೋಲ್ಡರ್ ಬಣ್ಣ', // review: new
+  'folders.colourAuto': 'ಸ್ವಯಂಚಾಲಿತ (ಹೆಸರಿನಿಂದ)', // review: new
+  'colour.red': 'ಕೆಂಪು', // review: new
+  'colour.orange': 'ಕಿತ್ತಳೆ', // review: new
+  'colour.yellow': 'ಹಳದಿ', // review: new
+  'colour.green': 'ಹಸಿರು', // review: new
+  'colour.teal': 'ಹಸಿರು-ನೀಲಿ', // review: new
+  'colour.blue': 'ನೀಲಿ', // review: new
+  'colour.purple': 'ನೇರಳೆ', // review: new
+  'colour.pink': 'ಗುಲಾಬಿ', // review: new
+  'privacy.title': 'ಗೌಪ್ಯತಾ ವರದಿ', // review: new
+  'privacy.empty': 'ಈ ಸಾಧನದಲ್ಲಿ ನೀವು ತೆರೆದ ಮೇಲ್‌ನಲ್ಲಿ ಯಾವುದೇ ಟ್ರ್ಯಾಕರ್ ಕಂಡುಬಂದಿಲ್ಲ. ನೀವು ಓದಿದ್ದೀರಿ ಎಂದು ತಿಳಿಸಲು ಸಂದೇಶ ಪ್ರಯತ್ನಿಸಿದಾಗ, ಟ್ರ್ಯಾಕರ್ ಅನ್ನು ತೆಗೆದುಹಾಕಿ ಇಲ್ಲಿ ಎಣಿಸಲಾಗುತ್ತದೆ.', // review: new
+  'privacy.statTrackers': { one: 'ಟ್ರ್ಯಾಕರ್ ತೆಗೆದುಹಾಕಲಾಗಿದೆ', other: 'ಟ್ರ್ಯಾಕರ್‌ಗಳನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ' }, // review: new
+  'privacy.statMessages': { one: 'ಸಂದೇಶ ನಿಮ್ಮನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಲು ಪ್ರಯತ್ನಿಸಿತು', other: 'ಸಂದೇಶಗಳು ನಿಮ್ಮನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಲು ಪ್ರಯತ್ನಿಸಿದವು' }, // review: new
+  'privacy.statSenders': { one: 'ಕಳುಹಿಸಿದವರು', other: 'ಕಳುಹಿಸಿದವರು' }, // review: new
+  'privacy.whoTracks': 'ನಿಮ್ಮನ್ನು ಹೆಚ್ಚು ಟ್ರ್ಯಾಕ್ ಮಾಡುವವರು', // review: new
+  'privacy.companies': 'ಅವರು ಬಳಸುವ ಟ್ರ್ಯಾಕಿಂಗ್ ಸೇವೆಗಳು', // review: new
+  'privacy.messages': { one: '{count} ಸಂದೇಶ', other: '{count} ಸಂದೇಶಗಳು' }, // review: new
+  'privacy.show': 'ಅವರ ಮೇಲ್ ತೋರಿಸಿ', // review: new
+  'privacy.note': '{date} ರಿಂದ ಈ ಸಾಧನದಲ್ಲಿ, ಮೇಲ್ ತೆರೆದಾಗ ಎಣಿಸಲಾಗಿದೆ. ಇದು ಈ ಬ್ರೌಸರ್‌ನಿಂದ ಹೊರಹೋಗುವುದಿಲ್ಲ.', // review: new
+  'privacy.reset': 'ಮತ್ತೆ ಎಣಿಕೆ ಪ್ರಾರಂಭಿಸಿ', // review: new
+  'privacy.resetTitle': 'ಗೌಪ್ಯತಾ ವರದಿಯನ್ನು ಅಳಿಸಬೇಕೇ?', // review: new
+  'privacy.resetBody': 'ಈ ಸಾಧನದ ಎಣಿಕೆಗಳು ಶೂನ್ಯಕ್ಕೆ ಮರಳುತ್ತವೆ. ನಿಮ್ಮ ಮೇಲ್ ಬದಲಾಗುವುದಿಲ್ಲ.', // review: new
   'mail.findAnyAction': 'ಯಾವುದೇ ಕ್ರಿಯೆಯನ್ನು ಹುಡುಕಿ',
   'mail.signOutOf': '{address} ನಿಂದ ಸೈನ್ ಔಟ್ ಮಾಡಿ',
   'mail.conversations': 'ಸಂವಾದಗಳು',

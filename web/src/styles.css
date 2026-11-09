@@ -1117,3 +1117,10 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
   .settings-nav { position: sticky; top: calc(-1 * var(--s6)); z-index: 2; display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--s4)); padding: var(--s2) var(--s4); background: var(--paper); border-bottom: 1px solid var(--rule); }
   .settings section > h3 { scroll-margin-top: 56px; }
 }
+
+/* Folder colour: a dot you click, and the choices in its menu. */
+.hue-dot { display: block; width: 16px; height: 16px; border-radius: var(--r-full); background: oklch(62% 0.16 var(--h)); }
+.hue-btn { display: inline-grid; place-items: center; width: var(--h-sm); height: var(--h-sm); border-radius: var(--r-full); flex: none; }
+.hue-btn:hover { background: var(--hover); }
+.hue-btn.on { outline: 2px solid var(--accent); outline-offset: -2px; }
+.hue-grid { display: grid; grid-template-columns: repeat(4, var(--h-sm)); gap: var(--s1); padding: var(--s1) var(--s3) var(--s2); }

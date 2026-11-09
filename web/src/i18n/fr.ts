@@ -246,6 +246,35 @@ export default {
   'mail.settings': 'Paramètres',
   'mail.openMenu': 'Dossiers et compte', // review: new
   'mail.undone': 'Annulé', // review: new
+  'mail.zeroTitle': 'Boîte de réception vide', // review: new
+  'mail.zeroBody': 'Rien ne vous attend. Profitez-en.', // review: new
+  'mail.zeroBlocked': { one: 'Rien ne vous attend. {count} traceur a été écarté de votre courrier jusqu’ici.', other: 'Rien ne vous attend. {count} traceurs ont été écartés de votre courrier jusqu’ici.' }, // review: new
+  'reader.allFromSender': 'Tout ce qui vient de cet expéditeur', // review: new
+  'settings.sections': 'Sections', // review: new
+  'folders.colour': 'Couleur de {name}', // review: new
+  'folders.colourTitle': 'Couleur du dossier', // review: new
+  'folders.colourAuto': 'Automatique (d’après son nom)', // review: new
+  'colour.red': 'Rouge', // review: new
+  'colour.orange': 'Orange', // review: new
+  'colour.yellow': 'Jaune', // review: new
+  'colour.green': 'Vert', // review: new
+  'colour.teal': 'Bleu-vert', // review: new
+  'colour.blue': 'Bleu', // review: new
+  'colour.purple': 'Violet', // review: new
+  'colour.pink': 'Rose', // review: new
+  'privacy.title': 'Rapport de confidentialité', // review: new
+  'privacy.empty': 'Aucun traceur trouvé dans le courrier ouvert sur cet appareil. Quand un message tente de signaler que vous l’avez lu, le traceur est supprimé et compté ici.', // review: new
+  'privacy.statTrackers': { one: 'traceur supprimé', other: 'traceurs supprimés' }, // review: new
+  'privacy.statMessages': { one: 'message a tenté de vous pister', other: 'messages ont tenté de vous pister' }, // review: new
+  'privacy.statSenders': { one: 'expéditeur', other: 'expéditeurs' }, // review: new
+  'privacy.whoTracks': 'Qui vous piste le plus', // review: new
+  'privacy.companies': 'Services de pistage utilisés', // review: new
+  'privacy.messages': { one: '{count} message', other: '{count} messages' }, // review: new
+  'privacy.show': 'Voir ses messages', // review: new
+  'privacy.note': 'Compté sur cet appareil depuis le {date}, à l’ouverture du courrier. Rien ne quitte ce navigateur.', // review: new
+  'privacy.reset': 'Recommencer le décompte', // review: new
+  'privacy.resetTitle': 'Effacer le rapport de confidentialité ?', // review: new
+  'privacy.resetBody': 'Les compteurs de cet appareil reviennent à zéro. Votre courrier n’est pas modifié.', // review: new
   'mail.findAnyAction': 'Trouver une action',
   'mail.signOutOf': 'Se déconnecter de {address}',
   'mail.conversations': 'Conversations',

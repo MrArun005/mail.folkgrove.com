@@ -18,8 +18,10 @@ export const shown = (b: { role?: string | null; name: string }) => (!b.role && 
 
 export type RailItem = { id: string; name: string; role: string | null; unreadEmails: number; depth?: number };
 
-export function Rail({ items, current, query, open, onToggle, onFolder, onCompose, opened, sharing, onOpenShared, onError, saved, onSavedSearch, onRemoveSearch,
+export function Rail({ items, current, colors, query, open, onToggle, onFolder, onCompose, opened, sharing, onOpenShared, onError, saved, onSavedSearch, onRemoveSearch,
   name, username, accounts, onSwitch, onAddAccount, onLogout, onSettings, onPalette, onPrivacy, takesDrop, dropOn, onDropOver, onDrop }: {
+  /** Colours chosen for folders (mailbox id → hue); the rest take one from their name. */
+  colors?: Record<string, number>;
   /** Folders and places, in order; `current` is the one on screen (null while searching). */
   items: RailItem[]; current: string | null; query: string;
   /** "More" unfolded. */
@@ -53,7 +55,7 @@ export function Rail({ items, current, query, open, onToggle, onFolder, onCompos
                   aria-current={b.id === current ? 'page' : undefined} onClick={() => onFolder(b.id)}
                   onDragOver={takesDrop(b) ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dropOn !== b.id) onDropOver(b.id); } : undefined}
                   onDragLeave={() => { if (dropOn === b.id) onDropOver(null); }} onDrop={takesDrop(b) ? (e) => { e.preventDefault(); onDrop(b); } : undefined}
-                  style={{ ...(b.depth ? { paddingInlineStart: `calc(var(--s3) + ${b.depth} * var(--s4))` } : {}), ...(!b.role ? { '--h': hue(b.name) } : {}) } as React.CSSProperties}>
+                  style={{ ...(b.depth ? { paddingInlineStart: `calc(var(--s3) + ${b.depth} * var(--s4))` } : {}), ...(!b.role ? { '--h': colors?.[b.id] ?? hue(b.name) } : {}) } as React.CSSProperties}>
                   <Icon name={roleIcon(b.role)} /><span className="name">{shown(b)}</span>
                   {b.unreadEmails > 0 && !['trash', 'sent', 'drafts'].includes(b.role ?? '') && <span className="count">{b.unreadEmails}</span>}
                 </button>

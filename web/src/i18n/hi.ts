@@ -242,6 +242,35 @@ export default {
   'mail.settings': 'सेटिंग',
   'mail.openMenu': 'फ़ोल्डर और खाता', // review: new
   'mail.undone': 'पहले जैसा कर दिया', // review: new
+  'mail.zeroTitle': 'इनबॉक्स खाली', // review: new
+  'mail.zeroBody': 'कुछ भी बाकी नहीं है। आराम कीजिए।', // review: new
+  'mail.zeroBlocked': { one: 'कुछ भी बाकी नहीं है। अब तक आपकी मेल से {count} ट्रैकर हटाया गया है।', other: 'कुछ भी बाकी नहीं है। अब तक आपकी मेल से {count} ट्रैकर हटाए गए हैं।' }, // review: new
+  'reader.allFromSender': 'इस भेजने वाले की सारी मेल', // review: new
+  'settings.sections': 'अनुभाग', // review: new
+  'folders.colour': '{name} का रंग', // review: new
+  'folders.colourTitle': 'फ़ोल्डर का रंग', // review: new
+  'folders.colourAuto': 'अपने-आप (नाम के अनुसार)', // review: new
+  'colour.red': 'लाल', // review: new
+  'colour.orange': 'नारंगी', // review: new
+  'colour.yellow': 'पीला', // review: new
+  'colour.green': 'हरा', // review: new
+  'colour.teal': 'हरा-नीला', // review: new
+  'colour.blue': 'नीला', // review: new
+  'colour.purple': 'बैंगनी', // review: new
+  'colour.pink': 'गुलाबी', // review: new
+  'privacy.title': 'गोपनीयता रिपोर्ट', // review: new
+  'privacy.empty': 'इस डिवाइस पर खोली गई मेल में कोई ट्रैकर नहीं मिला। जब कोई संदेश यह बताने की कोशिश करता है कि आपने उसे पढ़ा, तो ट्रैकर हटा दिया जाता है और यहाँ गिना जाता है।', // review: new
+  'privacy.statTrackers': { one: 'ट्रैकर हटाया गया', other: 'ट्रैकर हटाए गए' }, // review: new
+  'privacy.statMessages': { one: 'संदेश ने आपको ट्रैक करने की कोशिश की', other: 'संदेशों ने आपको ट्रैक करने की कोशिश की' }, // review: new
+  'privacy.statSenders': { one: 'भेजने वाला', other: 'भेजने वाले' }, // review: new
+  'privacy.whoTracks': 'आपको सबसे ज़्यादा कौन ट्रैक करता है', // review: new
+  'privacy.companies': 'उनकी ट्रैकिंग सेवाएँ', // review: new
+  'privacy.messages': { one: '{count} संदेश', other: '{count} संदेश' }, // review: new
+  'privacy.show': 'उनकी मेल दिखाएँ', // review: new
+  'privacy.note': '{date} से इस डिवाइस पर, मेल खोलते समय गिना गया। यह इस ब्राउज़र से बाहर नहीं जाता।', // review: new
+  'privacy.reset': 'फिर से गिनना शुरू करें', // review: new
+  'privacy.resetTitle': 'गोपनीयता रिपोर्ट मिटाएँ?', // review: new
+  'privacy.resetBody': 'इस डिवाइस की गिनती शून्य हो जाएगी। आपकी मेल नहीं बदलेगी।', // review: new
   'mail.findAnyAction': 'कोई भी कार्रवाई ढूंढें',
   'mail.signOutOf': '{address} से साइन आउट करें',
   'mail.conversations': 'बातचीत',

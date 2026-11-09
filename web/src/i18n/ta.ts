@@ -243,6 +243,35 @@ export default {
   'mail.settings': 'அமைப்புகள்',
   'mail.openMenu': 'கோப்புறைகளும் கணக்கும்', // review: new
   'mail.undone': 'செயல்தவிர்க்கப்பட்டது', // review: new
+  'mail.zeroTitle': 'இன்பாக்ஸ் காலி', // review: new
+  'mail.zeroBody': 'உங்களுக்காக எதுவும் காத்திருக்கவில்லை. மகிழுங்கள்.', // review: new
+  'mail.zeroBlocked': { one: 'உங்களுக்காக எதுவும் காத்திருக்கவில்லை. இதுவரை உங்கள் அஞ்சலிலிருந்து {count} கண்காணிப்பி நீக்கப்பட்டது.', other: 'உங்களுக்காக எதுவும் காத்திருக்கவில்லை. இதுவரை உங்கள் அஞ்சலிலிருந்து {count} கண்காணிப்பிகள் நீக்கப்பட்டன.' }, // review: new
+  'reader.allFromSender': 'இந்த அனுப்புநரின் அனைத்தும்', // review: new
+  'settings.sections': 'பிரிவுகள்', // review: new
+  'folders.colour': '{name} நிறம்', // review: new
+  'folders.colourTitle': 'கோப்புறை நிறம்', // review: new
+  'folders.colourAuto': 'தானியங்கி (பெயரிலிருந்து)', // review: new
+  'colour.red': 'சிவப்பு', // review: new
+  'colour.orange': 'ஆரஞ்சு', // review: new
+  'colour.yellow': 'மஞ்சள்', // review: new
+  'colour.green': 'பச்சை', // review: new
+  'colour.teal': 'பச்சை-நீலம்', // review: new
+  'colour.blue': 'நீலம்', // review: new
+  'colour.purple': 'ஊதா', // review: new
+  'colour.pink': 'இளஞ்சிவப்பு', // review: new
+  'privacy.title': 'தனியுரிமை அறிக்கை', // review: new
+  'privacy.empty': 'இந்தச் சாதனத்தில் நீங்கள் திறந்த அஞ்சலில் கண்காணிப்பிகள் எதுவும் இல்லை. நீங்கள் படித்ததைத் தெரிவிக்க ஒரு செய்தி முயலும்போது, கண்காணிப்பி நீக்கப்பட்டு இங்கே எண்ணப்படும்.', // review: new
+  'privacy.statTrackers': { one: 'கண்காணிப்பி நீக்கப்பட்டது', other: 'கண்காணிப்பிகள் நீக்கப்பட்டன' }, // review: new
+  'privacy.statMessages': { one: 'செய்தி உங்களைக் கண்காணிக்க முயன்றது', other: 'செய்திகள் உங்களைக் கண்காணிக்க முயன்றன' }, // review: new
+  'privacy.statSenders': { one: 'அனுப்புநர்', other: 'அனுப்புநர்கள்' }, // review: new
+  'privacy.whoTracks': 'உங்களை அதிகம் கண்காணிப்பவர்கள்', // review: new
+  'privacy.companies': 'அவர்கள் பயன்படுத்தும் கண்காணிப்புச் சேவைகள்', // review: new
+  'privacy.messages': { one: '{count} செய்தி', other: '{count} செய்திகள்' }, // review: new
+  'privacy.show': 'அவர்களின் அஞ்சலைக் காட்டு', // review: new
+  'privacy.note': '{date} முதல் இந்தச் சாதனத்தில், அஞ்சலைத் திறக்கும்போது எண்ணப்பட்டது. இது இந்த உலாவியை விட்டு வெளியேறாது.', // review: new
+  'privacy.reset': 'மீண்டும் எண்ணத் தொடங்கு', // review: new
+  'privacy.resetTitle': 'தனியுரிமை அறிக்கையை அழிக்கவா?', // review: new
+  'privacy.resetBody': 'இந்தச் சாதனத்தின் எண்ணிக்கைகள் பூஜ்ஜியமாகும். உங்கள் அஞ்சல் மாறாது.', // review: new
   'mail.findAnyAction': 'எந்தச் செயலையும் தேடு',
   'mail.signOutOf': '{address} இலிருந்து வெளியேறு',
   'mail.conversations': 'உரையாடல்கள்',

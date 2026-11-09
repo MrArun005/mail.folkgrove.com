@@ -242,6 +242,35 @@ export default {
   'mail.settings': '設定',
   'mail.openMenu': 'フォルダとアカウント', // review: new
   'mail.undone': '元に戻しました', // review: new
+  'mail.zeroTitle': '受信トレイは空です', // review: new
+  'mail.zeroBody': '対応が必要なメールはありません。', // review: new
+  'mail.zeroBlocked': { other: '対応が必要なメールはありません。これまでに {count} 個のトラッカーをブロックしました。' }, // review: new
+  'reader.allFromSender': 'この送信者のメールをすべて表示', // review: new
+  'settings.sections': 'セクション', // review: new
+  'folders.colour': '{name} の色', // review: new
+  'folders.colourTitle': 'フォルダの色', // review: new
+  'folders.colourAuto': '自動（名前から）', // review: new
+  'colour.red': '赤', // review: new
+  'colour.orange': 'オレンジ', // review: new
+  'colour.yellow': '黄', // review: new
+  'colour.green': '緑', // review: new
+  'colour.teal': '青緑', // review: new
+  'colour.blue': '青', // review: new
+  'colour.purple': '紫', // review: new
+  'colour.pink': 'ピンク', // review: new
+  'privacy.title': 'プライバシーレポート', // review: new
+  'privacy.empty': 'この端末で開いたメールにトラッカーは見つかりませんでした。メールが開封を通知しようとすると、トラッカーは削除され、ここに集計されます。', // review: new
+  'privacy.statTrackers': { other: '個のトラッカーを削除' }, // review: new
+  'privacy.statMessages': { other: '通のメールが追跡を試行' }, // review: new
+  'privacy.statSenders': { other: '送信者' }, // review: new
+  'privacy.whoTracks': '追跡の多い送信者', // review: new
+  'privacy.companies': '使われている追跡サービス', // review: new
+  'privacy.messages': { other: '{count} 通' }, // review: new
+  'privacy.show': 'メールを表示', // review: new
+  'privacy.note': '{date} 以降、この端末でメールを開いたときに集計しています。このブラウザの外には送信されません。', // review: new
+  'privacy.reset': '集計をやり直す', // review: new
+  'privacy.resetTitle': 'プライバシーレポートを消去しますか？', // review: new
+  'privacy.resetBody': 'この端末の集計がゼロに戻ります。メールは変更されません。', // review: new
   'mail.findAnyAction': '操作を検索',
   'mail.signOutOf': '{address} からログアウト',
   'mail.conversations': 'スレッド',

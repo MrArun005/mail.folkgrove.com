@@ -242,6 +242,35 @@ export default {
   'mail.settings': 'الإعدادات',
   'mail.openMenu': 'المجلدات والحساب', // review: new
   'mail.undone': 'تم التراجع', // review: new
+  'mail.zeroTitle': 'صندوق الوارد فارغ', // review: new
+  'mail.zeroBody': 'لا شيء بانتظارك. استمتع بذلك.', // review: new
+  'mail.zeroBlocked': { one: 'لا شيء بانتظارك. أُبعد متتبّع واحد عن بريدك حتى الآن.', other: 'لا شيء بانتظارك. أُبعد {count} متتبّعًا عن بريدك حتى الآن.' }, // review: new
+  'reader.allFromSender': 'كل ما ورد من هذا المرسل', // review: new
+  'settings.sections': 'الأقسام', // review: new
+  'folders.colour': 'لون {name}', // review: new
+  'folders.colourTitle': 'لون المجلد', // review: new
+  'folders.colourAuto': 'تلقائي (من اسمه)', // review: new
+  'colour.red': 'أحمر', // review: new
+  'colour.orange': 'برتقالي', // review: new
+  'colour.yellow': 'أصفر', // review: new
+  'colour.green': 'أخضر', // review: new
+  'colour.teal': 'أزرق مخضرّ', // review: new
+  'colour.blue': 'أزرق', // review: new
+  'colour.purple': 'بنفسجي', // review: new
+  'colour.pink': 'وردي', // review: new
+  'privacy.title': 'تقرير الخصوصية', // review: new
+  'privacy.empty': 'لم يُعثر على متتبّعات في البريد الذي فتحته على هذا الجهاز. عندما تحاول رسالة الإبلاغ بأنك قرأتها، يُزال المتتبّع ويُحصى هنا.', // review: new
+  'privacy.statTrackers': { one: 'متتبّع أُزيل', other: 'متتبّعات أُزيلت' }, // review: new
+  'privacy.statMessages': { one: 'رسالة حاولت تتبّعك', other: 'رسائل حاولت تتبّعك' }, // review: new
+  'privacy.statSenders': { one: 'مرسل', other: 'مرسلين' }, // review: new
+  'privacy.whoTracks': 'من يتتبّعك أكثر', // review: new
+  'privacy.companies': 'خدمات التتبّع التي يستخدمونها', // review: new
+  'privacy.messages': { one: 'رسالة واحدة', other: '{count} رسائل' }, // review: new
+  'privacy.show': 'عرض بريدهم', // review: new
+  'privacy.note': 'يُحصى على هذا الجهاز منذ {date} عند فتح البريد. لا يغادر هذا المتصفّح أبدًا.', // review: new
+  'privacy.reset': 'بدء العدّ من جديد', // review: new
+  'privacy.resetTitle': 'مسح تقرير الخصوصية؟', // review: new
+  'privacy.resetBody': 'تعود الأعداد على هذا الجهاز إلى الصفر. بريدك لا يتغيّر.', // review: new
   'mail.findAnyAction': 'البحث عن أي إجراء',
   'mail.signOutOf': 'تسجيل الخروج من {address}',
   'mail.conversations': 'المحادثات',

@@ -33,6 +33,8 @@ export interface ScriptData {
   sigReply?: string;
   /** HEY-style Screener: mail from anyone not on `allow` waits in the Screener folder until approved. */
   screener?: { on: boolean; allow: string[] };
+  /** Colours you chose for your folders: mailbox id → hue (0–359). A folder without one gets a colour from its name. */
+  colors?: Record<string, number>;
   /** Shared folders or mailboxes hidden from "Shared with me": "accountId" or "accountId/mailboxId". */
   hiddenShares?: string[];
 }

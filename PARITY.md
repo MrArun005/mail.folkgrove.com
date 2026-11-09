@@ -54,7 +54,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Subscriptions manager | ⬜ | ✅ | Every newsletter in one list: unsubscribe or delete everything from a sender |
 | Vacation / out-of-office | ✅ | ✅ | Date range, once per sender |
 | Forwarding | ✅ | ✅ | Per-filter forwarding (keeps a copy) |
-| Folder management (rename, nest, delete) | ✅ | ✅ | Folders inside folders, in the rail, menus and filters; drag conversations onto a folder; each folder has its own colour (from its name) on its icon and its chips |
+| Folder management (rename, nest, delete) | ✅ | ✅ | Folders inside folders, in the rail, menus and filters; drag conversations onto a folder; each folder has a colour on its icon and its chips: pick one in Settings → Folders (synced), or it gets one from its name |
 
 ## 4. Privacy and security (where we must win clearly)
 
