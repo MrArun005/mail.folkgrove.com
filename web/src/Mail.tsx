@@ -29,18 +29,17 @@ import { parseSearch } from './search';
 import { applyTheme, Settings } from './Settings';
 import { cache } from './store';
 import { describe } from './when';
-import { SharedRail, TeamComments, useShared } from './Sharing';
-import { boxName, locale, t } from './i18n';
+import { TeamComments, useShared } from './Sharing';
+import { locale, t } from './i18n';
 import { clearRoute, readRoute, writeRoute, type Route } from './route';
 import { useSwipe } from './Swipe';
+import { Rail, ShortcutsHelp, shown } from './Rail';
 
 const PAGE = 50;
 const UNDO_MS = 7000; // how long "Archived · Undo" stays
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
 const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
 // Virtual folders: views that aren't mailboxes on the server.
-/** Always in the rail (Gmail's set); everything else folds under More. */
-const MAIN = ['inbox', 'starred', 'snoozed', 'sent', 'drafts'];
 const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks', NOTES = 'notes';
 const VIRTUAL = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS, NOTES];
 
@@ -49,8 +48,6 @@ const UNSUB = 'unsubscribe', ONE_CLICK = 'List-Unsubscribe=One-Click';
 
 type Toast = { text: string; undo?: () => void } | null;
 
-/** A folder's name on screen: boxName, plus the Screener (a folder we make, found by its name). */
-const shown = (b: { role?: string | null; name: string }) => (!b.role && b.name === SCREENER ? t('folder.screener') : boxName(b));
 /** A message with {name} placeholders shown as keycaps: t() leaves unfilled placeholders as they are. */
 const withKeys = (text: string, keys: Record<string, string>) =>
   text.split(/\{(\w+)\}/).map((part, i) => (i % 2 ? <kbd key={i}>{keys[part] ?? part}</kbd> : part));
@@ -162,10 +159,16 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     writeRoute(place.current, next); place.current = next;
   }, [view, query, threadId, inbox]);
   useEffect(() => {
-    const onPop = () => { const r = readRoute(); place.current = r; setView(r.view); setQuery(r.query); setThreadId(r.thread); setNavOpen(false); };
+    const onPop = () => { const r = readRoute(); place.current = r; setView(r.view); setQuery(r.query); setThreadId(r.thread); setNavOpen(false); setOverlay(null); };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+  // Settings, the shortcuts sheet and the palette are a step of their own: Back closes them, not the page under them.
+  const layered = !!overlay;
+  useEffect(() => {
+    if (layered) { if (!history.state?.omLayer) history.pushState({ ...history.state, omLayer: true }, ''); }
+    else if (history.state?.omLayer) history.back();
+  }, [layered]);
   // A link to a folder that no longer exists (or another account's) shows the Inbox.
   useEffect(() => {
     if (view && boxes.length && !VIRTUAL.includes(view) && !boxes.some((b) => b.id === view)) setView(null);
@@ -798,89 +801,13 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         <Button variant="quiet" icon="settings" label={t('mail.settings')} onClick={() => setOverlay('settings')} />
       </header>
       {navOpen && <div className="nav-scrim" onClick={() => setNavOpen(false)} />}
-      <nav className="rail" aria-label={t('mail.folders')}>
-        <p className="wordmark">OpenMail</p>
-        <Button variant="primary" size="lg" icon="compose" className="compose-btn" onClick={newMessage} title={t('mail.composeTitle')}>{t('mail.compose')}</Button>
-        {opened && <p className="banner banner--info shared-banner" role="status"><Icon name={opened.team ? 'inbox' : 'person'} size={16} />
-          <span className="grow" title={opened.name}>{t(opened.team ? 'mail.teamMailbox' : opened.whole ? 'mail.delegatedMailbox' : 'mail.sharedFolders')}: <b>{opened.name.replace(/@.*/, '')}</b>
-            {!opened.team && opened.canSend && <><br />{t('mail.sendOnBehalf')}</>}</span>
-          <Button variant="link" onClick={() => onOpenShared(null)}>{t('mail.backToMyMail')}</Button></p>}
-        {/* The main places, then "More" (folded by default, like Gmail), then the folders you made. */}
-        {[navItems.filter((b) => b.role && (MAIN.includes(b.role) || railOpen || b.id === current)), navItems.filter((b) => !b.role)].map((group, gi) => (
-          <div key={gi} className="rail-group">
-            {gi === 1 && group.length > 0 && <p className="rail-label">{t('mail.folders')}</p>}
-            <ul>
-              {group.map((b) => (
-                <li key={b.id}>
-                  <button className={`nav-item${b.id === current ? ' active' : ''}${!b.role && b.name !== SCREENER ? ' labelled' : ''}${takesDrop(b) ? ' drop-ok' : ''}${dropOn === b.id ? ' drop-over' : ''}`}
-                    aria-current={b.id === current ? 'page' : undefined} onClick={() => openFolder(b.id)}
-                    onDragOver={takesDrop(b) ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dropOn !== b.id) setDropOn(b.id); } : undefined}
-                    onDragLeave={() => setDropOn((x) => (x === b.id ? null : x))} onDrop={takesDrop(b) ? (e) => { e.preventDefault(); drop(b); } : undefined}
-                    style={{ ...(b.depth ? { paddingInlineStart: `calc(var(--s3) + ${b.depth} * var(--s4))` } : {}), ...(!b.role ? { '--h': hue(b.name) } : {}) } as React.CSSProperties}>
-                    <Icon name={roleIcon(b.role)} /><span className="name">{shown(b)}</span>
-                    {b.unreadEmails > 0 && !['trash', 'sent', 'drafts'].includes(b.role ?? '') && <span className="count">{b.unreadEmails}</span>}
-                  </button>
-                </li>
-              ))}
-              {gi === 0 && (
-                <li>
-                  <button className="nav-item nav-more" aria-expanded={railOpen} onClick={() => toggleRail(!railOpen)}>
-                    <Icon name="chevron" className={railOpen ? 'flip' : ''} /><span className="name">{t(railOpen ? 'mail.less' : 'mail.more')}</span>
-                  </button>
-                </li>
-              )}
-            </ul>
-          </div>
-        ))}
-        <SharedRail accounts={sharing.accounts} hidden={sharing.hidden} current={{ account: opened?.id ?? null, box: current }}
-          onOpen={(a, b) => onOpenShared(a, b)} onHide={(k) => sharing.hide(k).catch(fail)} onUnhide={() => sharing.unhideAll().catch(fail)} />
-        {saved.length > 0 && (
-          <div className="saved">
-            <p className="rail-label">{t('mail.savedSearches')}</p>
-            <ul>
-              {saved.map((x) => (
-                <li key={x.name} className="saved-item">
-                  <button className={`nav-item${query === x.query ? ' active' : ''}`} onClick={() => { setQuery(x.query); setThreadId(null); setNavOpen(false); }} title={x.query}>
-                    <Icon name="search" /><span className="name">{x.name}</span>
-                  </button>
-                  <Button variant="quiet" size="sm" icon="close" label={t('mail.removeSavedSearch', { name: x.name })} onClick={() => removeSearch(x.name)} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <div className="me">
-          <Menu label={t('mail.accounts')} up button={
-            <button className="account-btn" title={t('mail.switchAccount')}>
-              <span className="addr" dir="auto">{identity?.name && identity.name !== identity.email ? identity.name : client.username}</span>
-              {accounts.length > 1 && <span className="count">{accounts.length}</span>}
-            </button>}>
-            {(close) => <>
-              <p className="menu-title">{t('mail.signedInHere')}</p>
-              {accounts.map((a) => (
-                <button key={a} className="menu-item" role="menuitem" aria-current={a === client.username} onClick={() => { close(); if (a !== client.username) onSwitch(a); }}>
-                  <Icon name={a === client.username ? 'check' : 'person'} size={16} /><span className="grow">{a}</span>
-                </button>
-              ))}
-              {sharing.accounts.some((a) => a.whole) && <>
-                <p className="menu-title menu-sep">{t('mail.mailboxesYouCanOpen')}</p>
-                {opened && <button className="menu-item" role="menuitem" onClick={() => { close(); onOpenShared(null); }}><Icon name="person" size={16} /><span className="grow">{t('mail.myMailbox')}</span></button>}
-                {sharing.accounts.filter((a) => a.whole).map((a) => (
-                  <button key={a.id} className="menu-item" role="menuitem" aria-current={a.id === opened?.id} onClick={() => { close(); onOpenShared(a); }}>
-                    <Icon name={a.id === opened?.id ? 'check' : a.team ? 'inbox' : 'person'} size={16} /><span className="grow">{a.name}</span>
-                  </button>
-                ))}
-              </>}
-              <button className="menu-item menu-sep" role="menuitem" onClick={() => { close(); onAddAccount(); }}><Icon name="compose" size={16} />{t('mail.addAccount')}</button>
-            </>}
-          </Menu>
-          <span className="links">
-            <Button variant="quiet" size="sm" icon="settings" label={t('mail.settings')} onClick={() => { setNavOpen(false); setOverlay('settings'); }} />
-            <Button variant="quiet" size="sm" icon="command" label={t('mail.findAnyAction')} shortcut="⌘K" onClick={() => { setNavOpen(false); setOverlay('palette'); }} />
-            <Button variant="quiet" size="sm" icon="logout" label={t('mail.signOutOf', { address: client.username })} onClick={onLogout} />
-          </span>
-        </div>
-      </nav>
+      <Rail items={navItems} current={current} query={query} open={railOpen} onToggle={toggleRail} onFolder={openFolder} onCompose={newMessage}
+        opened={opened} sharing={sharing} onOpenShared={onOpenShared} onError={fail}
+        saved={saved} onSavedSearch={(q) => { setQuery(q); setThreadId(null); setNavOpen(false); }} onRemoveSearch={removeSearch}
+        name={identity?.name && identity.name !== identity.email ? identity.name : client.username} username={client.username}
+        accounts={accounts} onSwitch={onSwitch} onAddAccount={onAddAccount} onLogout={onLogout}
+        onSettings={() => { setNavOpen(false); setOverlay('settings'); }} onPalette={() => { setNavOpen(false); setOverlay('palette'); }}
+        takesDrop={takesDrop} dropOn={dropOn} onDropOver={setDropOn} onDrop={drop} />
 
       {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : role === NOTES ? <NotesView client={client} say={(text) => say({ text })} /> : <>
       <section className="list" aria-label={t('mail.conversations')} onScroll={(e) => {
@@ -1045,22 +972,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       {overlay === 'settings' && (!opened || ownBoxes) && <Settings client={own} boxes={ownBoxes ?? boxes} prefillRule={rulePrefill}
         onClose={() => { setOverlay(null); setRulePrefill(undefined); reloadCategories(); }} onFoldersChanged={refresh} onIdentitiesChanged={loadIdentity} onAccountDeleted={onLogout}
         onSaved={(m) => { setOverlay(null); setRulePrefill(undefined); say({ text: m }); loadIdentity(); reloadCategories(); }} />}
-      {overlay === 'help' && (
-        <div className="overlay" onClick={() => setOverlay(null)} onKeyDown={(e) => e.key === 'Escape' && setOverlay(null)}>
-          <section className="sheet help" role="dialog" aria-label={t('mail.shortcuts')} onClick={(e) => e.stopPropagation()}>
-            <h2>{t('mail.shortcuts')}</h2>
-            <dl>
-              {[['c', t('mail.keyCompose')], ['/', t('mail.keySearch')], ['⌘K', t('mail.findAnyAction')], ['j / k', t('mail.keyNextPrev')], ['x', t('mail.keySelect')], ['r', t('mail.keyReply')],
-                ['a', t('mail.keyReplyAll')], ['f', t('mail.keyForward')], ['e', t('mail.keyArchive')], ['#', t('mail.keyDelete')], ['!', t('mail.keySpam')], ['s', t('mail.keyStar')],
-                ['u', t('mail.keyUnread')], ['Shift+I', t('mail.keyRead')], ['m', t('mail.keyMute')], [']', t('mail.keyArchiveNext')], ['z', t('mail.keyUndo')],
-                ...(['inbox', 'starred', 'sent', 'drafts', 'contacts', 'calendar'] as const).map((f, i) => [t('mail.keyThen', { first: 'g', second: 'istdck'[i] }), t('mail.goTo', { folder: t(`folder.${f}`) })]),
-                ['⌘/Ctrl Enter', t('mail.keySend')], ['Esc', t('mail.keyClose')]]
-                .map(([k, v]) => <div key={k}><dt><kbd>{k}</kbd></dt><dd>{v}</dd></div>)}
-            </dl>
-            <p className="fine">{t('mail.searchTips')}{['from:priya', 'has:attachment', 'is:unread', 'in:archive', 'after:2026-10-01'].map((c) => <Fragment key={c}> <code>{c}</code></Fragment>)}</p>
-          </section>
-        </div>
-      )}
+      {overlay === 'help' && <ShortcutsHelp onClose={() => setOverlay(null)} />}
     </div>
   );
 }

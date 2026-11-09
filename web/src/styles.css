@@ -980,6 +980,7 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
   .row.active:hover, .row.selected:hover { background: var(--accent-wash); }
   .row:hover .row-actions:not(.screen-actions), .row:focus-within .row-actions:not(.screen-actions) { display: none; }
   .row:hover .check { opacity: 0; } .rows.selecting .row .check { opacity: 1; }
+  .cal-col:hover { background: none; }
   .row.unread:hover::before { display: block; } .rows.selecting .row.unread::before { display: none; }
 }
 /* Swipe (Swipe.tsx): the row follows the finger; what it will do shows in the space it leaves behind. */
@@ -1003,3 +1004,13 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
 /* A folder you made has its own colour, from its name: the same on its icon in the rail and its chip in the list. */
 .nav-item.labelled:not(.active) svg { color: color-mix(in oklch, oklch(60% 0.16 var(--h)) 75%, var(--ink)); }
 .pill--label { background: color-mix(in oklch, oklch(62% 0.16 var(--h)) 20%, var(--paper)); color: color-mix(in oklch, oklch(60% 0.16 var(--h)) 50%, var(--ink)); }
+
+/* Phones: calendar and notes have their own "new" button, so Compose doesn't float over them; the calendar's
+   controls wrap onto a second line instead of running off the side. */
+@media (max-width: 860px) {
+  .app.calendar-mode .rail .compose-btn { display: none; }
+  .cal-nav { flex-wrap: wrap; row-gap: var(--s2); width: 100%; }
+  .calendar .cal-nav .segmented { margin-inline-end: var(--s1); }
+  .cal-nav .btn--primary { margin-inline-start: auto; }
+  .cal-hours span { white-space: nowrap; font-size: calc(11px * var(--scale)); inset-inline-end: var(--s1); }
+}

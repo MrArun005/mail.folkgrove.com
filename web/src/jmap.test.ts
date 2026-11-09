@@ -239,7 +239,7 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
 
   it('Inbox categories: newsletters are tagged on delivery and by the backfill', async () => {
     const c = await login();
-    const { toSieve } = await import('./rules');
+    const { toSieve, TABS, tabKeyword } = await import('./rules');
     const boxes = await c.mailboxes();
     const inbox = boxes.find((b) => b.role === 'inbox')!.id;
     const before = await c.getRules();
@@ -247,8 +247,10 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
 
     // Backfill tags the seeded digest (it has List-Unsubscribe) and leaves people's mail alone.
     await c.tagUpdates(inbox);
-    const updates = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { hasKeyword: '$updates' }] }, 500)).map((e) => e.subject);
-    const primary = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { notKeyword: '$updates' }] }, 500)).map((e) => e.subject);
+    // "In some category" rather than exactly Updates: a mailbox the app has already opened may have filed the digest
+    // under another tab (the app turns more tabs on than this bare backfill), and the backfill leaves tagged mail alone.
+    const updates = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { operator: 'OR', conditions: TABS.map((k) => ({ hasKeyword: tabKeyword(k) })) }] }, 500)).map((e) => e.subject);
+    const primary = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, ...TABS.map((k) => ({ notKeyword: tabKeyword(k) }))] }, 500)).map((e) => e.subject);
     expect(updates).toContain('Weekly digest: 5 tools we loved');
     expect(primary).toContain('Lunch on Friday?');
     expect(primary).not.toContain('Weekly digest: 5 tools we loved');
