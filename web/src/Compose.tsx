@@ -3,7 +3,8 @@ import { chooseIt, confirmIt, promptIt } from './Dialog';
 import type { Address, Attachment, Draft, SharedFile, Template } from './jmap';
 import { Button } from './Button';
 import { Icon, type IconName } from './icons';
-import { cleanHtml, fileLinkHtml, fileLinks, fileSize, formatAddresses, htmlToText, isReplyLead, parseAddresses, signatureHtml, type Signature } from './mailutil';
+import { nextAt, usualTime, type When } from './when';
+import { cleanHtml, displayName, fileLinkHtml, fileLinks, fileSize, formatAddresses, htmlToText, isReplyLead, parseAddresses, signatureHtml, type Signature } from './mailutil';
 import { RecipientInput } from './RecipientInput';
 import { canRewrite, rewrite, type RewriteStyle } from './ai';
 import { Menu, TimeChoices } from './Menu';
@@ -30,6 +31,8 @@ export interface ComposeApi {
   maxUpload?: number;
   /** Your calendar, for "Help me schedule" (absent: no calendar). */
   events?: (from: Date, to: Date) => Promise<CalEvent[]>;
+  /** When this person's recent mail to you arrived (ISO times), for "send when they're usually at their mail". */
+  activity?: (email: string) => Promise<string[]>;
 }
 
 /** A contact group offered in recipient autocomplete; picking it adds every member. */
@@ -237,6 +240,22 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
     finally { setUploading((n) => n - 1); }
   }
 
+  // Schedule send's first choice: when the (first) recipient is usually at their mail, judged from when their
+  // recent mail reached you. Looked up once per address, a moment after you stop typing it.
+  const [awake, setAwake] = useState<When | null>(null);
+  const firstTo = parseAddresses(to).list[0];
+  const firstEmail = firstTo?.email.toLowerCase() ?? '';
+  useEffect(() => {
+    setAwake(null);
+    if (!firstEmail || !api.activity) return;
+    let live = true;
+    const timer = setTimeout(() => api.activity!(firstEmail).then((times) => {
+      const m = usualTime(times.map((x) => new Date(x)));
+      if (live && m !== null) setAwake({ label: t('compose.whenActive', { name: displayName(firstTo) }), at: nextAt(m) });
+    }, () => {}), 600);
+    return () => { live = false; clearTimeout(timer); };
+  }, [firstEmail]);
+
   async function close() {
     if (edits) { await save(); onClose('saved'); } else onClose('closed');
   }
@@ -409,7 +428,7 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
         <span className="split">
           <Button variant="primary" onClick={() => send()} title={t('compose.sendTitle', { mod })}>{encrypt ? t('compose.sendEncrypted') : confidential ? t('confidential.send') : t('compose.send')}</Button>
           <Menu label={t('compose.scheduleSend')} up button={<Button variant="primary" icon="clock" label={t('compose.scheduleSend')} />}>
-            {(close) => <><p className="menu-title">{t('compose.scheduleSend')}</p><TimeChoices verb={t('compose.schedule')} close={close} onPick={(d) => send(d)} /></>}
+            {(close) => <><p className="menu-title">{t('compose.scheduleSend')}</p><TimeChoices verb={t('compose.schedule')} close={close} onPick={(d) => send(d)} first={awake ? [awake] : []} /></>}
           </Menu>
         </span>
         <div className="fmts" role="toolbar" aria-label={t('compose.formatting')}>

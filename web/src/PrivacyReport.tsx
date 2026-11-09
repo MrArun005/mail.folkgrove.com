@@ -4,13 +4,14 @@ import { Button } from './Button';
 import { hue } from './Contacts';
 import { confirmIt } from './Dialog';
 import { Icon } from './icons';
-import { clearTally, ranked, readTally } from './privacy';
+import { clearTally, ranked, readTally, week } from './privacy';
 import { locale, t } from './i18n';
 
 export function PrivacyReport({ user, onClose, onSearch }: { user: string; onClose: () => void; onSearch: (query: string) => void }) {
   const [tally, setTally] = useState(() => readTally(user));
   const { senders, hosts } = ranked(tally);
   const most = Math.max(1, ...senders.map((s) => s.n));
+  const w = week(tally), peak = Math.max(1, ...w.days.map((d) => d.n));
   const since = new Date(tally.since).toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' });
   return (
     <div className="overlay" onClick={onClose} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
@@ -25,6 +26,19 @@ export function PrivacyReport({ user, onClose, onSearch }: { user: string; onClo
             <p><b>{tally.trackers.toLocaleString(locale())}</b>{t('privacy.statTrackers', { count: tally.trackers })}</p>
             <p><b>{tally.messages.toLocaleString(locale())}</b>{t('privacy.statMessages', { count: tally.messages })}</p>
             <p><b>{senders.length.toLocaleString(locale())}</b>{t('privacy.statSenders', { count: senders.length })}</p>
+          </div>
+          <h3>{t('privacy.thisWeek')}</h3>
+          <div className="privacy-week">
+            <ol aria-hidden="true">
+              {w.days.map((d) => (
+                <li key={+d.date} title={`${d.date.toLocaleDateString(locale(), { weekday: 'long' })}: ${d.n}`}>
+                  <span className="col" style={{ '--w': `${Math.round((d.n / peak) * 100)}%` } as React.CSSProperties} />
+                  <span className="day">{d.date.toLocaleDateString(locale(), { weekday: 'narrow' })}</span>
+                </li>
+              ))}
+            </ol>
+            <p>{t('privacy.weekTotal', { count: w.total })}{' '}
+              <span className="fine">{w.previous > 0 || w.total > 0 ? t('privacy.weekBefore', { count: w.previous }) : ''}</span></p>
           </div>
           <h3>{t('privacy.whoTracks')}</h3>
           <ul className="privacy-list">

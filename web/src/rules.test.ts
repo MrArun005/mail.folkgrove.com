@@ -1,5 +1,5 @@
-import { expect, it } from 'vitest';
-import { categorize, parseRules, toSieve, validateRule, type Rule } from './rules';
+import { describe, expect, it } from 'vitest';
+import { categorize, matchesRule, parseRules, toSieve, validateRule, type Rule } from './rules';
 
 const rules: Rule[] = [
   { id: '1', from: 'news@shop.example', action: 'move', folder: 'Shopping' },
@@ -83,4 +83,21 @@ it('Screener holds unknown senders after your own filters', () => {
   expect(s).toContain('if allof(not spamtest :value "ge" :comparator "i;ascii-numeric" "6", not address :is "from" ["ann@x.org"]) { fileinto :create "Screener"; stop; }');
   expect(s.indexOf('Screener: first-time')).toBeGreaterThan(s.indexOf('fileinto :create "Bank"'));
   expect(toSieve({ rules: [], vacation: { enabled: false }, screener: { on: false, allow: [] } }, { trash: 'T', junk: 'J' })).not.toContain('Screener"');
+});
+
+describe('matchesRule (the preview before saving)', () => {
+  const m = { from: [{ email: 'News@Shop.example' }], to: [{ email: 'alice@openmail.test' }], subject: 'Your ORDER has shipped' };
+  it('matches like the server: contains, ignoring case; every filled field must match', () => {
+    expect(matchesRule({ from: 'shop.example' }, m)).toBe(true);
+    expect(matchesRule({ subject: 'order' }, m)).toBe(true);
+    expect(matchesRule({ from: 'shop.example', subject: 'invoice' }, m)).toBe(false);
+    expect(matchesRule({ to: 'alice@' }, m)).toBe(true);
+    expect(matchesRule({ to: 'bob@' }, { ...m, cc: [{ email: 'bob@x.example' }] })).toBe(true);
+  });
+  it('exact sender does not over-match; an empty rule matches nothing', () => {
+    expect(matchesRule({ from: 'shop.example', fromExact: true }, m)).toBe(false);
+    expect(matchesRule({ from: 'news@shop.example', fromExact: true }, m)).toBe(true);
+    expect(matchesRule({}, m)).toBe(false);
+    expect(matchesRule({ from: '  ' }, m)).toBe(false);
+  });
 });

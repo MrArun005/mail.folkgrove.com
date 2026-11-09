@@ -33,7 +33,7 @@ import { clearRoute, readRoute, writeRoute, type Route } from './route';
 import { ConversationRows, InboxZero } from './Rows';
 import { Rail, ShortcutsHelp, shown } from './Rail';
 import { PrivacyReport } from './PrivacyReport';
-import { readTally } from './privacy';
+import { readTally, week } from './privacy';
 
 const PAGE = 50;
 const UNDO_MS = 7000; // how long "Archived · Undo" stays
@@ -457,6 +457,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     share: (f, days) => client.shareFile(f, days),
     maxUpload: client.maxUpload,
     events: opened ? undefined : (from, to) => client.events(from, to),
+    activity: (email) => client.threads({ from: email }, 30).then((l) => l.map((e) => e.receivedAt)),
   };
   // Opened from outside: the Compose shortcut, an email link or "Share to OpenMail" (launch.ts).
   useEffect(() => {
@@ -697,7 +698,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         saved={saved} onSavedSearch={(q) => { setQuery(q); setThreadId(null); setNavOpen(false); }} onRemoveSearch={removeSearch}
         name={identity?.name && identity.name !== identity.email ? identity.name : client.username} username={client.username}
         accounts={accounts} onSwitch={onSwitch} onAddAccount={onAddAccount} onLogout={onLogout}
-        onSettings={() => { setNavOpen(false); setOverlay('settings'); }} onPalette={() => { setNavOpen(false); setOverlay('palette'); }} onPrivacy={() => { setNavOpen(false); setOverlay('privacy'); }}
+        onSettings={() => { setNavOpen(false); setOverlay('settings'); }} onPalette={() => { setNavOpen(false); setOverlay('palette'); }} onPrivacy={() => { setNavOpen(false); setOverlay('privacy'); }} blockedThisWeek={week(readTally(own.username)).total}
         takesDrop={takesDrop} dropOn={dropOn} onDropOver={setDropOn} onDrop={drop} />
 
       {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : role === NOTES ? <NotesView client={client} say={(text) => say({ text })} /> : <>
@@ -807,7 +808,8 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
                 onAction={(a) => act(a, [threadId])} onReply={reply} onBack={() => setThreadId(null)}
                 onSnooze={(d) => act({ snooze: d }, [threadId])} onMoveTo={(id, label) => act({ moveTo: id, label }, [threadId])}
                 onUnsubscribe={unsubscribe} onMore={more} onRsvp={rsvp} onReceipt={receipt} onReact={opened ? undefined : react}
-                footer={opened?.whole && <TeamComments client={client} threadId={threadId} version={threadVersion} me={own.username} />} />
+                footer={opened ? opened.whole && <TeamComments client={client} threadId={threadId} version={threadVersion} me={own.username} />
+                  : <TeamComments mine client={client} threadId={threadId} version={threadVersion} me={own.username} />} />
             </ErrorBoundary>
           : <div className="reader-empty">
               <p>{selected.size ? t('mail.selected', { count: selected.size }) : t('mail.selectToRead')}</p>
