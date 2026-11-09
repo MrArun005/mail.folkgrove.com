@@ -14,10 +14,10 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Unified folders + labels (tags) | ✅ | ✅ | A conversation can live in several folders (JMAP), no tag/folder split |
 | Star / flag | ✅ | ✅ | |
 | Snooze | 🟡 (reminders) | ✅ | Real snooze: leaves the inbox, returns unread |
-| Archive, delete, spam / not spam | ✅ | ✅ | Auto-advance to the next conversation |
+| Archive, delete, spam / not spam | ✅ | ✅ | Auto-advance to the next conversation; Undo on the toast (or `z`) puts it back |
 | Multi-select + bulk actions | ✅ | ✅ | Shift-click ranges, keyboard `x` |
 | Keyboard shortcuts | ✅ | ✅ | Gmail-compatible keys plus a ⌘K command palette |
-| Search | ✅ | ✅ | `from:` `to:` `subject:` `has:attachment` `is:unread` `in:` `before:` `after:` `-negation` |
+| Search | ✅ | ✅ | `from:` `to:` `subject:` `has:attachment` `is:unread` `in:` / `label:` `before:` `after:` `older_than:7d` `newer_than:2w` `larger:5M` `smaller:` `list:` `-negation` `a OR b` |
 | Saved searches / search folders | ✅ | ✅ | Pinned in the rail, synced through the account |
 | Live updates | ✅ | ✅ | Server push, no polling |
 | Show original / headers | ✅ | ✅ | |
@@ -54,7 +54,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Subscriptions manager | ⬜ | ✅ | Every newsletter in one list: unsubscribe or delete everything from a sender |
 | Vacation / out-of-office | ✅ | ✅ | Date range, once per sender |
 | Forwarding | ✅ | ✅ | Per-filter forwarding (keeps a copy) |
-| Folder management (rename, nest, delete) | ✅ | ✅ | Folders inside folders, in the rail, menus and filters |
+| Folder management (rename, nest, delete) | ✅ | ✅ | Folders inside folders, in the rail, menus and filters; drag conversations onto a folder; each folder has a colour on its icon and its chips: pick one in Settings → Folders (synced), or it gets one from its name |
 
 ## 4. Privacy and security (where we must win clearly)
 
@@ -62,7 +62,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 |---|---|---|---|
 | No ads, no content scanning | ✅ (paid) | ✅ | Free tier included; code is public, so it's checkable |
 | Remote images blocked | 🟡 | ✅ | Default on |
-| Tracking pixels removed | ⬜ | ✅ | Removed even after "Load images", and the sender is named |
+| Tracking pixels removed | ⬜ | ✅ | Removed even after "Load images", and the sender is named. Privacy report (the shield in the rail, or ⌘K): how many trackers were removed, who tracks you most and which services they use; counted on the device, never sent anywhere |
 | Link tracking parameters stripped | ⬜ | ✅ | utm_*, fbclid, gclid, … |
 | Hostile HTML isolation | ✅ | ✅ | Sandboxed frame + strict CSP, tested |
 | 2FA / passkeys | ✅ | ✅ | Settings → Security: fresh sign-in → security token in memory only; QR enrolment with the code checked before saving; app passwords limited to IMAP/SMTP/POP/DAV (a leaked one can't change the password or 2FA); password change. Passkeys: not possible on Stalwart 1.0.3 (no WebAuthn credential type or sign-in route; checked 2026-11-08), see below |
@@ -89,7 +89,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 
 | Feature | Zoho | Us | Plan |
 |---|---|---|---|
-| Web app | ✅ | ✅ | Local-first: instant UI, light and dark, phone layout |
+| Web app | ✅ | ✅ | Local-first: instant UI, light and dark. Phones: folder drawer, swipe a row to archive or mark read. Back button and links work (`#/in/<folder>/t/<conversation>`, web/src/route.ts) |
 | Interface languages | ✅ | 🟡 | 11: English, Hindi, Kannada, Tamil, Spanish, French, German, Portuguese (Brazil), Arabic (right to left), Japanese, Simplified Chinese. Settings → Appearance → Language (Automatic follows the browser), per device; only the chosen language downloads. Machine-drafted with `// review:` notes, not yet checked by native speakers; account-service errors show in English when their code isn't mapped |
 | Installable app / offline | 🟡 | 🟡 | Installable (PWA: install button, unread badge, Compose shortcut, “Share to OpenMail”, mailto handler), shell works offline; mail offline in Phase 2.5 |
 | Desktop app | ✅ | 🟡 | `apps/desktop` (Electron): any server, opens mailto: links, Dock badge; unsigned, no installers yet |

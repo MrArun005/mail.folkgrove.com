@@ -11,6 +11,7 @@ import { applyDisplayPrefs, applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
 import { t, useLanguage } from './i18n';
+import { clearRoute } from './route';
 
 applyTheme(savedTheme());
 applyDisplayPrefs();
@@ -64,6 +65,7 @@ export default function App() {
     for (const u of new Set([session.current?.username, client?.username])) if (u) await offlineStore.clear(`${u}:`);
     await session.current?.signOut();
     session.current = null;
+    clearRoute(); // the next account's folders and conversations have other ids
     const next = Session.resume();
     if (next) { try { return await open(next); } catch { /* fall through to sign-in */ } }
     cache.clear();
@@ -72,6 +74,7 @@ export default function App() {
   async function switchTo(username: string) {
     const s = Session.resume(username);
     if (!s) return;
+    clearRoute();
     try { await open(s); } catch (e) { setError((e as Error).message); }
   }
 

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
+import { hue } from './Contacts';
+import { Icon } from './icons';
+import { Menu } from './Menu';
 import type { Jmap, Mailbox } from './jmap';
 import { describeRule, parseScript, toSieve, validateRule, type Rule, type RuleAction, type ScriptData } from './rules';
 import { ShareFolder } from './Sharing';
@@ -123,10 +126,26 @@ export function FiltersSection({ client, boxes, prefill }: { client: Jmap; boxes
   );
 }
 
+/** The colours offered for a folder (hue, name). */
+const FOLDER_HUES = [[25, 'colour.red'], [55, 'colour.orange'], [95, 'colour.yellow'], [145, 'colour.green'], [195, 'colour.teal'], [245, 'colour.blue'], [295, 'colour.purple'], [340, 'colour.pink']] as const;
+
 export function FoldersSection({ client, boxes, onChanged }: { client: Jmap; boxes: Mailbox[]; onChanged: () => void }) {
   const mine = boxes.filter((b) => !b.role);
   const [error, setError] = useState('');
   const [sharing, setSharing] = useState<string | null>(null);
+  // Colours live with the other synced settings (the filter script), so every device shows the same ones.
+  const [colors, setColors] = useState<Record<string, number>>({});
+  useEffect(() => { loadScript(client).then(({ data }) => setColors(data.colors ?? {}), () => {}); }, [client]);
+  async function paint(id: string, h: number | null) {
+    const next = { ...colors };
+    if (h === null) delete next[id]; else next[id] = h;
+    setColors(next); setError('');
+    try {
+      // Colours of folders that no longer exist are dropped on the way.
+      await saveScript(client, boxes, (d) => ({ ...d, colors: Object.fromEntries(Object.entries({ ...d.colors, [id]: h }).filter(([k, v]) => v !== null && boxes.some((b) => b.id === k))) as Record<string, number> }));
+      onChanged();
+    } catch (e) { setError((e as Error).message); }
+  }
   async function run(f: () => Promise<unknown>) {
     setError('');
     try { await f(); onChanged(); } catch (e) { setError((e as Error).message); }
@@ -140,6 +159,21 @@ export function FoldersSection({ client, boxes, onChanged }: { client: Jmap; box
             <li key={b.id} style={{ paddingLeft: `calc(var(--s3) + ${b.depth ?? 0} * var(--s5))` }}>
               <span className="grow">{b.name}</span>
               <span className="row-btns">
+                <Menu label={t('folders.colourTitle')} align="right" button={
+                  <button type="button" className="hue-btn" aria-label={t('folders.colour', { name: b.name })} title={t('folders.colour', { name: b.name })}>
+                    <span className="hue-dot" style={{ '--h': colors[b.id] ?? hue(b.name) } as React.CSSProperties} />
+                  </button>}>
+                  {(close) => <>
+                    <p className="menu-title">{t('folders.colourTitle')}</p>
+                    <div className="hue-grid">
+                      {FOLDER_HUES.map(([h, name]) => (
+                        <button key={h} type="button" role="menuitemradio" aria-checked={colors[b.id] === h} className={`hue-btn${colors[b.id] === h ? ' on' : ''}`}
+                          aria-label={t(name)} title={t(name)} onClick={() => { close(); paint(b.id, h); }}><span className="hue-dot" style={{ '--h': h } as React.CSSProperties} /></button>
+                      ))}
+                    </div>
+                    <button type="button" className="menu-item" role="menuitem" onClick={() => { close(); paint(b.id, null); }}><Icon name={colors[b.id] === undefined ? 'check' : 'clearFormat'} size={16} />{t('folders.colourAuto')}</button>
+                  </>}
+                </Menu>
                 <select className="input input--sm" aria-label={t('folders.putInside', { name: b.name })} value={b.parentId ?? ''}
                   onChange={(e) => run(() => client.moveMailbox(b.id, e.target.value || null))}>
                   <option value="">{t('folders.topLevel')}</option>

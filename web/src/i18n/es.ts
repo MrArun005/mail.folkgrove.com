@@ -241,6 +241,37 @@ export default {
   'mail.myMailbox': 'Mi buzón',
   'mail.addAccount': 'Añadir otra cuenta',
   'mail.settings': 'Configuración',
+  'mail.openMenu': 'Carpetas y cuenta', // review: new
+  'mail.undone': 'Deshecho', // review: new
+  'mail.zeroTitle': 'Bandeja vacía', // review: new
+  'mail.zeroBody': 'No hay nada pendiente. Disfrútalo.', // review: new
+  'mail.zeroBlocked': { one: 'No hay nada pendiente. Hasta ahora se ha bloqueado {count} rastreador en tu correo.', other: 'No hay nada pendiente. Hasta ahora se han bloqueado {count} rastreadores en tu correo.' }, // review: new
+  'reader.allFromSender': 'Todo lo de este remitente', // review: new
+  'settings.sections': 'Secciones', // review: new
+  'folders.colour': 'Color de {name}', // review: new
+  'folders.colourTitle': 'Color de la carpeta', // review: new
+  'folders.colourAuto': 'Automático (según su nombre)', // review: new
+  'colour.red': 'Rojo', // review: new
+  'colour.orange': 'Naranja', // review: new
+  'colour.yellow': 'Amarillo', // review: new
+  'colour.green': 'Verde', // review: new
+  'colour.teal': 'Verde azulado', // review: new
+  'colour.blue': 'Azul', // review: new
+  'colour.purple': 'Morado', // review: new
+  'colour.pink': 'Rosa', // review: new
+  'privacy.title': 'Informe de privacidad', // review: new
+  'privacy.empty': 'No se han encontrado rastreadores en el correo que has abierto en este dispositivo. Cuando un mensaje intenta avisar de que lo has leído, el rastreador se elimina y se cuenta aquí.', // review: new
+  'privacy.statTrackers': { one: 'rastreador eliminado', other: 'rastreadores eliminados' }, // review: new
+  'privacy.statMessages': { one: 'mensaje intentó rastrearte', other: 'mensajes intentaron rastrearte' }, // review: new
+  'privacy.statSenders': { one: 'remitente', other: 'remitentes' }, // review: new
+  'privacy.whoTracks': 'Quién te rastrea más', // review: new
+  'privacy.companies': 'Servicios de rastreo que usan', // review: new
+  'privacy.messages': { one: '{count} mensaje', other: '{count} mensajes' }, // review: new
+  'privacy.show': 'Ver su correo', // review: new
+  'privacy.note': 'Contado en este dispositivo desde el {date}, al abrir el correo. Nunca sale de este navegador.', // review: new
+  'privacy.reset': 'Empezar a contar de nuevo', // review: new
+  'privacy.resetTitle': '¿Borrar el informe de privacidad?', // review: new
+  'privacy.resetBody': 'Los recuentos de este dispositivo vuelven a cero. Tu correo no cambia.', // review: new
   'mail.findAnyAction': 'Buscar cualquier acción',
   'mail.signOutOf': 'Cerrar sesión de {address}',
   'mail.conversations': 'Conversaciones',

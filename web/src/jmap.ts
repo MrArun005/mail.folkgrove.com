@@ -321,17 +321,49 @@ export class Jmap {
   async threads(filter: Filter, limit = 50): Promise<EmailSummary[]> {
     return this.cached(`threads:${JSON.stringify(filter)}:${limit}`, () => this.threadsLive(filter, limit));
   }
+  /**
+   * What each list held last time, by filter: the rows by message id and the server's Email state then. A refresh
+   * asks which messages are in the list now (ids only) and what changed since that state, and fetches just the rows
+   * that are new or changed. A long folder that hasn't changed costs one small request instead of every row again.
+   */
+  private lists = new Map<string, { state: string; rows: Map<string, EmailSummary> }>();
   private async threadsLive(filter: Filter, limit: number): Promise<EmailSummary[]> {
-    const [, r] = await this.call([
-      ['Email/query', {
-        accountId: this.accountId, filter, collapseThreads: true, limit,
-        sort: [{ property: 'receivedAt', isAscending: false }],
-      }, 'q'],
-      ['Email/get', {
-        accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: SUMMARY,
-      }, 'g'],
-    ]);
+    const key = JSON.stringify(filter);
+    const query: [string, object, string] = ['Email/query', {
+      accountId: this.accountId, filter, collapseThreads: true, limit,
+      sort: [{ property: 'receivedAt', isAscending: false }],
+    }, 'q'];
+    const known = this.lists.get(key);
+    if (known) {
+      try {
+        const [q, c] = await this.call([query, ['Email/changes', { accountId: this.accountId, sinceState: known.state }, 'c']]);
+        if (c.hasMoreChanges) throw new JmapError('too many changes'); // caught below: read everything again
+        const ids = q.ids as string[];
+        const changed = new Set<string>([...c.created, ...c.updated]);
+        const need = ids.filter((id) => changed.has(id) || !known.rows.has(id));
+        if (need.length) {
+          const [g] = await this.call([['Email/get', { accountId: this.accountId, ids: need, properties: SUMMARY }, 'g']]);
+          for (const e of g.list as EmailSummary[]) known.rows.set(e.id, e);
+        }
+        const list = ids.map((id) => known.rows.get(id)).filter((e): e is EmailSummary => !!e);
+        // Keep only what is on screen now; rows that scrolled out of the list are fetched again if they return.
+        this.remember(key, c.newState, list);
+        return list;
+      } catch (e) {
+        if (isOffline(e)) throw e;
+        this.lists.delete(key); // the server can't say what changed (state too old): start over below
+      }
+    }
+    const [, r] = await this.call([query, ['Email/get', {
+      accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: SUMMARY,
+    }, 'g']]);
+    if (typeof r.state === 'string') this.remember(key, r.state, r.list);
     return r.list;
+  }
+  private remember(key: string, state: string, list: EmailSummary[]) {
+    this.lists.delete(key);
+    this.lists.set(key, { state, rows: new Map(list.map((e) => [e.id, e])) });
+    if (this.lists.size > 12) this.lists.delete(this.lists.keys().next().value!); // the oldest: a dozen lists is plenty
   }
 
   /** Unread Primary-inbox mail received after `since`, newest first (for desktop notifications). */

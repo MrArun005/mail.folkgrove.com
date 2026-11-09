@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RetentionSection } from './Retention';
 import type { Jmap, Mailbox } from './jmap';
 import { FiltersSection, FoldersSection, loadScript, saveScript } from './Filters';
@@ -28,14 +28,14 @@ export const savedTheme = (): Theme => { try { return (localStorage.getItem('om:
 
 /** Display preferences, per device (like light/dark): each one is a data-* attribute on <html> read by styles.css. */
 export const DISPLAY = {
-  palette: { label: 'display.theme', options: [['clean', 'display.clean'], ['paper', 'display.paper']] },
+  palette: { label: 'display.theme', options: [['grove', 'display.grove'], ['clean', 'display.clean'], ['paper', 'display.paper']] },
   text: { label: 'display.text', options: [['small', 'display.small'], ['default', 'display.default'], ['large', 'display.large'], ['larger', 'display.larger']] },
   density: { label: 'display.density', options: [['comfortable', 'display.comfortable'], ['default', 'display.default'], ['compact', 'display.compact']] },
   reading: { label: 'display.font', options: [['sans', 'display.sans'], ['serif', 'display.serif']] },
   pane: { label: 'display.pane', options: [['full', 'display.full'], ['split', 'display.split']] },
 } as const satisfies Record<string, { label: Key; options: readonly (readonly [string, Key])[] }>;
 export type DisplayKey = keyof typeof DISPLAY;
-const DEFAULTS: Record<DisplayKey, string> = { palette: 'clean', text: 'default', density: 'default', reading: 'sans', pane: 'full' };
+const DEFAULTS: Record<DisplayKey, string> = { palette: 'grove', text: 'default', density: 'default', reading: 'sans', pane: 'full' };
 export const displayPref = (k: DisplayKey) => { try { return localStorage.getItem(`om:${k}`) || DEFAULTS[k]; } catch { return DEFAULTS[k]; } };
 export function setDisplayPref(k: DisplayKey, v: string) {
   if (v === DEFAULTS[k]) document.documentElement.removeAttribute(`data-${k}`); else document.documentElement.setAttribute(`data-${k}`, v);
@@ -72,6 +72,24 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
     }, (e) => setError(e.message));
   }, [client]);
 
+  // The section list beside the form: the headings on the page (sections appear as their data loads), and which one
+  // is at the top of the view.
+  const form = useRef<HTMLFormElement>(null);
+  const [sections, setSections] = useState<string[]>([]);
+  const [at, setAt] = useState(0);
+  useEffect(() => {
+    const el = form.current;
+    if (!el) return;
+    const heads = () => [...el.querySelectorAll<HTMLElement>('section > h3')];
+    const read = () => setSections((old) => { const now = heads().map((h) => h.textContent ?? ''); return now.join('\n') === old.join('\n') ? old : now; });
+    const where = () => { const top = el.getBoundingClientRect().top + 90; setAt(Math.max(0, heads().filter((h) => h.getBoundingClientRect().top <= top).length - 1)); };
+    read(); where();
+    const seen = new MutationObserver(read);
+    seen.observe(el, { childList: true, subtree: true, characterData: true });
+    el.addEventListener('scroll', where, { passive: true });
+    return () => { seen.disconnect(); el.removeEventListener('scroll', where); };
+  }, []);
+
   // Esc closes Settings wherever focus is (not only inside the sheet).
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) onClose(); };
@@ -100,9 +118,17 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
 
   return (
     <div className="overlay" onMouseDown={onClose}>
-      <form className="sheet settings" role="dialog" aria-label={t('settings.title')} onMouseDown={(e) => e.stopPropagation()} onSubmit={save}
+      <form ref={form} className="sheet settings" role="dialog" aria-label={t('settings.title')} onMouseDown={(e) => e.stopPropagation()} onSubmit={save}
 >
         <h2>{t('settings.title')}</h2>
+        {/* Every section's heading, as a way to jump to it: Settings is long. Read from the page, so a new section
+            shows up here without being listed twice. */}
+        <nav className="settings-nav" aria-label={t('settings.sections')}>
+          {sections.map((name, i) => (
+            <button key={name} type="button" className={`settings-link${i === at ? ' on' : ''}`}
+              onClick={() => form.current?.querySelectorAll('section > h3')[i]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{name}</button>
+          ))}
+        </nav>
 
         <section>
           <h3>{t('settings.you')}</h3>

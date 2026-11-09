@@ -1,5 +1,5 @@
 // Integration check against the local dev server (node deploy/dev-setup.mjs). Skips if it isn't running.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Jmap } from './jmap';
 import { parseSearch } from './search';
 
@@ -9,6 +9,34 @@ const login = () => Jmap.login('alice@openmail.test', 'alice-dev-pass', BASE);
 const ALICE = { name: null, email: 'alice@openmail.test' };
 
 describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
+  it('refreshing a list fetches only rows that changed, and stays exact', async () => {
+    const c = await login();
+    const inbox = (await c.mailboxes()).find((b) => b.role === 'inbox')!.id;
+    const spy = vi.spyOn(c, 'call');
+    const first = await c.threads({ inMailbox: inbox }, 100);
+    expect(first.length).toBeGreaterThan(3);
+
+    // Nothing changed: one request, no rows fetched, the same list.
+    spy.mockClear();
+    expect(await c.threads({ inMailbox: inbox }, 100)).toEqual(first);
+    expect(spy.mock.calls.flatMap(([calls]) => calls.map(([name]) => name))).toEqual(['Email/query', 'Email/changes']);
+
+    // One conversation starred elsewhere: only its rows are fetched again, and the list shows the star.
+    const other = await login();
+    await other.setStarred(first[1].threadId, true);
+    spy.mockClear();
+    const after = await c.threads({ inMailbox: inbox }, 100);
+    const got = spy.mock.calls.flatMap(([calls]) => calls).find(([name]) => name === 'Email/get')?.[1] as { ids: string[] };
+    expect(got.ids.length).toBeLessThan(first.length);
+    expect(after.find((e) => e.threadId === first[1].threadId)!.keywords.$flagged).toBe(true);
+    expect(after.map((e) => e.id)).toEqual(first.map((e) => e.id));
+
+    // Unstarred again; a client with no memory of the list agrees with this one.
+    await other.setStarred(first[1].threadId, false);
+    expect(await c.threads({ inMailbox: inbox }, 100)).toEqual(await other.threads({ inMailbox: inbox }, 100));
+    spy.mockRestore();
+  });
+
   it('rejects a wrong password', async () => {
     await expect(Jmap.login('alice@openmail.test', 'nope', BASE)).rejects.toThrow('Wrong email or password');
   });
@@ -239,7 +267,7 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
 
   it('Inbox categories: newsletters are tagged on delivery and by the backfill', async () => {
     const c = await login();
-    const { toSieve } = await import('./rules');
+    const { toSieve, TABS, tabKeyword } = await import('./rules');
     const boxes = await c.mailboxes();
     const inbox = boxes.find((b) => b.role === 'inbox')!.id;
     const before = await c.getRules();
@@ -247,8 +275,10 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
 
     // Backfill tags the seeded digest (it has List-Unsubscribe) and leaves people's mail alone.
     await c.tagUpdates(inbox);
-    const updates = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { hasKeyword: '$updates' }] }, 500)).map((e) => e.subject);
-    const primary = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { notKeyword: '$updates' }] }, 500)).map((e) => e.subject);
+    // "In some category" rather than exactly Updates: a mailbox the app has already opened may have filed the digest
+    // under another tab (the app turns more tabs on than this bare backfill), and the backfill leaves tagged mail alone.
+    const updates = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, { operator: 'OR', conditions: TABS.map((k) => ({ hasKeyword: tabKeyword(k) })) }] }, 500)).map((e) => e.subject);
+    const primary = (await c.threads({ operator: 'AND', conditions: [{ inMailbox: inbox }, ...TABS.map((k) => ({ notKeyword: tabKeyword(k) }))] }, 500)).map((e) => e.subject);
     expect(updates).toContain('Weekly digest: 5 tools we loved');
     expect(primary).toContain('Lunch on Friday?');
     expect(primary).not.toContain('Weekly digest: 5 tools we loved');

@@ -241,6 +241,20 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
     if (edits) { await save(); onClose('saved'); } else onClose('closed');
   }
 
+  // Phones: a draft fills the screen, so Back means "save and close", like the ✕. Opening adds a step to history;
+  // going back from it closes the draft; closing it any other way (✕, Send, Discard) takes the step out again.
+  const closeNow = useRef(close); closeNow.current = close;
+  useEffect(() => {
+    if (!phone() || !onMinimize) return; // not in a popped-out window
+    // A tick later, so a mount that is undone at once (React does this in development) never touches history.
+    let pushed = false, wentBack = false;
+    const timer = setTimeout(() => { history.pushState({ omThread: !!history.state?.omThread, omDraft: true }, ''); pushed = true; });
+    // Still on a draft's step (another draft underneath, or React re-running this effect in development): not ours.
+    const onPop = () => { if (!history.state?.omDraft) { wentBack = true; closeNow.current(); } };
+    window.addEventListener('popstate', onPop);
+    return () => { clearTimeout(timer); window.removeEventListener('popstate', onPop); if (pushed && !wentBack && history.state?.omDraft) history.back(); };
+  }, []);
+
   /** Esc: down to a bar along the bottom (several drafts side by side); on phones and in its own window, close. */
   const minimize = () => (onMinimize && !phone() ? onMinimize(true) : close());
 
@@ -302,8 +316,9 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
     changed();
   }
 
-  const tool = (icon: IconName, label: string, run: () => void) => (
-    <Button variant="quiet" icon={icon} label={label}
+  // `keep`: stays in the toolbar on phones, where only a few fit (the rest are under "More formatting").
+  const tool = (icon: IconName, label: string, run: () => void, keep = false) => (
+    <Button variant="quiet" icon={icon} label={label} className={keep ? 'keep' : undefined}
       onMouseDown={(e) => e.preventDefault() /* keep the text selection */} onClick={() => { run(); changed(); editor.current?.focus(); }} />
   );
   const mod = isMac ? '⌘' : 'Ctrl+';
@@ -398,18 +413,18 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
           </Menu>
         </span>
         <div className="fmts" role="toolbar" aria-label={t('compose.formatting')}>
-          {tool('bold', t('compose.bold', { mod }), () => exec('bold'))}
+          {tool('bold', t('compose.bold', { mod }), () => exec('bold'), true)}
           {tool('italic', t('compose.italic', { mod }), () => exec('italic'))}
-          {tool('link', t('compose.link', { mod }), link)}
+          {tool('link', t('compose.link', { mod }), link, true)}
           {tool('bullets', t('compose.bullets'), () => exec('insertUnorderedList'))}
           {tool('numbers', t('compose.numbers'), () => exec('insertOrderedList'))}
           {tool('quote', t('compose.quote'), () => exec('formatBlock', 'blockquote'))}
           {tool('clearFormat', t('compose.clearFormat'), () => exec('removeFormat'))}
-          <Button variant="quiet" icon="textStyle" label={t('fmt.more')} pressed={moreFmt} onMouseDown={(e) => e.preventDefault()} onClick={() => setMoreFmt(!moreFmt)} />
-          <Button variant="quiet" icon="clip" label={t('compose.attachFiles')} onClick={() => fileInput.current?.click()} />
+          <Button variant="quiet" icon="textStyle" label={t('fmt.more')} className="keep" pressed={moreFmt} onMouseDown={(e) => e.preventDefault()} onClick={() => setMoreFmt(!moreFmt)} />
+          <Button variant="quiet" icon="clip" label={t('compose.attachFiles')} className="keep" onClick={() => fileInput.current?.click()} />
           <Button variant="quiet" icon="receipt" label={receipt ? t('compose.receiptOn') : t('compose.receiptOff')} pressed={receipt}
             onClick={() => { setReceipt(!receipt); changed(); }} />
-          {keys.mine && <Button variant="quiet" icon="lock" pressed={encrypt} disabled={!encrypt && !keys.ready}
+          {keys.mine && <Button variant="quiet" icon="lock" className="keep" pressed={encrypt} disabled={!encrypt && !keys.ready}
             label={encrypt ? t('compose.encryptOn') : keys.ready ? t('compose.encrypt') : keys.missing.length ? t('compose.cantEncrypt', { list: keys.missing.join(', ') }) : t('compose.encryptLooking')}
             onClick={() => { setEncrypt(!encrypt); setConfidential(null); changed(); }} />}
           {api.share && (

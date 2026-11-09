@@ -241,6 +241,37 @@ export default {
   'mail.myMailbox': 'Minha caixa de correio',
   'mail.addAccount': 'Adicionar outra conta',
   'mail.settings': 'Configurações',
+  'mail.openMenu': 'Pastas e conta', // review: new
+  'mail.undone': 'Desfeito', // review: new
+  'mail.zeroTitle': 'Caixa de entrada vazia', // review: new
+  'mail.zeroBody': 'Nada esperando por você. Aproveite.', // review: new
+  'mail.zeroBlocked': { one: 'Nada esperando por você. Até agora, {count} rastreador foi barrado no seu e-mail.', other: 'Nada esperando por você. Até agora, {count} rastreadores foram barrados no seu e-mail.' }, // review: new
+  'reader.allFromSender': 'Tudo deste remetente', // review: new
+  'settings.sections': 'Seções', // review: new
+  'folders.colour': 'Cor de {name}', // review: new
+  'folders.colourTitle': 'Cor da pasta', // review: new
+  'folders.colourAuto': 'Automática (pelo nome)', // review: new
+  'colour.red': 'Vermelho', // review: new
+  'colour.orange': 'Laranja', // review: new
+  'colour.yellow': 'Amarelo', // review: new
+  'colour.green': 'Verde', // review: new
+  'colour.teal': 'Verde-azulado', // review: new
+  'colour.blue': 'Azul', // review: new
+  'colour.purple': 'Roxo', // review: new
+  'colour.pink': 'Rosa', // review: new
+  'privacy.title': 'Relatório de privacidade', // review: new
+  'privacy.empty': 'Nenhum rastreador encontrado nos e-mails abertos neste dispositivo. Quando uma mensagem tenta avisar que você a leu, o rastreador é removido e contado aqui.', // review: new
+  'privacy.statTrackers': { one: 'rastreador removido', other: 'rastreadores removidos' }, // review: new
+  'privacy.statMessages': { one: 'mensagem tentou rastrear você', other: 'mensagens tentaram rastrear você' }, // review: new
+  'privacy.statSenders': { one: 'remetente', other: 'remetentes' }, // review: new
+  'privacy.whoTracks': 'Quem mais rastreia você', // review: new
+  'privacy.companies': 'Serviços de rastreamento usados', // review: new
+  'privacy.messages': { one: '{count} mensagem', other: '{count} mensagens' }, // review: new
+  'privacy.show': 'Ver os e-mails', // review: new
+  'privacy.note': 'Contado neste dispositivo desde {date}, ao abrir os e-mails. Nunca sai deste navegador.', // review: new
+  'privacy.reset': 'Recomeçar a contagem', // review: new
+  'privacy.resetTitle': 'Limpar o relatório de privacidade?', // review: new
+  'privacy.resetBody': 'As contagens deste dispositivo voltam a zero. Seus e-mails não mudam.', // review: new
   'mail.findAnyAction': 'Encontrar qualquer ação',
   'mail.signOutOf': 'Sair de {address}',
   'mail.conversations': 'Conversas',
