@@ -241,6 +241,20 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
     if (edits) { await save(); onClose('saved'); } else onClose('closed');
   }
 
+  // Phones: a draft fills the screen, so Back means "save and close", like the ✕. Opening adds a step to history;
+  // going back from it closes the draft; closing it any other way (✕, Send, Discard) takes the step out again.
+  const closeNow = useRef(close); closeNow.current = close;
+  useEffect(() => {
+    if (!phone() || !onMinimize) return; // not in a popped-out window
+    // A tick later, so a mount that is undone at once (React does this in development) never touches history.
+    let pushed = false, wentBack = false;
+    const timer = setTimeout(() => { history.pushState({ omThread: !!history.state?.omThread, omDraft: true }, ''); pushed = true; });
+    // Still on a draft's step (another draft underneath, or React re-running this effect in development): not ours.
+    const onPop = () => { if (!history.state?.omDraft) { wentBack = true; closeNow.current(); } };
+    window.addEventListener('popstate', onPop);
+    return () => { clearTimeout(timer); window.removeEventListener('popstate', onPop); if (pushed && !wentBack && history.state?.omDraft) history.back(); };
+  }, []);
+
   /** Esc: down to a bar along the bottom (several drafts side by side); on phones and in its own window, close. */
   const minimize = () => (onMinimize && !phone() ? onMinimize(true) : close());
 
