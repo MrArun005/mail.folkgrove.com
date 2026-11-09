@@ -34,7 +34,7 @@ export function ConversationRows({ list, important, role, current, threadId, sel
   return (
     <ul className={`rows${selected.size ? ' selecting' : ''}`}>
       {list.map((e, i) => (<Fragment key={e.threadId}>
-        {important > 0 && (i === 0 || i === important) && <li className="list-section" role="presentation">{t(i === 0 ? 'mail.importantUnread' : 'mail.everythingElse')}</li>}
+        {important > 0 && (i === 0 || i === important) && <li className="list-section">{t(i === 0 ? 'mail.importantUnread' : 'mail.everythingElse')}</li>}
         <SwipeRow className={`row${e.keywords.$seen ? '' : ' unread'}${e.threadId === threadId ? ' active' : ''}${selected.has(e.threadId) ? ' selected' : ''}`}
           off={!!selected.size || inScreener || role === 'trash'}
           onDragStart={canDrag && !inScreener ? (ev) => {

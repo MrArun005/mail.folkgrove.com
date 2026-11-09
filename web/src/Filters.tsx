@@ -4,8 +4,9 @@ import { Button } from './Button';
 import { hue } from './Contacts';
 import { Icon } from './icons';
 import { Menu } from './Menu';
-import type { Jmap, Mailbox } from './jmap';
-import { describeRule, parseScript, toSieve, validateRule, type Rule, type RuleAction, type ScriptData } from './rules';
+import type { EmailSummary, Jmap, Mailbox } from './jmap';
+import { describeRule, matchesRule, parseScript, toSieve, validateRule, type Rule, type RuleAction, type ScriptData } from './rules';
+import { displayName } from './mailutil';
 import { ShareFolder } from './Sharing';
 import { boxName, t, type Key } from './i18n';
 
@@ -80,6 +81,20 @@ export function FiltersSection({ client, boxes, prefill }: { client: Jmap; boxes
 
   const set = (patch: Partial<Rule>) => setDraft((d) => d && { ...d, ...patch });
 
+  // Try it first: the newest 100 conversations in the Inbox, read once when the form opens, and matched in the
+  // browser as you type (rules.ts matchesRule: the same tests the server will run).
+  // ponytail: the list has To but not Cc, so a "To" rule that would match only a Cc isn't counted here.
+  const [recent, setRecent] = useState<EmailSummary[] | null>(null);
+  const editing = !!draft;
+  useEffect(() => {
+    const inbox = boxes.find((b) => b.role === 'inbox')?.id;
+    if (!editing || !inbox) return;
+    let live = true;
+    client.threads({ inMailbox: inbox }, 100).then((l) => live && setRecent(l), () => {});
+    return () => { live = false; };
+  }, [client, editing]);
+  const caught = draft && recent && (draft.from?.trim() || draft.to?.trim() || draft.subject?.trim()) ? recent.filter((m) => matchesRule(draft, m)) : null;
+
   return (
     <section>
       <h3>{t('filters.title')}</h3>
@@ -115,6 +130,13 @@ export function FiltersSection({ client, boxes, prefill }: { client: Jmap; boxes
               <label>{t('filters.forwardTo')}<input className="input" type="email" value={draft.forwardTo ?? ''} onChange={(e) => set({ forwardTo: e.target.value })} /></label>
             )}
           </div>
+          {caught && recent && (
+            <div className="rule-preview" role="status">
+              <p>{caught.length ? t('filters.wouldCatch', { count: caught.length, of: recent.length }) : t('filters.wouldCatchNone', { of: recent.length })}</p>
+              {caught.length > 0 && <ul>{caught.slice(0, 4).map((m) => <li key={m.id}><b>{displayName(m.from?.[0])}</b> {m.subject || t('mail.noSubject')}</li>)}
+                {caught.length > 4 && <li className="fine">{t('filters.andMore', { count: caught.length - 4 })}</li>}</ul>}
+            </div>
+          )}
           <div className="actions">
             <Button size="sm" onClick={() => { setDraft(null); setError(''); }}>{t('common.cancel')}</Button>
             <Button size="sm" variant="primary" onClick={add}>{t('filters.add')}</Button>

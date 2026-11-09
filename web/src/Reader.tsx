@@ -395,7 +395,7 @@ function SmartReplies({ m, me, onPick }: { m: EmailFull; me: string; onPick: (te
 
 /** The message, sized to its content (no scroll inside a scroll). allow-same-origin without allow-scripts: the message
  *  still can't run anything (sandbox + CSP), but we can measure it and check its links. */
-function MessageFrame({ title, srcdoc }: { title: string; srcdoc: string }) {
+export function MessageFrame({ title, srcdoc }: { title: string; srcdoc: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
     const f = ref.current!;

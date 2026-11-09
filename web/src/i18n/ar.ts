@@ -244,7 +244,7 @@ export default {
   'mail.undone': 'تم التراجع', // review: new
   'mail.zeroTitle': 'صندوق الوارد فارغ', // review: new
   'mail.zeroBody': 'لا شيء بانتظارك. استمتع بذلك.', // review: new
-  'mail.zeroBlocked': { one: 'لا شيء بانتظارك. أُبعد متتبّع واحد عن بريدك حتى الآن.', other: 'لا شيء بانتظارك. أُبعد {count} متتبّعًا عن بريدك حتى الآن.' }, // review: new
+  'mail.zeroBlocked': { zero: 'لا شيء بانتظارك.', one: 'لا شيء بانتظارك. أُبعد متتبّع واحد عن بريدك حتى الآن.', two: 'لا شيء بانتظارك. أُبعد متتبّعان عن بريدك حتى الآن.', few: 'لا شيء بانتظارك. أُبعدت {count} متتبّعات عن بريدك حتى الآن.', many: 'لا شيء بانتظارك. أُبعد {count} متتبّعًا عن بريدك حتى الآن.', other: 'لا شيء بانتظارك. أُبعد {count} متتبّع عن بريدك حتى الآن.' }, // review: new
   'reader.allFromSender': 'كل ما ورد من هذا المرسل', // review: new
   'settings.sections': 'الأقسام', // review: new
   'folders.colour': 'لون {name}', // review: new
@@ -260,17 +260,105 @@ export default {
   'colour.pink': 'وردي', // review: new
   'privacy.title': 'تقرير الخصوصية', // review: new
   'privacy.empty': 'لم يُعثر على متتبّعات في البريد الذي فتحته على هذا الجهاز. عندما تحاول رسالة الإبلاغ بأنك قرأتها، يُزال المتتبّع ويُحصى هنا.', // review: new
-  'privacy.statTrackers': { one: 'متتبّع أُزيل', other: 'متتبّعات أُزيلت' }, // review: new
-  'privacy.statMessages': { one: 'رسالة حاولت تتبّعك', other: 'رسائل حاولت تتبّعك' }, // review: new
-  'privacy.statSenders': { one: 'مرسل', other: 'مرسلين' }, // review: new
+  'privacy.statTrackers': { zero: 'متتبّعات أُزيلت', one: 'متتبّع أُزيل', two: 'متتبّعان أُزيلا', few: 'متتبّعات أُزيلت', many: 'متتبّعًا أُزيل', other: 'متتبّع أُزيل' }, // review: new
+  'privacy.statMessages': { zero: 'رسائل حاولت تتبّعك', one: 'رسالة حاولت تتبّعك', two: 'رسالتان حاولتا تتبّعك', few: 'رسائل حاولت تتبّعك', many: 'رسالة حاولت تتبّعك', other: 'رسالة حاولت تتبّعك' }, // review: new
+  'privacy.statSenders': { zero: 'مرسلين', one: 'مرسل', two: 'مرسلان', few: 'مرسلين', many: 'مرسلًا', other: 'مرسل' }, // review: new
   'privacy.whoTracks': 'من يتتبّعك أكثر', // review: new
   'privacy.companies': 'خدمات التتبّع التي يستخدمونها', // review: new
-  'privacy.messages': { one: 'رسالة واحدة', other: '{count} رسائل' }, // review: new
+  'privacy.messages': { zero: 'لا رسائل', one: 'رسالة واحدة', two: 'رسالتان', few: '{count} رسائل', many: '{count} رسالة', other: '{count} رسالة' }, // review: new
   'privacy.show': 'عرض بريدهم', // review: new
   'privacy.note': 'يُحصى على هذا الجهاز منذ {date} عند فتح البريد. لا يغادر هذا المتصفّح أبدًا.', // review: new
   'privacy.reset': 'بدء العدّ من جديد', // review: new
   'privacy.resetTitle': 'مسح تقرير الخصوصية؟', // review: new
   'privacy.resetBody': 'تعود الأعداد على هذا الجهاز إلى الصفر. بريدك لا يتغيّر.', // review: new
+  'folder.feed': 'الموجز', // review: new
+  'filters.wouldCatch': { one: 'كان هذا سيلتقط محادثة واحدة من آخر محادثاتك ({of}):', two: 'كان هذا سيلتقط محادثتين من آخر محادثاتك ({of}):', few: 'كان هذا سيلتقط {count} محادثات من آخر محادثاتك ({of}):', many: 'كان هذا سيلتقط {count} محادثة من آخر محادثاتك ({of}):', other: 'كان هذا سيلتقط {count} محادثة من آخر محادثاتك ({of}):' }, // review: new
+  'filters.wouldCatchNone': 'لم يكن هذا ليلتقط أيًّا من آخر محادثاتك ({of}).', // review: new
+  'filters.andMore': { one: 'وواحدة أخرى', two: 'واثنتان أخريان', few: 'و{count} أخرى', many: 'و{count} أخرى', other: 'و{count} أخرى' }, // review: new
+  'threadNotes.private': 'ملاحظات خاصة', // review: new
+  'threadNotes.privateNote': 'لا يراها أحد غيرك؛ ولا تُرسَل أبدًا', // review: new
+  'threadNotes.add': 'إضافة ملاحظة خاصة', // review: new
+  'threadNotes.placeholder': 'ملاحظة لنفسك عن هذه المحادثة…', // review: new
+  'threadNotes.save': 'حفظ الملاحظة', // review: new
+  'threadNotes.delete': 'حذف الملاحظة', // review: new
+  'compose.whenActive': 'عندما يتصفّح {name} بريده عادةً', // review: new
+  'feed.intro': 'النشرات الإخبارية والتحديثات من بريدك الوارد، لتقرأها كصفحة واحدة. لا شيء يُعلَّم كمقروء حتى تطلب ذلك.', // review: new
+  'feed.empty': 'لا توجد نشرات إخبارية أو تحديثات في بريدك الوارد.', // review: new
+  'feed.markAllRead': 'وضع علامة «مقروءة» على الكل', // review: new
+  'feed.allRead': { one: 'وُضعت علامة «مقروءة» على رسالة واحدة', two: 'وُضعت علامة «مقروءة» على رسالتين', few: 'وُضعت علامة «مقروءة» على {count} رسائل', many: 'وُضعت علامة «مقروءة» على {count} رسالة', other: 'وُضعت علامة «مقروءة» على {count} رسالة' }, // review: new
+  'feed.archived': 'تمت الأرشفة', // review: new
+  'feed.open': 'فتح المحادثة', // review: new
+  'privacy.thisWeek': 'آخر 7 أيام', // review: new
+  'privacy.weekTotal': { zero: 'لم يُزَل أي متتبّع هذا الأسبوع.', one: 'أُزيل متتبّع واحد هذا الأسبوع.', two: 'أُزيل متتبّعان هذا الأسبوع.', few: 'أُزيلت {count} متتبّعات هذا الأسبوع.', many: 'أُزيل {count} متتبّعًا هذا الأسبوع.', other: 'أُزيل {count} متتبّع هذا الأسبوع.' }, // review: new
+  'privacy.weekBefore': { other: 'الأسبوع الذي قبله: {count}.' }, // review: new
+  'privacy.weekBadge': { zero: 'لم يُزَل أي متتبّع هذا الأسبوع', one: 'أُزيل متتبّع واحد هذا الأسبوع', two: 'أُزيل متتبّعان هذا الأسبوع', few: 'أُزيلت {count} متتبّعات هذا الأسبوع', many: 'أُزيل {count} متتبّعًا هذا الأسبوع', other: 'أُزيل {count} متتبّع هذا الأسبوع' }, // review: new
+  'display.grove': 'Grove', // review: new
+  'domains.membersTitle': 'عناوين لأشخاص آخرين', // review: new
+  'domains.membersIntro': 'امنح عنوانًا على {domain} لشخص آخر لديه حساب هنا. يصل البريد المُرسَل إليه إلى صندوق بريده هو لا إلى صندوق بريدك، ويمكنه الإرسال منه. أنت وحدك من يستطيع تغيير النطاق.', // review: new
+  'domains.addressesUsed': 'العناوين المستخدَمة: {used} من {max}، بما فيها عناوينك.', // review: new
+  'domains.memberFor': 'لـ {account}', // review: new
+  'domains.memberNamePlaceholder': 'sam', // review: new
+  'domains.memberNewAddress': 'عنوانه الجديد على {domain}', // review: new
+  'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
+  'domains.memberAccountLabel': 'العنوان الذي يسجّل به الدخول، على {domain}', // review: new
+  'domains.giveAddress': 'منح العنوان', // review: new
+  'domains.takeBack': 'استرداد {email}', // review: new
+  'domains.takeBackTitle': 'هل تريد استرداد {email} من {account}؟', // review: new
+  'domains.takeBackBody': 'سيُرتد البريد المُرسَل إليه، ولا يمكن منحه لأي شخص مرة أخرى. يبقى لديه البريد الذي استلمه من قبل.', // review: new
+  'domains.takeBackConfirm': 'استرداد', // review: new
+  'domains.givenTitle': 'عناوين مُنحت لك', // review: new
+  'domains.givenIntro': 'منحك مالك أحد النطاقات هذه العناوين. يصل البريد المُرسَل إليها إلى هنا، ويمكنك اختيارها في حقل «من» عند الكتابة. يستطيع المالك استردادها.', // review: new
+  'domains.givenBy': 'من {owner}', // review: new
+  'domains.giveUp': 'التخلي عن {email}', // review: new
+  'domains.giveUpTitle': 'هل تريد التخلي عن {email}؟', // review: new
+  'domains.giveUpBody': 'سيُرتد البريد المُرسَل إليه، ولا يمكن استعادته، لا من قِبلك ولا من قِبل أي شخص.', // review: new
+  'domains.giveUpConfirm': 'التخلي عن العنوان', // review: new
+  'admin.tabAudit': 'سجل التدقيق', // review: new
+  'admin.domainMembers': { one: 'بعضها لحساب واحد آخر', two: 'بعضها لحسابين آخرين', few: 'بعضها لـ {count} حسابات أخرى', many: 'بعضها لـ {count} حسابًا آخر', other: 'بعضها لـ {count} حساب آخر' }, // review: new
+  'admin.auditHelp': 'كل تغيير أُجري في هذه اللوحة: من أجراه، وما هو، وبمن أو بماذا يتعلق، وهل تم أم لا. الأحدث أولًا. لا تُسجَّل كلمات المرور ولا محتوى الرسائل أبدًا.', // review: new
+  'admin.noAudit': 'لم يُغيَّر شيء في هذه اللوحة حتى الآن.', // review: new
+  'admin.auditShowing': 'عرض {from} إلى {to} من {total}', // review: new
+  'admin.auditNewer': 'الأحدث', // review: new
+  'admin.auditOlder': 'الأقدم', // review: new
+  'admin.colTime': 'الوقت', // review: new
+  'admin.colAdmin': 'المشرف', // review: new
+  'admin.colAction': 'الإجراء', // review: new
+  'admin.colTarget': 'بخصوص', // review: new
+  'admin.colOutcome': 'النتيجة', // review: new
+  'admin.auditDone': 'تم', // review: new
+  'admin.auditNotDone': 'لم يتم', // review: new
+  'admin.auditUserCreate': 'إنشاء حساب', // review: new
+  'admin.auditUserUpdate': 'تغيير حساب', // review: new
+  'admin.auditUserDelete': 'حذف حساب', // review: new
+  'admin.auditTeamCreate': 'إنشاء صندوق بريد فريق', // review: new
+  'admin.auditTeamMembers': 'تغيير أعضاء صندوق بريد فريق', // review: new
+  'admin.auditTeamDelete': 'حذف صندوق بريد فريق', // review: new
+  'admin.auditIpUnblock': 'إلغاء حظر عنوان IP', // review: new
+  'admin.auditLimitsAdd': 'وضع حساب ضمن حدود الحسابات الجديدة', // review: new
+  'admin.auditLimitsLift': 'رفع حدود الحسابات الجديدة', // review: new
+  'admin.auditQueueRetry': 'إعادة محاولة إرسال رسالة في الانتظار', // review: new
+  'admin.auditQueueCancel': 'إلغاء رسالة في الانتظار', // review: new
+  'admin.auditHeldRelease': 'إرسال رسالة محتجَزة', // review: new
+  'admin.auditHeldDelete': 'حذف رسالة محتجَزة', // review: new
+  'admin.auditRetentionRules': 'تغيير قواعد الاحتفاظ', // review: new
+  'admin.auditRetentionRun': 'تشغيل مهمة الاحتفاظ', // review: new
+  'admin.auditRetentionAccount': 'تغيير مدة الاحتفاظ لحساب', // review: new
+  'admin.auditEnable': 'تسجيل الدخول مفعَّل', // review: new
+  'admin.auditDisable': 'تسجيل الدخول معطَّل', // review: new
+  'admin.auditSendingSuspend': 'الإرسال معلَّق', // review: new
+  'admin.auditSendingAllow': 'الإرسال مسموح', // review: new
+  'admin.auditPasswordReset': 'إعادة تعيين كلمة المرور', // review: new
+  'admin.auditHoldOn': 'الاحتجاز القانوني مفعَّل', // review: new
+  'admin.auditHoldOff': 'الاحتجاز القانوني معطَّل', // review: new
+  'admin.auditQuota': 'حد التخزين {size}', // review: new
+  'admin.auditQuotaNone': 'بلا حد للتخزين', // review: new
+  'admin.auditMemberAdd': 'أُضيف {member}', // review: new
+  'admin.auditMemberRemove': 'أُزيل {member}', // review: new
+  'admin.auditTrashDays': { one: 'تُفرَّغ المهملات والرسائل غير المرغوب فيها بعد يوم واحد', two: 'تُفرَّغ المهملات والرسائل غير المرغوب فيها بعد يومين', few: 'تُفرَّغ المهملات والرسائل غير المرغوب فيها بعد {count} أيام', many: 'تُفرَّغ المهملات والرسائل غير المرغوب فيها بعد {count} يومًا', other: 'تُفرَّغ المهملات والرسائل غير المرغوب فيها بعد {count} يوم' }, // review: new
+  'admin.auditTrashNever': 'لا تُفرَّغ المهملات والرسائل غير المرغوب فيها أبدًا', // review: new
+  'admin.auditKeepDays': { one: 'يُحتفَظ بالبريد يومًا واحدًا', two: 'يُحتفَظ بالبريد يومين', few: 'يُحتفَظ بالبريد {count} أيام', many: 'يُحتفَظ بالبريد {count} يومًا', other: 'يُحتفَظ بالبريد {count} يوم' }, // review: new
+  'admin.auditKeepForever': 'يُحتفَظ بالبريد إلى الأبد', // review: new
+  'admin.auditKeepServer': 'قاعدة الخادم لمدة الاحتفاظ بالبريد', // review: new
   'mail.findAnyAction': 'البحث عن أي إجراء',
   'mail.signOutOf': 'تسجيل الخروج من {address}',
   'mail.conversations': 'المحادثات',

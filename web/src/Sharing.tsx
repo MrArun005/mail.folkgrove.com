@@ -178,32 +178,40 @@ export function DelegatesSection({ client }: { client: Jmap }) {
   );
 }
 
-/** Internal notes on a conversation in a shared mailbox. Members only; never sent to anyone. */
-export function TeamComments({ client, threadId, version, me }: { client: Jmap; threadId: string; version: number; me: string }) {
+/**
+ * Notes under a conversation, never sent to anyone. In a shared mailbox they are the team's comments (members only);
+ * in your own mailbox (`mine`) they are private notes, kept the same way: a hidden folder in that mailbox, synced.
+ * Private notes stay out of the way until there is one: a single link opens the box.
+ */
+export function TeamComments({ client, threadId, version, me, mine = false }: { client: Jmap; threadId: string; version: number; me: string; mine?: boolean }) {
   const [list, setList] = useState<Comment[] | null>(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [writing, setWriting] = useState(false);
+  useEffect(() => { setWriting(false); setText(''); }, [threadId]);
   const load = useCallback(() => client.comments(threadId).then(setList, (e) => { setList([]); setMsg(e.message); }), [client, threadId]);
   useEffect(() => { load(); }, [load, version]);
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setMsg('');
     try { await fn(); await load(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
+  if (mine && !writing && !list?.length) return list === null ? null
+    : <p className="team-comments note-add"><Button variant="link" onClick={() => setWriting(true)}><Icon name="note" size={16} />{t('threadNotes.add')}</Button></p>;
   return (
-    <section className="team-comments" aria-label={t('sharing.teamComments')}>
-      <h2 className="rail-label">{t('sharing.teamComments')} <span className="fine">· {t('sharing.teamCommentsNote')}</span></h2>
+    <section className="team-comments" aria-label={t(mine ? 'threadNotes.private' : 'sharing.teamComments')}>
+      <h2 className="rail-label">{t(mine ? 'threadNotes.private' : 'sharing.teamComments')} <span className="fine">· {t(mine ? 'threadNotes.privateNote' : 'sharing.teamCommentsNote')}</span></h2>
       {list?.map((c) => (
         <div key={c.id} className="comment">
-          <p className="comment-meta"><b>{displayName(c.author)}</b> <time dateTime={c.at}>{shortDate(c.at)}</time>
-            {c.author.email.toLowerCase() === me.toLowerCase() && <Button variant="quiet" size="sm" icon="trash" label={t('sharing.deleteComment')} onClick={() => run(() => client.deleteComment(c.id))} />}</p>
+          <p className="comment-meta">{!mine && <b>{displayName(c.author)}</b>} <time dateTime={c.at}>{shortDate(c.at)}</time>
+            {c.author.email.toLowerCase() === me.toLowerCase() && <Button variant="quiet" size="sm" icon="trash" label={t(mine ? 'threadNotes.delete' : 'sharing.deleteComment')} onClick={() => run(() => client.deleteComment(c.id))} />}</p>
           <p className="comment-text">{c.text}</p>
         </div>
       ))}
       <div className="inline-form">
-        <textarea className="input" rows={2} placeholder={t('sharing.commentPlaceholder')} aria-label={t('sharing.comment')} value={text} onChange={(e) => setText(e.target.value)}
+        <textarea className="input" rows={2} placeholder={t(mine ? 'threadNotes.placeholder' : 'sharing.commentPlaceholder')} aria-label={t(mine ? 'threadNotes.private' : 'sharing.comment')} autoFocus={mine && writing} value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && text.trim()) run(async () => { await client.addComment(threadId, text); setText(''); }); }} />
-        <Button disabled={busy || !text.trim()} onClick={() => run(async () => { await client.addComment(threadId, text); setText(''); })}>{t('sharing.commentButton')}</Button>
+        <Button disabled={busy || !text.trim()} onClick={() => run(async () => { await client.addComment(threadId, text); setText(''); })}>{t(mine ? 'threadNotes.save' : 'sharing.commentButton')}</Button>
       </div>
       {msg && <p className="error" role="alert">{msg}</p>}
     </section>

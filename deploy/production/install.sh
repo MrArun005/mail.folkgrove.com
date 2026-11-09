@@ -368,6 +368,15 @@ umask 022
 
 say "Starting the stack"
 mkdir -p signup-data && { chown 1000:1000 signup-data 2>/dev/null || warn "Not root: the account service may be unable to write signup-data"; }   # it runs as uid 1000 (node)
+# The account service reads the admin login (mounted at /run/secrets/admin) as uid 1000 too. The file stays 0600:
+# readable by that uid and root, nobody else. Without this the service can't start on Linux ("EACCES") and masked
+# addresses, the admin console, "keep me signed in" and the outgoing-spam hold are all down.
+# Called again after the file is first written, and on every run (which repairs installs made before this fix).
+admin_file_for_service() {
+  [ -f .admin-credentials ] || return 0
+  chown 1000:1000 .admin-credentials 2>/dev/null || warn "Not root: the account service may be unable to read .admin-credentials"
+}
+admin_file_for_service
 # First run: Stalwart (and its stores) only. The account service mounts .admin-credentials, and Docker would
 # create a missing file as an empty directory; the full stack starts once bootstrap has written it.
 # Optional easier webmail address (--webmail-host mail.example.com): Caddy redirects it to the mail host, where
@@ -413,6 +422,7 @@ if [ "$HOSTED" = 1 ] && [ ! -f .admin-credentials ]; then
     \"roles\":{\"@type\":\"Admin\"},\"description\":\"Server admin (install.sh)\",
     \"credentials\":{\"0\":{\"@type\":\"Password\",\"secret\":$(jstr "$admin_pass")}}}}},\"a\"]]" >/dev/null
   (umask 077; printf 'admin@%s:%s\n' "$MAIL_DOMAIN" "$admin_pass" > .admin-credentials)
+  admin_file_for_service
   say "Admin login saved to $HERE/.admin-credentials (keep a copy in your password manager)"
   api '[["x:BlobStore/set",{"update":{"singleton":{"@type":"S3","bucket":"stalwart",
     "region":{"@type":"Custom","region":"us-east-1","url":"http://seaweedfs:8333"},
@@ -439,6 +449,7 @@ if [ ! -f .admin-credentials ]; then
     \"tracer\":{\"@type\":\"Stdout\",\"level\":\"info\"}}}},\"b\"]]")
   admin=$(jget "r[0][1]['updated']['singleton']['username'] + ':' + r[0][1]['updated']['singleton']['secret']" <<<"$res")
   (umask 077; printf '%s\n' "$admin" > .admin-credentials)
+  admin_file_for_service
   say "Admin login saved to $HERE/.admin-credentials (keep a copy in your password manager)"
   restart_stalwart
 fi

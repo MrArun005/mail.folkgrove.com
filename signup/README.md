@@ -28,6 +28,8 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `ADMINS` | | Usernames on `DOMAIN` (comma-separated, e.g. `ann,raj`) who may use the admin console at `/admin`. Empty: the console is off and `/api/admin/*` answers 404. See [Admin console](#admin-console-apiadmin). |
 | `RESERVED_NAMES` | | Extra reserved usernames, comma-separated. They are added to the built-in list in `lib.mjs`. |
 | `RETENTION_FILE` | | JSON file for retention rules (`retention.mjs`). Without it rules last until restart. |
+| `AUDIT_FILE` | | File the admin console's [audit log](#audit-log) is appended to, one JSON object per line (`/data/audit.jsonl` in `docker-compose.yml`). Without it the log lasts until restart. |
+| `AUDIT_MAX_ENTRIES` | `10000` | Lines in `AUDIT_FILE` before it is rotated to `AUDIT_FILE.1` (one old file is kept, so the last 10,000 to 20,000 changes). |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_SECRET` (or `OIDC_SECRET_FILE`), `OIDC_NAME`, `OIDC_CLAIM` (default `email`, must be verified), `OIDC_TENANT` (Google `hd` / Entra `tid` that must match), `PUBLIC_URL` | | Single sign-on (`sso.mjs`). All but the name are needed together; `PUBLIC_URL` is the webmail address (callback `PUBLIC_URL/api/sso/callback`). Stalwart's OIDC directory must point at the same provider (`install.sh --oidc-*`). |
 | `FILES_DB` | | JSON file with the large-file links (`/api/files`). Set it in production (`docker-compose.yml` does); without it links last until restart. The files themselves live in each user's own storage in Stalwart. |
 | `MAX_FILE_BYTES` | `2147483648` (2 GiB) | Biggest file one link can hold. |
@@ -149,19 +151,33 @@ Settings → Your domain calls these with the user's sign-in token (as `/api/ali
 
 | Request | What it does |
 |---|---|
-| `GET /api/domains` | `{domains, maxDomains}`: each claimed domain with `status` (`active`, `missing`: TXT gone, `paused`: gone over 7 days), `pausesAt`, its records with live DNS status (`ok`: true / false / null = DNS didn't answer) and its addresses. Looking at it re-checks the TXT record (and switches a paused domain back on). |
+| `GET /api/domains` | `{domains, maxDomains, memberOf}`: each domain the caller owns with `status` (`active`, `missing`: TXT gone, `paused`: gone over 7 days), `pausesAt`, its records with live DNS status (`ok`: true / false / null = DNS didn't answer) its `addresses` (the owner's own) and `members` (addresses given to other accounts: `{account, name, email, enabled}`). Looking at it re-checks the TXT record (and switches a paused domain back on). `memberOf`: addresses the caller was given on other people's domains, `{domain, name, email, enabled, owner}`. |
 | `POST /api/domains {domain}` | Add, or "Check again". Until the TXT record `openmail-verify=<token>` is at the domain: `status: "pending"` and the records to add; nothing is stored. Once it's there: the domain is created in Stalwart (its DKIM keys follow a few seconds later: `dkimPending`) and `<username>@domain` is added to the account. |
-| `POST /api/domains/:domain/addresses {name}` | One more address on it (up to `MAX_DOMAIN_ADDRESSES`). |
+| `POST /api/domains/:domain/addresses {name}` | One more address on it for the owner (up to `MAX_DOMAIN_ADDRESSES` on the domain, members' addresses included). |
 | `DELETE /api/domains/:domain/addresses/:name` | Removes and retires it (never given out again). The owner's own name can't be removed alone. |
-| `DELETE /api/domains/:domain` | Retires every address on it, deletes its DKIM keys and the domain. |
+| `POST /api/domains/:domain/members {account, name}` | Owner only. Gives `name@domain` to another account on this server: `account` is that person's exact address on `DOMAIN` (`sam@DOMAIN`). The address becomes an alias of their account: its mail lands in their mailbox and Stalwart gives them a sending identity for it. Same cap and hourly limit as the owner's own addresses. |
+| `DELETE /api/domains/:domain/members/:name` | The owner takes a member's address back, or a member gives up their own (the only thing a member can change). Removed from the member's account and retired. |
+| `DELETE /api/domains/:domain` | Retires every address on it (members' too, taken off their accounts), deletes its DKIM keys and the domain. |
 
-Records shown: the TXT check, `MX 10 <mail host>.` (our main domain's MX), `v=spf1 include:DOMAIN -all`, Stalwart's DKIM keys for the domain, and `v=DMARC1; p=quarantine`. Errors: `400 bad_domain` / `reserved` / `bad_name`, `404 not_found` (not yours), `409 taken` (another account, or a domain Stalwart already has), `too_many`, `exists`, `retired`, `main`, `429 rate_limited` (60 checks an hour, 3 new domains a day, 30 new addresses an hour per account).
+Records shown: the TXT check, `MX 10 <mail host>.` (our main domain's MX), `v=spf1 include:DOMAIN -all`, Stalwart's DKIM keys for the domain, and `v=DMARC1; p=quarantine`. Errors: `400 bad_domain` / `reserved` / `bad_name` / `bad_account` (not a full address on `DOMAIN`) / `self`, `403 protected` (a server administrator's account), `404 not_found` (not yours) / `no_such_account`, `409 taken` (another account, or a domain Stalwart already has), `too_many`, `exists`, `retired`, `main`, `429 rate_limited` (60 checks an hour, 3 new domains a day, 30 new addresses an hour per account, the owner's own and members' together).
 
-What's stored: the domain's description in Stalwart is `openmail-custom-domain {"owner": <account id>, "token", "added", "checked", "missing", "paused"}`. Every 6 hours the service re-checks each TXT record; gone for 7 days, the domain's addresses are switched off (no receiving, no sending: Stalwart drops the sending identity) and the owner gets an email (when system mail is set up). Deleting the account retires its domain addresses and keeps the domain claimed by that (deleted) account, so nobody else can take it over. Verified against Stalwart 1.0.3: `x:Domain/set` create (DKIM keys appear in `dnsZoneFile` and as `x:DkimSignature` a few seconds later; no rotation with manual DNS), alias `{name, domainId}` on the new domain (gets an identity; mail to it delivered over SMTP; signed `d=<domain>`), a disabled alias refuses mail (550) and has no identity, and a domain can only be destroyed after its aliases and DKIM keys are gone.
+What's stored: the domain's description in Stalwart is `openmail-custom-domain {"owner": <account id>, "token", "added", "checked", "missing", "paused", "members": {<account id>: [names]}}`. Every 6 hours the service re-checks each TXT record; gone for 7 days, the domain's addresses are switched off (no receiving, no sending: Stalwart drops the sending identity) and the owner gets an email (when system mail is set up). Deleting the account retires its domain addresses and keeps the domain claimed by that (deleted) account, so nobody else can take it over (it is released after 30 days).
+
+Shared domains (members). The member list is in the claim because every path that ends a domain already reads the claim. What exists is the alias on the member's account; the list says where to look. Nothing is left dangling:
+
+- The owner removes the domain, or it is released: every member's address is taken off their account and retired.
+- The domain pauses (TXT gone 7 days): members' addresses are switched off with the owner's, and back on with them.
+- The owner's account is deleted: members' addresses on its domains are retired and removed at once, since nobody is left to manage them. The members get no notice.
+- A member's account is deleted: its addresses are retired and it leaves the list (account ids can come back).
+- A member's account disappears in Stalwart's own admin, behind this service: its listed addresses are retired the next time that domain's list is written.
+
+Limits: one owner per domain (no co-owners, no handing a domain over); members must be accounts on `DOMAIN` (not on another custom domain, not a team mailbox); there is no invitation step, so the owner can put an address on someone's account without asking (they see it under Settings → Your domain and can give it up; it also counts toward their `MAX_ALIASES_TOTAL`); an address can't be moved from one account to another (removing retires it); the owner can't read a member's mail, and can't see more of the member than the address they typed.
+
+Verified against Stalwart 1.0.3: `x:Domain/set` create (DKIM keys appear in `dnsZoneFile` and as `x:DkimSignature` a few seconds later; no rotation with manual DNS), alias `{name, domainId}` on the new domain (gets an identity; mail to it delivered over SMTP; signed `d=<domain>`), a disabled alias refuses mail (550) and has no identity, and a domain can only be destroyed after its aliases and DKIM keys are gone; an alias on the domain on a second account receives its mail in that account's mailbox, sends from it, and Stalwart refuses the same address on two accounts (`primaryKeyViolation`).
 
 ### Admin console (`/api/admin/*`)
 
-The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change is logged with the admin's name.
+The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change goes into the [audit log](#audit-log) with the admin's name.
 
 | Request | What it does (Stalwart object) |
 |---|---|
@@ -175,9 +191,10 @@ The web app's `/admin` screen calls these. Each request must carry the admin's o
 | `GET held`, `POST held/:id/release`, `DELETE held/:id` | Outgoing mail [held as likely spam](#outgoing-spam-held-for-review): who sent it (sign-in and envelope sender), recipients, subject, score and the spam rules that matched. Release sends it as written; delete drops it (the sender isn't told). `404` when holding is off |
 | `GET queue?q=` | Outgoing queue (`x:QueuedMessage`), up to 200, by sender or recipient (substring): per recipient status, attempts, next try, last error |
 | `POST queue/:id/retry`, `DELETE queue/:id` | Retry now (next attempt due immediately) or cancel delivery |
-| `GET domains` | Users' own domains: owner (null once that account was deleted), status, address count, added, last checked |
+| `GET domains` | Users' own domains: owner (null once that account was deleted), status, address count (members' included), how many other accounts have one (`members`), added, last checked |
 | `PATCH users/:id` `{sending}` | `false` suspends sending (reason "An administrator suspended sending."; the person can't lift it), `true` allows it again. Each user in `GET users` has `sending` |
 | `GET suspended` | Accounts with sending suspended: email, reason, since, by (admin name, or null = automatic), suspensions in the last 7 days |
+| `GET audit?limit=&offset=` | The [audit log](#audit-log), newest first: `{entries, total, offset, limit}` (`limit` 50 by default, at most 200) |
 | `GET inactive` | Accounts the daily job reminded or found due (`due: true`), with last sign-in (null = none since tracking began, `since`), whether sign-in is on, and `refusingMail`. Nothing is blocked or deleted automatically: disable (which then refuses their mail) or delete them with the requests above |
 
 Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) and the caller's own account can't be changed or deleted here; names in `ADMINS` are also reserved at sign-up. Delivered or bounced mail leaves the queue; Stalwart's delivery history (`x:Trace`) needs its Enterprise edition, so it isn't shown.
@@ -187,6 +204,24 @@ Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) 
 | `POST retention/preview` `{maxAgeDays?}` or `{accountId, accountMaxAgeDays}` | Dry run of the saved rules, or of a proposed one: per account how many messages would go. Deletes nothing |
 | `POST retention/run` | Run the job now (it also runs daily) |
 | `PATCH retention/:id` `{maxAgeDays?, hold?}` | One account: own age limit (0 = keep forever, null = server rule), legal hold on/off (Stalwart permissions `jmapEmailDestroy`, `jmapMailboxDestroy`, `imapExpunge`, `imapDelete`, `pop3Dele` taken away). Held accounts can't be deleted (`409 on_hold`) |
+
+#### Audit log
+
+Every change made through `/api/admin/*` (anything but a `GET`, and not the `retention/preview` dry run) is appended to `AUDIT_FILE` as one JSON line, written in the one place all admin requests pass through (`handle()` in `admin.mjs`; the format is in `audit.mjs`):
+
+```json
+{"at":"2026-11-09T10:12:03.511Z","admin":"ann","ip":"203.0.113.7","action":"user.update","target":"sam@example.com","detail":["disable","quota:5000000000"],"outcome":"ok"}
+```
+
+- `action`: `user.create|update|delete`, `team.create|members|delete`, `ip.unblock`, `limits.add|lift`, `queue.retry|cancel`, `held.release|delete`, `retention.rules|run|account`.
+- `target`: the account, team mailbox or sender address, or the blocked IP (Stalwart's id when the object was already gone).
+- `detail`: what was asked for: `enable`, `disable`, `sending_suspend`, `sending_allow`, `password_reset`, `quota:<bytes|none>`, `member_add:<address>`, `member_remove:<address>`, `hold_on`, `hold_off`, `trash_days:<n>`, `max_age_days:<n|server>`.
+- `outcome`: `ok`, or the error code the admin was shown (`protected`, `not_found`, `stalwart_refused`, …). Refused and failed changes are recorded too.
+- `ip`: the admin's address as the rate limiters see it (IPv6 cut to its /64).
+
+Never recorded: passwords (generated ones included), tokens, request bodies, subjects or message text. Not recorded either: reads, and requests from accounts that aren't administrators (they get `403` before anything runs). Users' own actions (their domains, masked addresses, deleting their account) and automatic ones (suspensions by the abuse jobs) are in the service log, not here.
+
+The file is append-only and bounded: at `AUDIT_MAX_ENTRIES` lines it is renamed to `AUDIT_FILE.1` (replacing the previous one) and a new file starts. It is not tamper-proof: an administrator with a shell on the server can edit it, and one without can push old lines out by making 20,000 changes. Ship the service log elsewhere if you need more (each change is also printed there).
 
 ### `GET|PUT /api/retention`
 

@@ -144,18 +144,20 @@ describe.skipIf(!up)('JMAP client vs local Stalwart', () => {
     let boxes = await c.mailboxes();
     const inbox = boxes.find((b) => b.role === 'inbox')!.id;
     const t = (await c.threads({ inMailbox: inbox }, 500)).find((e) => e.subject === 'Your November statement is ready')!;
-    await c.snooze(t.threadId, inbox, new Date(Date.now() + 1000), boxes);
+    // Four seconds ahead: the three requests before the "not yet" check take over a second on a busy CI machine
+    // (the wake time is kept in whole seconds), and one second ahead made that check a coin toss.
+    await c.snooze(t.threadId, inbox, new Date(Date.now() + 4000), boxes);
     boxes = await c.mailboxes();
     const snoozed = boxes.find((b) => b.role === 'snoozed')!.id;
     expect((await c.threads({ inMailbox: snoozed })).some((e) => e.threadId === t.threadId)).toBe(true);
     expect(await c.wakeSnoozed(boxes)).toBe(0); // not yet
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 4500));
     await c.wakeSnoozed(boxes); // an open app tab may already have woken it (push → refresh); either way it must be back
     const back = (await c.threads({ inMailbox: inbox }, 500)).find((e) => e.threadId === t.threadId)!;
     expect(back.keywords.$seen).toBeUndefined(); // comes back unread, like Gmail
     expect(Object.keys(back.keywords).some((k) => k.startsWith('$snoozed-'))).toBe(false);
     await c.setSeen(t.threadId, true);
-  });
+  }, 15_000);
 
   it('creates a folder and labels a conversation into it', async () => {
     const c = await login();

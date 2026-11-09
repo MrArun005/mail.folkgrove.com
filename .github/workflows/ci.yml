@@ -32,6 +32,11 @@ jobs:
         working-directory: web
         run: npm run build
 
+      # Back, links, the phone drawer, swipe, drag to a folder, Undo: in a real browser against the same mail server.
+      - name: Web client — browser tests
+        working-directory: web
+        run: npx playwright install --with-deps chromium && npm run e2e
+
       - name: Signup service — tests
         working-directory: signup
         run: npm test
@@ -39,3 +44,73 @@ jobs:
       - name: Mail server logs on failure
         if: failure()
         run: docker logs openmail-stalwart | tail -200
+
+  # The self-hosting kit, end to end: install.sh on a clean machine in its local test mode (alternate ports,
+  # Caddy's own certificate authority), then the checks a person would make: every container healthy, webmail served
+  # over HTTPS, and the account service reachable through Caddy.
+  installer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build the web client
+        working-directory: web
+        run: npm ci && npm run build
+      - name: Install (local test mode, as root like a real server)
+        working-directory: deploy/production
+        run: sudo ./install.sh --local-test --yes --domain example.test --hostname mx.example.test --user owner --web-dist ../../web/dist
+      - name: Every service is up and stays up
+        run: |
+          for i in $(seq 1 40); do
+            docker ps --format '{{.Names}} {{.Status}}' | grep openmail-test-signup | grep -q '(healthy)' && break
+            sleep 3
+          done
+          docker ps --format '{{.Names}} {{.Status}}'
+          docker ps --format '{{.Names}} {{.Status}}' | grep openmail-test-signup | grep -q '(healthy)'
+          docker ps --format '{{.Names}} {{.Status}}' | grep openmail-test-stalwart | grep -q '(healthy)'
+          ! docker ps -a --format '{{.Names}} {{.Status}}' | grep openmail-test | grep -qiE 'restarting|exited'
+      - name: Webmail and the account service answer over HTTPS
+        run: |
+          curl -fsSk --resolve mx.example.test:10443:127.0.0.1 https://mx.example.test:10443/ | grep -q '<div id="root">'
+          # Sign-up is off on a self-hosted install, so the account service answers "not found" in its own JSON
+          # ({"ok":false,...}); anything else means Caddy isn't routing /api to it.
+          curl -sSk --resolve mx.example.test:10443:127.0.0.1 'https://mx.example.test:10443/api/username-available?name=owner' | grep -q '"ok"'
+      - name: Logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          for c in $(docker ps -a --format '{{.Names}}' | grep openmail-test); do echo "== $c"; docker logs "$c" 2>&1 | tail -60; done
+
+  # The Android shell (apps/mobile): a debug build, so the generated project is known to compile.
+  # Not signed and not published; iOS needs a Mac and is not built here.
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install and sync the shell into the Android project
+        working-directory: apps/mobile
+        run: npm ci && npx cap sync android
+      - name: Build the debug APK
+        working-directory: apps/mobile/android
+        run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openmail-android-debug
+          path: apps/mobile/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+

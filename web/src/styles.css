@@ -1124,3 +1124,54 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
 .hue-btn:hover { background: var(--hover); }
 .hue-btn.on { outline: 2px solid var(--accent); outline-offset: -2px; }
 .hue-grid { display: grid; grid-template-columns: repeat(4, var(--h-sm)); gap: var(--s1); padding: var(--s1) var(--s3) var(--s2); }
+
+/* Private notes under a conversation: one quiet link until there is a note. */
+.note-add { margin-top: var(--s4); }
+.note-add .btn--link { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-weight: 500; }
+
+/* Filters: what the rule being written would have caught in recent mail. */
+.rule-preview { display: grid; gap: var(--s2); padding: var(--s3); border-radius: var(--r-sm); background: var(--hover); font-size: var(--t-sm); color: var(--ink-2); }
+.rule-preview ul { display: grid; gap: 2px; }
+.rule-preview li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.rule-preview li b { font-weight: 600; margin-inline-end: var(--s2); }
+
+/* Privacy report: the last seven days as bars, and the week's count on the shield in the rail. */
+.privacy-week { display: flex; align-items: flex-end; gap: var(--s5); }
+.privacy-week ol { display: flex; align-items: flex-end; gap: var(--s2); margin: 0; padding: 0; list-style: none; }
+.privacy-week li { display: grid; justify-items: center; gap: var(--s1); }
+.privacy-week .col { display: flex; align-items: flex-end; width: 18px; height: 48px; border-radius: var(--s1); background: linear-gradient(to top, var(--safe) var(--w), var(--hover) var(--w)); }
+.privacy-week .day { color: var(--muted); font-size: var(--t-xs); }
+.privacy-week p { color: var(--ink); }
+.badged { position: relative; display: inline-flex; }
+.badge { position: absolute; top: -2px; inset-inline-end: -4px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: var(--r-full); background: var(--safe); color: var(--paper); font: 700 9px/14px var(--ui); text-align: center; pointer-events: none; }
+
+/* ═══ Feed: newsletters as one page ════════════════════ */
+.feed { overflow: auto; min-height: 0; background: var(--paper); }
+@media (min-width: 861px) { .feed { margin-block: var(--s2); margin-inline: 0 var(--s2); border-radius: var(--r-lg); } }
+.feed-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s4); max-width: 760px; margin: 0 auto; padding: var(--s6) var(--gutter-reader) var(--s4); }
+.feed-head h2 { font: 500 var(--t-h1)/1.2 var(--read); letter-spacing: -.012em; }
+.feed-items { display: grid; gap: var(--s6); max-width: 760px; margin: 0 auto; padding: 0 var(--gutter-reader) var(--s10); }
+.feed-item { display: grid; gap: var(--s3); padding-top: var(--s6); border-top: 1px solid var(--rule); min-width: 0; }
+.feed-item > header { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.feed-item .avatar { width: 32px; height: 32px; font-size: calc(13px * var(--scale)); flex: none; }
+.feed-item .who { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--s2); color: var(--ink-2); }
+.feed-item .who b { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-item .who time { flex: none; color: var(--muted); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.feed-item .acts { display: flex; gap: 2px; color: var(--ink-2); }
+.feed-title { font: 500 var(--t-h2)/1.25 var(--read); text-wrap: balance; color: var(--ink); text-align: start; }
+.feed-title:hover { color: var(--accent); }
+.feed-item.unread .feed-title { font-weight: 650; }
+.feed-item.unread .who b::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-inline-end: var(--s2); border-radius: var(--r-full); background: var(--accent); vertical-align: 1px; }
+.feed-preview { color: var(--muted); }
+.feed-body { border: 1px solid var(--rule); border-radius: var(--r-md); overflow: hidden; background: var(--white); }
+.feed-body iframe { display: block; width: 100%; height: 48px; border: 0; } /* starts short: the frame then grows to its content */
+@media (max-width: 860px) { .feed-head { align-items: flex-start; flex-direction: column; padding: var(--s4); } .feed-head h2 { display: none; } .feed-items { padding: 0 var(--s4) var(--s10); } }
+
+/* Touch screens hide the row buttons from sight (swipe does their job), but a screen reader or a keyboard still
+   reaches them: they're kept in the page at one pixel and come back into view when one of them has focus. */
+@media (hover: none) {
+  .row .row-actions:not(.screen-actions), .row:hover .row-actions:not(.screen-actions), .row:focus-within .row-actions:not(.screen-actions) {
+    display: flex; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); box-shadow: none;
+  }
+  .row .row-actions:not(.screen-actions):focus-within { width: auto; height: auto; padding: 2px; overflow: visible; clip-path: none; box-shadow: var(--lift-sm); }
+}

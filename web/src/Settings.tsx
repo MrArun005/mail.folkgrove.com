@@ -125,7 +125,7 @@ export function Settings({ client, boxes, prefillRule, onClose, onSaved, onFolde
             shows up here without being listed twice. */}
         <nav className="settings-nav" aria-label={t('settings.sections')}>
           {sections.map((name, i) => (
-            <button key={name} type="button" className={`settings-link${i === at ? ' on' : ''}`}
+            <button key={name} type="button" className={`settings-link${i === at ? ' on' : ''}`} aria-current={i === at ? 'location' : undefined}
               onClick={() => form.current?.querySelectorAll('section > h3')[i]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{name}</button>
           ))}
         </nav>

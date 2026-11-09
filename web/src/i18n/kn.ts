@@ -271,6 +271,94 @@ export default {
   'privacy.reset': 'ಮತ್ತೆ ಎಣಿಕೆ ಪ್ರಾರಂಭಿಸಿ', // review: new
   'privacy.resetTitle': 'ಗೌಪ್ಯತಾ ವರದಿಯನ್ನು ಅಳಿಸಬೇಕೇ?', // review: new
   'privacy.resetBody': 'ಈ ಸಾಧನದ ಎಣಿಕೆಗಳು ಶೂನ್ಯಕ್ಕೆ ಮರಳುತ್ತವೆ. ನಿಮ್ಮ ಮೇಲ್ ಬದಲಾಗುವುದಿಲ್ಲ.', // review: new
+  'folder.feed': 'ಫೀಡ್', // review: new
+  'filters.wouldCatch': { one: 'ಇದು ನಿಮ್ಮ ಕೊನೆಯ {of} ಸಂವಾದಗಳಲ್ಲಿ {count} ಅನ್ನು ಹಿಡಿಯುತ್ತಿತ್ತು:', other: 'ಇದು ನಿಮ್ಮ ಕೊನೆಯ {of} ಸಂವಾದಗಳಲ್ಲಿ {count} ಅನ್ನು ಹಿಡಿಯುತ್ತಿತ್ತು:' }, // review: new
+  'filters.wouldCatchNone': 'ಇದು ನಿಮ್ಮ ಕೊನೆಯ {of} ಸಂವಾದಗಳಲ್ಲಿ ಯಾವುದನ್ನೂ ಹಿಡಿಯುತ್ತಿರಲಿಲ್ಲ.', // review: new
+  'filters.andMore': { one: 'ಮತ್ತು ಇನ್ನೂ {count}', other: 'ಮತ್ತು ಇನ್ನೂ {count}' }, // review: new
+  'threadNotes.private': 'ಖಾಸಗಿ ಟಿಪ್ಪಣಿಗಳು', // review: new
+  'threadNotes.privateNote': 'ಇವು ನಿಮಗೆ ಮಾತ್ರ ಕಾಣುತ್ತವೆ; ಇವುಗಳನ್ನು ಎಂದಿಗೂ ಕಳುಹಿಸುವುದಿಲ್ಲ', // review: new
+  'threadNotes.add': 'ಖಾಸಗಿ ಟಿಪ್ಪಣಿ ಸೇರಿಸಿ', // review: new
+  'threadNotes.placeholder': 'ಈ ಸಂವಾದದ ಬಗ್ಗೆ ನಿಮಗಾಗಿ ಒಂದು ಟಿಪ್ಪಣಿ…', // review: new
+  'threadNotes.save': 'ಟಿಪ್ಪಣಿ ಉಳಿಸಿ', // review: new
+  'threadNotes.delete': 'ಟಿಪ್ಪಣಿ ಅಳಿಸಿ', // review: new
+  'compose.whenActive': '{name} ಸಾಮಾನ್ಯವಾಗಿ ಮೇಲ್ ನೋಡುವ ಸಮಯದಲ್ಲಿ', // review: new
+  'feed.intro': 'ನಿಮ್ಮ ಇನ್‌ಬಾಕ್ಸ್‌ನಲ್ಲಿರುವ ಸುದ್ದಿಪತ್ರಗಳು ಮತ್ತು ಅಪ್‌ಡೇಟ್‌ಗಳು, ಒಂದು ಪುಟದಂತೆ ಓದಲು. ನೀವು ಹೇಳುವವರೆಗೆ ಯಾವುದನ್ನೂ ಓದಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸುವುದಿಲ್ಲ.', // review: new
+  'feed.empty': 'ನಿಮ್ಮ ಇನ್‌ಬಾಕ್ಸ್‌ನಲ್ಲಿ ಯಾವುದೇ ಸುದ್ದಿಪತ್ರಗಳು ಅಥವಾ ಅಪ್‌ಡೇಟ್‌ಗಳಿಲ್ಲ.', // review: new
+  'feed.markAllRead': 'ಎಲ್ಲವನ್ನೂ ಓದಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸಿ', // review: new
+  'feed.allRead': { one: '{count} ಅನ್ನು ಓದಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸಲಾಗಿದೆ', other: '{count} ಅನ್ನು ಓದಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸಲಾಗಿದೆ' }, // review: new
+  'feed.archived': 'ಆರ್ಕೈವ್ ಮಾಡಲಾಗಿದೆ', // review: new
+  'feed.open': 'ಸಂವಾದವನ್ನು ತೆರೆಯಿರಿ', // review: new
+  'privacy.thisWeek': 'ಕಳೆದ 7 ದಿನಗಳು', // review: new
+  'privacy.weekTotal': { one: 'ಈ ವಾರ {count} ಟ್ರ್ಯಾಕರ್ ತೆಗೆದುಹಾಕಲಾಗಿದೆ.', other: 'ಈ ವಾರ {count} ಟ್ರ್ಯಾಕರ್‌ಗಳನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ.' }, // review: new
+  'privacy.weekBefore': { one: 'ಅದರ ಹಿಂದಿನ ವಾರ: {count}.', other: 'ಅದರ ಹಿಂದಿನ ವಾರ: {count}.' }, // review: new
+  'privacy.weekBadge': { one: 'ಈ ವಾರ {count} ಟ್ರ್ಯಾಕರ್ ತೆಗೆದುಹಾಕಲಾಗಿದೆ', other: 'ಈ ವಾರ {count} ಟ್ರ್ಯಾಕರ್‌ಗಳನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ' }, // review: new
+  'display.grove': 'Grove', // review: new
+  'domains.membersTitle': 'ಇತರರಿಗಾಗಿ ವಿಳಾಸಗಳು', // review: new
+  'domains.membersIntro': 'ಇಲ್ಲಿ ಖಾತೆ ಹೊಂದಿರುವ ಬೇರೊಬ್ಬರಿಗೆ {domain} ನಲ್ಲಿ ಒಂದು ವಿಳಾಸ ನೀಡಿ. ಅದಕ್ಕೆ ಬರುವ ಮೇಲ್ ನಿಮ್ಮದಲ್ಲ, ಅವರ ಮೇಲ್‌ಬಾಕ್ಸ್‌ಗೆ ಹೋಗುತ್ತದೆ, ಮತ್ತು ಅವರು ಅದರಿಂದ ಕಳುಹಿಸಬಹುದು. ಡೊಮೇನ್ ಅನ್ನು ನೀವು ಮಾತ್ರ ಬದಲಾಯಿಸಬಹುದು.', // review: new
+  'domains.addressesUsed': '{max} ರಲ್ಲಿ {used} ವಿಳಾಸಗಳು ಬಳಕೆಯಲ್ಲಿವೆ, ನಿಮ್ಮದೂ ಸೇರಿ.', // review: new
+  'domains.memberFor': '{account} ಗಾಗಿ', // review: new
+  'domains.memberNamePlaceholder': 'sam', // review: new
+  'domains.memberNewAddress': '{domain} ನಲ್ಲಿ ಅವರ ಹೊಸ ವಿಳಾಸ', // review: new
+  'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
+  'domains.memberAccountLabel': '{domain} ನಲ್ಲಿ ಅವರು ಸೈನ್ ಇನ್ ಮಾಡುವ ವಿಳಾಸ', // review: new
+  'domains.giveAddress': 'ವಿಳಾಸ ನೀಡಿ', // review: new
+  'domains.takeBack': '{email} ಹಿಂಪಡೆಯಿರಿ', // review: new
+  'domains.takeBackTitle': '{account} ಅವರಿಂದ {email} ಹಿಂಪಡೆಯಬೇಕೇ?', // review: new
+  'domains.takeBackBody': 'ಇದಕ್ಕೆ ಕಳುಹಿಸಿದ ಮೇಲ್ ಹಿಂತಿರುಗುತ್ತದೆ, ಮತ್ತು ಇದನ್ನು ಮತ್ತೆ ಯಾರಿಗೂ ನೀಡಲು ಸಾಧ್ಯವಿಲ್ಲ. ಅವರು ಈಗಾಗಲೇ ಸ್ವೀಕರಿಸಿದ ಮೇಲ್ ಅವರ ಬಳಿಯೇ ಉಳಿಯುತ್ತದೆ.', // review: new
+  'domains.takeBackConfirm': 'ಹಿಂಪಡೆಯಿರಿ', // review: new
+  'domains.givenTitle': 'ನಿಮಗೆ ನೀಡಲಾದ ವಿಳಾಸಗಳು', // review: new
+  'domains.givenIntro': 'ಇವುಗಳನ್ನು ಒಂದು ಡೊಮೇನ್‌ನ ಮಾಲೀಕರು ನಿಮಗೆ ನೀಡಿದ್ದಾರೆ. ಇವುಗಳಿಗೆ ಬರುವ ಮೇಲ್ ಇಲ್ಲಿಗೆ ಬರುತ್ತದೆ, ಮತ್ತು ಬರೆಯುವಾಗ ‘ಇವರಿಂದ’ ನಲ್ಲಿ ನೀವು ಇವುಗಳನ್ನು ಆಯ್ಕೆ ಮಾಡಬಹುದು. ಮಾಲೀಕರು ಇವುಗಳನ್ನು ಹಿಂಪಡೆಯಬಹುದು.', // review: new
+  'domains.givenBy': '{owner} ಅವರಿಂದ', // review: new
+  'domains.giveUp': '{email} ಬಿಟ್ಟುಕೊಡಿ', // review: new
+  'domains.giveUpTitle': '{email} ಬಿಟ್ಟುಕೊಡಬೇಕೇ?', // review: new
+  'domains.giveUpBody': 'ಇದಕ್ಕೆ ಕಳುಹಿಸಿದ ಮೇಲ್ ಹಿಂತಿರುಗುತ್ತದೆ, ಮತ್ತು ನೀವಾಗಲಿ ಬೇರೆ ಯಾರಾಗಲಿ ಇದನ್ನು ಮರಳಿ ತರಲು ಸಾಧ್ಯವಿಲ್ಲ.', // review: new
+  'domains.giveUpConfirm': 'ವಿಳಾಸ ಬಿಟ್ಟುಕೊಡಿ', // review: new
+  'admin.tabAudit': 'ಆಡಿಟ್ ಲಾಗ್', // review: new
+  'admin.domainMembers': { one: 'ಕೆಲವು ಬೇರೆ {count} ಖಾತೆಗಾಗಿ', other: 'ಕೆಲವು ಬೇರೆ {count} ಖಾತೆಗಳಿಗಾಗಿ' }, // review: new
+  'admin.auditHelp': 'ಈ ಕನ್ಸೋಲ್‌ನಲ್ಲಿ ಮಾಡಿದ ಪ್ರತಿಯೊಂದು ಬದಲಾವಣೆ: ಯಾರು ಮಾಡಿದರು, ಏನು ಮಾಡಿದರು, ಅದು ಯಾರ ಅಥವಾ ಯಾವುದರ ಬಗ್ಗೆ, ಮತ್ತು ಅದು ನಡೆಯಿತೇ ಇಲ್ಲವೇ. ಹೊಸದು ಮೊದಲು. ಪಾಸ್‌ವರ್ಡ್‌ಗಳು ಮತ್ತು ಸಂದೇಶಗಳ ವಿಷಯವನ್ನು ಎಂದಿಗೂ ದಾಖಲಿಸುವುದಿಲ್ಲ.', // review: new
+  'admin.noAudit': 'ಈ ಕನ್ಸೋಲ್‌ನಲ್ಲಿ ಇನ್ನೂ ಏನನ್ನೂ ಬದಲಾಯಿಸಿಲ್ಲ.', // review: new
+  'admin.auditShowing': '{total} ರಲ್ಲಿ {from} ರಿಂದ {to} ತೋರಿಸಲಾಗುತ್ತಿದೆ', // review: new
+  'admin.auditNewer': 'ಹೊಸವು', // review: new
+  'admin.auditOlder': 'ಹಳೆಯವು', // review: new
+  'admin.colTime': 'ಸಮಯ', // review: new
+  'admin.colAdmin': 'ನಿರ್ವಾಹಕರು', // review: new
+  'admin.colAction': 'ಕ್ರಿಯೆ', // review: new
+  'admin.colTarget': 'ಯಾವುದರ ಬಗ್ಗೆ', // review: new
+  'admin.colOutcome': 'ಫಲಿತಾಂಶ', // review: new
+  'admin.auditDone': 'ಆಗಿದೆ', // review: new
+  'admin.auditNotDone': 'ಆಗಿಲ್ಲ', // review: new
+  'admin.auditUserCreate': 'ಖಾತೆ ರಚಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditUserUpdate': 'ಖಾತೆ ಬದಲಾಯಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditUserDelete': 'ಖಾತೆ ಅಳಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditTeamCreate': 'ತಂಡದ ಮೇಲ್‌ಬಾಕ್ಸ್ ರಚಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditTeamMembers': 'ತಂಡದ ಮೇಲ್‌ಬಾಕ್ಸ್‌ನ ಸದಸ್ಯರನ್ನು ಬದಲಾಯಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditTeamDelete': 'ತಂಡದ ಮೇಲ್‌ಬಾಕ್ಸ್ ಅಳಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditIpUnblock': 'IP ವಿಳಾಸವನ್ನು ಅನಿರ್ಬಂಧಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditLimitsAdd': 'ಖಾತೆಗೆ ಹೊಸ-ಖಾತೆ ಮಿತಿಗಳನ್ನು ಹಾಕಲಾಗಿದೆ', // review: new
+  'admin.auditLimitsLift': 'ಹೊಸ-ಖಾತೆ ಮಿತಿಗಳನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ', // review: new
+  'admin.auditQueueRetry': 'ಕಾಯುತ್ತಿರುವ ಸಂದೇಶವನ್ನು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditQueueCancel': 'ಕಾಯುತ್ತಿರುವ ಸಂದೇಶವನ್ನು ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditHeldRelease': 'ತಡೆಹಿಡಿದ ಸಂದೇಶವನ್ನು ಕಳುಹಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditHeldDelete': 'ತಡೆಹಿಡಿದ ಸಂದೇಶವನ್ನು ಅಳಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditRetentionRules': 'ಉಳಿಸಿಕೊಳ್ಳುವಿಕೆ ನಿಯಮಗಳನ್ನು ಬದಲಾಯಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditRetentionRun': 'ಉಳಿಸಿಕೊಳ್ಳುವಿಕೆ ಕೆಲಸವನ್ನು ಚಲಾಯಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditRetentionAccount': 'ಒಂದು ಖಾತೆಯ ಉಳಿಸಿಕೊಳ್ಳುವಿಕೆಯನ್ನು ಬದಲಾಯಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditEnable': 'ಸೈನ್ ಇನ್ ಸಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditDisable': 'ಸೈನ್ ಇನ್ ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditSendingSuspend': 'ಕಳುಹಿಸುವಿಕೆ ಅಮಾನತಾಗಿದೆ', // review: new
+  'admin.auditSendingAllow': 'ಕಳುಹಿಸುವಿಕೆಗೆ ಅನುಮತಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditPasswordReset': 'ಪಾಸ್‌ವರ್ಡ್ ಮರುಹೊಂದಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditHoldOn': 'ಕಾನೂನು ತಡೆ ಆನ್', // review: new
+  'admin.auditHoldOff': 'ಕಾನೂನು ತಡೆ ಆಫ್', // review: new
+  'admin.auditQuota': 'ಸಂಗ್ರಹಣೆ ಮಿತಿ {size}', // review: new
+  'admin.auditQuotaNone': 'ಸಂಗ್ರಹಣೆ ಮಿತಿ ಇಲ್ಲ', // review: new
+  'admin.auditMemberAdd': '{member} ಅವರನ್ನು ಸೇರಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditMemberRemove': '{member} ಅವರನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ', // review: new
+  'admin.auditTrashDays': { one: 'ಅನುಪಯುಕ್ತ ಮತ್ತು ಸ್ಪ್ಯಾಮ್ ಅನ್ನು {count} ದಿನದ ನಂತರ ಖಾಲಿ ಮಾಡಲಾಗುತ್ತದೆ', other: 'ಅನುಪಯುಕ್ತ ಮತ್ತು ಸ್ಪ್ಯಾಮ್ ಅನ್ನು {count} ದಿನಗಳ ನಂತರ ಖಾಲಿ ಮಾಡಲಾಗುತ್ತದೆ' }, // review: new
+  'admin.auditTrashNever': 'ಅನುಪಯುಕ್ತ ಮತ್ತು ಸ್ಪ್ಯಾಮ್ ಅನ್ನು ಎಂದಿಗೂ ಖಾಲಿ ಮಾಡುವುದಿಲ್ಲ', // review: new
+  'admin.auditKeepDays': { one: 'ಮೇಲ್ ಅನ್ನು {count} ದಿನ ಇರಿಸಲಾಗುತ್ತದೆ', other: 'ಮೇಲ್ ಅನ್ನು {count} ದಿನಗಳು ಇರಿಸಲಾಗುತ್ತದೆ' }, // review: new
+  'admin.auditKeepForever': 'ಮೇಲ್ ಅನ್ನು ಶಾಶ್ವತವಾಗಿ ಇರಿಸಲಾಗುತ್ತದೆ', // review: new
+  'admin.auditKeepServer': 'ಮೇಲ್ ಅನ್ನು ಎಷ್ಟು ಕಾಲ ಇರಿಸಬೇಕು ಎಂಬ ಸರ್ವರ್‌ನ ನಿಯಮ', // review: new
   'mail.findAnyAction': 'ಯಾವುದೇ ಕ್ರಿಯೆಯನ್ನು ಹುಡುಕಿ',
   'mail.signOutOf': '{address} ನಿಂದ ಸೈನ್ ಔಟ್ ಮಾಡಿ',
   'mail.conversations': 'ಸಂವಾದಗಳು',

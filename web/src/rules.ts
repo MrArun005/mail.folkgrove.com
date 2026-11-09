@@ -97,6 +97,22 @@ export function describeRule(r: Rule, tr: Tr = t): string {
   return tr('rules.if', { when, then });
 }
 
+/**
+ * Would this rule have caught this message? The same tests the server runs (toSieve below): "contains", ignoring
+ * case, on the sender's address, the recipients' addresses and the subject; every filled-in field must match.
+ * For the "try it on your recent mail" preview, so a filter can be checked before it is saved.
+ */
+export function matchesRule(r: Pick<Rule, 'from' | 'fromExact' | 'to' | 'subject'>,
+  m: { from?: { email: string }[] | null; to?: { email: string }[] | null; cc?: { email: string }[] | null; subject?: string | null }): boolean {
+  const has = (list: { email: string }[] | null | undefined, part: string) => !!list?.some((a) => a.email.toLowerCase().includes(part));
+  const from = r.from?.trim().toLowerCase(), to = r.to?.trim().toLowerCase(), subject = r.subject?.trim().toLowerCase();
+  if (!from && !to && !subject) return false; // an empty rule is not a rule
+  if (from && !(r.fromExact ? !!m.from?.some((a) => a.email.toLowerCase() === from) : has(m.from, from))) return false;
+  if (to && !has(m.to, to) && !has(m.cc, to)) return false;
+  if (subject && !(m.subject ?? '').toLowerCase().includes(subject)) return false;
+  return true;
+}
+
 export function validateRule(r: Rule): string | null {
   if (!r.from?.trim() && !r.to?.trim() && !r.subject?.trim()) return t('rules.needCondition');
   if (r.action === 'move' && !r.folder) return t('rules.needFolder');

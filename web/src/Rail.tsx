@@ -19,7 +19,7 @@ export const shown = (b: { role?: string | null; name: string }) => (!b.role && 
 export type RailItem = { id: string; name: string; role: string | null; unreadEmails: number; depth?: number };
 
 export function Rail({ items, current, colors, query, open, onToggle, onFolder, onCompose, opened, sharing, onOpenShared, onError, saved, onSavedSearch, onRemoveSearch,
-  name, username, accounts, onSwitch, onAddAccount, onLogout, onSettings, onPalette, onPrivacy, takesDrop, dropOn, onDropOver, onDrop }: {
+  name, username, accounts, onSwitch, onAddAccount, onLogout, onSettings, onPalette, onPrivacy, blockedThisWeek = 0, takesDrop, dropOn, onDropOver, onDrop }: {
   /** Colours chosen for folders (mailbox id → hue); the rest take one from their name. */
   colors?: Record<string, number>;
   /** Folders and places, in order; `current` is the one on screen (null while searching). */
@@ -33,6 +33,8 @@ export function Rail({ items, current, colors, query, open, onToggle, onFolder, 
   /** The account footer: display name, sign-in name, every account signed in on this tab. */
   name: string; username: string; accounts: string[]; onSwitch: (username: string) => void; onAddAccount: () => void; onLogout: () => void;
   onSettings: () => void; onPalette: () => void; onPrivacy: () => void;
+  /** Trackers removed in the last seven days: a small count on the shield. */
+  blockedThisWeek?: number;
   /** Dragging conversations onto a folder: which folders take the drop, and the one under the pointer. */
   takesDrop: (b: RailItem) => boolean; dropOn: string | null; onDropOver: (id: string | null) => void; onDrop: (b: RailItem) => void;
 }) {
@@ -114,7 +116,8 @@ export function Rail({ items, current, colors, query, open, onToggle, onFolder, 
           </>}
         </Menu>
         <span className="links">
-          <Button variant="quiet" size="sm" icon="shield" label={t('privacy.title')} onClick={onPrivacy} />
+          <span className="badged"><Button variant="quiet" size="sm" icon="shield" label={blockedThisWeek ? `${t('privacy.title')}: ${t('privacy.weekBadge', { count: blockedThisWeek })}` : t('privacy.title')} onClick={onPrivacy} />
+        {blockedThisWeek > 0 && <span className="badge" aria-hidden="true">{blockedThisWeek > 99 ? '99+' : blockedThisWeek}</span>}</span>
       <Button variant="quiet" size="sm" icon="settings" label={t('mail.settings')} onClick={onSettings} />
           <Button variant="quiet" size="sm" icon="command" label={t('mail.findAnyAction')} shortcut="⌘K" onClick={onPalette} />
           <Button variant="quiet" size="sm" icon="logout" label={t('mail.signOutOf', { address: username })} onClick={onLogout} />

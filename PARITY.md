@@ -13,6 +13,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Conversation view | ✅ | ✅ | Paper-trail layout: newest open, older folded |
 | Unified folders + labels (tags) | ✅ | ✅ | A conversation can live in several folders (JMAP), no tag/folder split |
 | Star / flag | ✅ | ✅ | |
+| Private notes on a conversation | 🟡 | ✅ | A note to yourself under any conversation: synced (a hidden folder in your mailbox), never sent |
 | Snooze | 🟡 (reminders) | ✅ | Real snooze: leaves the inbox, returns unread |
 | Archive, delete, spam / not spam | ✅ | ✅ | Auto-advance to the next conversation; Undo on the toast (or `z`) puts it back |
 | Multi-select + bulk actions | ✅ | ✅ | Shift-click ranges, keyboard `x` |
@@ -35,7 +36,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Inline images | ✅ | ✅ | Kept in replies and forwards, shown inside the editor |
 | Drafts autosave | ✅ | ✅ | |
 | Undo send | ✅ | ✅ | Server-side hold: works even if the tab closes |
-| Schedule send | ✅ | ✅ | Scheduled view to edit or cancel |
+| Schedule send | ✅ | ✅ | Scheduled view to edit or cancel; a first choice for when the recipient is usually at their mail (from when their last 30 messages reached you; needs at least 3 with a pattern) |
 | Recipient autocomplete | ✅ | ✅ | Ranks people you write to above people who write to you |
 | Signatures | ✅ (many) | ✅ | Named signatures synced on the server; separate defaults for new messages and replies; switch or remove per message |
 | Send-as / aliases | ✅ | ✅ | From menu for every address you own; replies come from the address the mail was sent to |
@@ -48,10 +49,11 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 
 | Feature | Zoho | Us | Better because |
 |---|---|---|---|
-| Filters / rules | ✅ | ✅ | Sieve (open standard): run on the server, visible to any client; "filter messages like this" |
+| Filters / rules | ✅ | ✅ | Sieve (open standard): run on the server, visible to any client; "filter messages like this"; while you write a rule it shows which of your last 100 Inbox conversations it would have caught (Cc isn't checked in the preview) |
 | Block sender | ✅ | ✅ | Exact-address match; goes to Junk, never silently lost |
 | One-click unsubscribe | 🟡 | ✅ | RFC 8058 one-click, mailto fallback |
 | Subscriptions manager | ⬜ | ✅ | Every newsletter in one list: unsubscribe or delete everything from a sender |
+| Newsletter feed | ⬜ | ✅ | Rail → More → Feed: the Inbox's newsletters and updates as one page, each shown whole in the reader's locked-down frame; nothing is marked read or moved until you say so |
 | Vacation / out-of-office | ✅ | ✅ | Date range, once per sender |
 | Forwarding | ✅ | ✅ | Per-filter forwarding (keeps a copy) |
 | Folder management (rename, nest, delete) | ✅ | ✅ | Folders inside folders, in the rail, menus and filters; drag conversations onto a folder; each folder has a colour on its icon and its chips: pick one in Settings → Folders (synced), or it gets one from its name |
@@ -94,8 +96,8 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Installable app / offline | 🟡 | 🟡 | Installable (PWA: install button, unread badge, Compose shortcut, “Share to OpenMail”, mailto handler), shell works offline; mail offline in Phase 2.5 |
 | Desktop app | ✅ | 🟡 | `apps/desktop` (Electron): any server, opens mailto: links, Dock badge; unsigned, no installers yet |
 | Native mobile apps | ✅ | 🟡 | `apps/mobile` (Capacitor) shells for any server, generated but not yet built; native push needs FCM/APNs + a push gateway (apps/README.md) |
-| Custom domains | ✅ | 🟡 | Settings → Your domain: TXT ownership check, the MX/SPF/DKIM/DMARC records with live status, your address plus up to 10 more, send from them. One owner per domain (no shared org domains yet); re-checked every 6 hours, paused after 7 days without the TXT record |
-| Admin console (users, groups, aliases, policies) | ✅ | 🟡 | Ours at `/admin` (`ADMINS`): users, blocked IPs, new-account limits, outgoing queue, users' domains, suspended and inactive accounts, team mailboxes (groups and members). Policies, audit log: Stalwart's admin UI (`/admin/`) |
+| Custom domains | ✅ | 🟡 | Settings → Your domain: TXT ownership check, the MX/SPF/DKIM/DMARC records with live status, up to 10 addresses per domain, send from them. Shared org domains: the owner gives addresses to other accounts on the server (their mailbox, their From menu); members can only give theirs up. Limits: one owner per domain (no co-owners or transfer), members must already have an account here, no invitation step, a removed address is retired, not moved; no per-domain admin console, catch-all or groups. Re-checked every 6 hours, paused after 7 days without the TXT record |
+| Admin console (users, groups, aliases, policies) | ✅ | 🟡 | Ours at `/admin` (`ADMINS`): users, blocked IPs, new-account limits, outgoing queue, users' domains, suspended and inactive accounts, team mailboxes (groups and members), and an audit log of every change made in it (who, what, about whom, outcome; last 10,000 to 20,000 entries, a plain file, not tamper-proof; changes made in Stalwart's own admin UI or by users themselves aren't in it). Policies: Stalwart's admin UI (`/admin/`) |
 | SSO (OpenID Connect) | ✅ | 🟡 | `install.sh --oidc-issuer`: Google Workspace, Microsoft Entra, Okta, Keycloak; accounts made on first sign-in, own domains only, verified addresses only, optional tenant lock. Webmail only (the OpenMail console is off: admin names are refused via SSO), server-wide (no IMAP/SMTP for SSO users; per-domain is Stalwart Enterprise). SAML ⬜ |
 | Retention policies, legal hold | ✅ | 🟡 | Console → Retention: Trash/Junk auto-empty (Stalwart), delete-older-than per server or account with a dry-run count first, users' own Trash/Junk setting, legal hold (blocks every delete). Hold doesn't stop Stalwart's server-wide Trash auto-empty. eDiscovery ⬜ |
 | Public sign-up with abuse controls | n/a | ✅ | Invites, rate limits, quotas (signup/); outgoing spam held for admin review, repeat senders paused |

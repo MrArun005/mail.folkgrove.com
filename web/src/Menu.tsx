@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { Button } from './Button';
-import { describe, quickTimes, toLocalInput } from './when';
+import { describe, quickTimes, toLocalInput, type When } from './when';
 import { t } from './i18n';
 
 /** Button + dropdown. Closes on outside click, Esc, or choosing an item. Arrow keys move between items. */
@@ -27,18 +27,22 @@ export function Menu({ button, label, children, align = 'left', up = false }: {
         e.preventDefault();
       }
     }}>
-      <span onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} aria-controls={id}>{button}</span>
+      {/* The button itself says it opens a menu (a plain span may not carry those attributes). */}
+      <span onClick={() => setOpen((o) => !o)}>{isValidElement(button)
+        ? cloneElement(button as ReactElement<Record<string, unknown>>, { 'aria-haspopup': 'menu', 'aria-expanded': open, 'aria-controls': open ? id : undefined }) : button}</span>
       {open && <div role="menu" id={id} aria-label={label} className={`menu-list ${align}${up ? ' up' : ''}`}>{children(() => setOpen(false))}</div>}
     </div>
   );
 }
 
 /** Quick times plus a date/time field. Used for Snooze and Schedule send. */
-export function TimeChoices({ onPick, close, verb }: { onPick: (d: Date) => void; close: () => void; verb: string }) {
+export function TimeChoices({ onPick, close, verb, first = [] }: { onPick: (d: Date) => void; close: () => void; verb: string;
+  /** Choices of the caller's own, shown above the usual ones. */
+  first?: When[] }) {
   const [custom, setCustom] = useState(toLocalInput(new Date(Date.now() + 86400e3)));
   return (
     <>
-      {quickTimes().map((w) => (
+      {[...first, ...quickTimes()].map((w) => (
         <button key={w.label} className="menu-item" role="menuitem" onClick={() => { close(); onPick(w.at); }}>
           <span>{w.label}</span><span className="hint">{describe(w.at)}</span>
         </button>

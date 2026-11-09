@@ -275,6 +275,94 @@ export default {
   'privacy.reset': 'Recommencer le décompte', // review: new
   'privacy.resetTitle': 'Effacer le rapport de confidentialité ?', // review: new
   'privacy.resetBody': 'Les compteurs de cet appareil reviennent à zéro. Votre courrier n’est pas modifié.', // review: new
+  'folder.feed': 'Fil', // review: new
+  'filters.wouldCatch': { one: 'Ce filtre aurait retenu {count} de vos {of} dernières conversations :', other: 'Ce filtre aurait retenu {count} de vos {of} dernières conversations :' }, // review: new
+  'filters.wouldCatchNone': 'Ce filtre n’aurait retenu aucune de vos {of} dernières conversations.', // review: new
+  'filters.andMore': { one: 'et {count} autre', other: 'et {count} autres' }, // review: new
+  'threadNotes.private': 'Notes privées', // review: new
+  'threadNotes.privateNote': 'vous seul pouvez les voir ; elles ne sont jamais envoyées', // review: new
+  'threadNotes.add': 'Ajouter une note privée', // review: new
+  'threadNotes.placeholder': 'Une note pour vous-même sur cette conversation…', // review: new
+  'threadNotes.save': 'Enregistrer la note', // review: new
+  'threadNotes.delete': 'Supprimer la note', // review: new
+  'compose.whenActive': 'Quand {name} consulte habituellement ses messages', // review: new
+  'feed.intro': 'Les newsletters et notifications de votre boîte de réception, à lire comme une page. Rien n’est marqué comme lu tant que vous ne le demandez pas.', // review: new
+  'feed.empty': 'Aucune newsletter ni notification dans votre boîte de réception.', // review: new
+  'feed.markAllRead': 'Tout marquer comme lu', // review: new
+  'feed.allRead': { one: '{count} marqué comme lu', other: '{count} marqués comme lus' }, // review: new
+  'feed.archived': 'Archivé', // review: new
+  'feed.open': 'Ouvrir la conversation', // review: new
+  'privacy.thisWeek': 'Les 7 derniers jours', // review: new
+  'privacy.weekTotal': { one: '{count} traceur supprimé cette semaine.', other: '{count} traceurs supprimés cette semaine.' }, // review: new
+  'privacy.weekBefore': { one: 'La semaine précédente : {count}.', other: 'La semaine précédente : {count}.' }, // review: new
+  'privacy.weekBadge': { one: '{count} traceur supprimé cette semaine', other: '{count} traceurs supprimés cette semaine' }, // review: new
+  'display.grove': 'Grove', // review: new
+  'domains.membersTitle': 'Adresses pour d’autres personnes', // review: new
+  'domains.membersIntro': 'Donnez une adresse sur {domain} à une autre personne qui a un compte ici. Les messages envoyés à cette adresse arrivent dans sa boîte, pas dans la vôtre, et elle peut envoyer depuis cette adresse. Vous seul pouvez modifier le domaine.', // review: new
+  'domains.addressesUsed': '{used} adresses utilisées sur {max}, les vôtres comprises.', // review: new
+  'domains.memberFor': 'pour {account}', // review: new
+  'domains.memberNamePlaceholder': 'sam', // review: new
+  'domains.memberNewAddress': 'Sa nouvelle adresse sur {domain}', // review: new
+  'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
+  'domains.memberAccountLabel': 'L’adresse avec laquelle cette personne se connecte, sur {domain}', // review: new
+  'domains.giveAddress': 'Donner l’adresse', // review: new
+  'domains.takeBack': 'Reprendre {email}', // review: new
+  'domains.takeBackTitle': 'Reprendre {email} à {account} ?', // review: new
+  'domains.takeBackBody': 'Les messages envoyés à cette adresse seront renvoyés à leur expéditeur, et elle ne pourra plus être donnée à personne. Les messages que cette personne a déjà reçus lui restent.', // review: new
+  'domains.takeBackConfirm': 'Reprendre', // review: new
+  'domains.givenTitle': 'Adresses que l’on vous a données', // review: new
+  'domains.givenIntro': 'Le propriétaire d’un domaine vous a donné ces adresses. Les messages qui leur sont envoyés arrivent ici, et vous pouvez les choisir dans le champ De quand vous écrivez. Le propriétaire peut les reprendre.', // review: new
+  'domains.givenBy': 'de la part de {owner}', // review: new
+  'domains.giveUp': 'Renoncer à {email}', // review: new
+  'domains.giveUpTitle': 'Renoncer à {email} ?', // review: new
+  'domains.giveUpBody': 'Les messages envoyés à cette adresse seront renvoyés à leur expéditeur, et elle ne pourra pas être récupérée, ni par vous ni par quiconque.', // review: new
+  'domains.giveUpConfirm': 'Renoncer à l’adresse', // review: new
+  'admin.tabAudit': 'Journal d’audit', // review: new
+  'admin.domainMembers': { one: 'dont certaines pour {count} autre compte', other: 'dont certaines pour {count} autres comptes' }, // review: new
+  'admin.auditHelp': 'Toutes les modifications faites dans cette console : qui l’a faite, ce que c’était, qui ou quoi était concerné, et si elle a abouti. Les plus récentes d’abord. Les mots de passe et le contenu des messages ne sont jamais enregistrés.', // review: new
+  'admin.noAudit': 'Rien n’a encore été modifié dans cette console.', // review: new
+  'admin.auditShowing': 'Affichage de {from} à {to} sur {total}', // review: new
+  'admin.auditNewer': 'Plus récentes', // review: new
+  'admin.auditOlder': 'Plus anciennes', // review: new
+  'admin.colTime': 'Heure', // review: new
+  'admin.colAdmin': 'Administrateur', // review: new
+  'admin.colAction': 'Action', // review: new
+  'admin.colTarget': 'Concerne', // review: new
+  'admin.colOutcome': 'Résultat', // review: new
+  'admin.auditDone': 'Effectué', // review: new
+  'admin.auditNotDone': 'Non effectué', // review: new
+  'admin.auditUserCreate': 'Création d’un compte', // review: new
+  'admin.auditUserUpdate': 'Modification d’un compte', // review: new
+  'admin.auditUserDelete': 'Suppression d’un compte', // review: new
+  'admin.auditTeamCreate': 'Création d’une boîte d’équipe', // review: new
+  'admin.auditTeamMembers': 'Modification des membres d’une boîte d’équipe', // review: new
+  'admin.auditTeamDelete': 'Suppression d’une boîte d’équipe', // review: new
+  'admin.auditIpUnblock': 'Déblocage d’une adresse IP', // review: new
+  'admin.auditLimitsAdd': 'Compte soumis aux limites des nouveaux comptes', // review: new
+  'admin.auditLimitsLift': 'Levée des limites des nouveaux comptes', // review: new
+  'admin.auditQueueRetry': 'Nouvelle tentative pour un message en attente', // review: new
+  'admin.auditQueueCancel': 'Annulation d’un message en attente', // review: new
+  'admin.auditHeldRelease': 'Envoi d’un message retenu', // review: new
+  'admin.auditHeldDelete': 'Suppression d’un message retenu', // review: new
+  'admin.auditRetentionRules': 'Modification des règles de conservation', // review: new
+  'admin.auditRetentionRun': 'Exécution de la tâche de conservation', // review: new
+  'admin.auditRetentionAccount': 'Modification de la conservation d’un compte', // review: new
+  'admin.auditEnable': 'connexion activée', // review: new
+  'admin.auditDisable': 'connexion désactivée', // review: new
+  'admin.auditSendingSuspend': 'envoi suspendu', // review: new
+  'admin.auditSendingAllow': 'envoi autorisé', // review: new
+  'admin.auditPasswordReset': 'mot de passe réinitialisé', // review: new
+  'admin.auditHoldOn': 'conservation légale activée', // review: new
+  'admin.auditHoldOff': 'conservation légale désactivée', // review: new
+  'admin.auditQuota': 'limite de stockage : {size}', // review: new
+  'admin.auditQuotaNone': 'aucune limite de stockage', // review: new
+  'admin.auditMemberAdd': 'ajout de {member}', // review: new
+  'admin.auditMemberRemove': 'retrait de {member}', // review: new
+  'admin.auditTrashDays': { one: 'Corbeille et spam vidés après {count} jour', other: 'Corbeille et spam vidés après {count} jours' }, // review: new
+  'admin.auditTrashNever': 'Corbeille et spam jamais vidés', // review: new
+  'admin.auditKeepDays': { one: 'messages conservés {count} jour', other: 'messages conservés {count} jours' }, // review: new
+  'admin.auditKeepForever': 'messages conservés indéfiniment', // review: new
+  'admin.auditKeepServer': 'la règle du serveur sur la durée de conservation des messages', // review: new
   'mail.findAnyAction': 'Trouver une action',
   'mail.signOutOf': 'Se déconnecter de {address}',
   'mail.conversations': 'Conversations',
