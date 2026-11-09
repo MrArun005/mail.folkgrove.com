@@ -60,7 +60,7 @@ test('swipe left archives, Undo puts it back; a short swipe does nothing', async
 
 test('accessibility: the phone list and the open drawer', async ({ page }) => {
   const { default: AxeBuilder } = await import('@axe-core/playwright');
-  const problems = async () => (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations
+  const problems = async () => (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).exclude('iframe').analyze()).violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical').flatMap((v) => v.nodes.map((n) => `${v.id}: ${n.target.join(' ')}`));
   await signIn(page);
   expect.soft(await problems()).toEqual([]);

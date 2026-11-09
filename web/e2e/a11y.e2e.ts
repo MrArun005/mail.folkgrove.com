@@ -6,7 +6,8 @@ import { row, SEEDED, signIn } from './helpers';
 
 /** Serious and critical problems only, as "rule: target" lines (so a failure says what to fix). */
 async function problems(page: Page, include?: string) {
-  let axe = new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']);
+  // Not inside messages: what a sender wrote isn't ours to fix, and a page of newsletters takes axe minutes.
+  let axe = new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).exclude('iframe');
   if (include) axe = axe.include(include);
   const { violations } = await axe.analyze();
   return violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
