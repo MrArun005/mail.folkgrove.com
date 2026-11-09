@@ -6,6 +6,7 @@
 
 /* ═══ Tokens ═══════════════════════════════════════════ */
 :root {
+  --drawer-w: min(304px, 86vw);
   /* Theme "Clean": white panes floating on a cool, very light canvas; one clear blue. */
   --paper: oklch(100% 0 0); --list: oklch(100% 0 0); --rail: oklch(97.6% 0.007 255);
   --rule: oklch(92.5% 0.006 255); --hover: oklch(95.8% 0.01 255); --field: oklch(94.6% 0.016 255);
@@ -266,6 +267,10 @@ textarea.input { height: auto; padding: var(--s2) var(--s3); resize: vertical; l
 .toolbar > .only-mobile + * { margin-inline-start: calc((18px - var(--h-md)) / 2); }
 .tool-sep { width: 1px; height: 20px; margin: 0 var(--s2); background: var(--rule); }
 .only-mobile { display: none; }
+/* Phone top bar (hidden on wide screens): menu button, where you are, Settings. */
+.topbar { display: none; align-items: center; gap: var(--s1); height: 52px; padding: 0 var(--s2); background: var(--rail); color: var(--ink-2); }
+.topbar-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 calc(17px * var(--scale))/1 var(--ui); color: var(--ink); }
+@keyframes fade { from { opacity: 0; } }
 .thread .subject { font: 500 var(--t-h1)/1.2 var(--read); letter-spacing: -.012em; margin: var(--s6) 0 var(--s5); text-wrap: balance; }
 
 .message { padding: var(--s5) 0 var(--s2); border-top: 1px solid var(--rule); }
@@ -445,12 +450,27 @@ a.chip:hover { background: var(--hover); border-color: var(--muted); }
 @media (max-width: 860px) {
   :root { --gutter-reader: var(--s4); --text-col: 0px; }
   .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .rail { flex-direction: row; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); overflow-x: auto; }
-  .rail .wordmark, .me { display: none; }
-  .rail ul { display: flex; overflow: visible; }
-  .rail-group { display: contents; } .rail-group .rail-label { display: none; }
-  .nav-item { white-space: nowrap; }
-  .rail .compose-btn { position: fixed; inset-inline-end: var(--s4); bottom: var(--s4); z-index: 5; width: auto; padding: 0 var(--s5); box-shadow: var(--lift); }
+  /* The rail is a drawer: off-screen until the top bar's menu button opens it. It moves by its inline offset, not a
+     transform, because Compose inside it is fixed to the screen (a transform would re-anchor it to the drawer). */
+  .topbar { display: flex; }
+  .app.reading .topbar { display: none; }
+  .rail {
+    position: fixed; z-index: 21; inset-block: 0; inset-inline-start: calc(-1 * var(--drawer-w)); width: var(--drawer-w);
+    padding-bottom: calc(var(--s3) + env(safe-area-inset-bottom)); overflow-y: auto; visibility: hidden;
+    transition: inset-inline-start 220ms var(--ease-out), visibility 0s 220ms;
+  }
+  .app.nav-open .rail { inset-inline-start: 0; visibility: visible; box-shadow: var(--lift); transition: inset-inline-start 220ms var(--ease-out); }
+  .rail ul { overflow: visible; }
+  .rail .nav-item { height: var(--h-lg); }
+  .me .btn--sm { height: var(--h-md); } .me .btn--icon.btn--sm { width: var(--h-md); }
+  .nav-scrim { position: fixed; inset: 0; z-index: 20; background: var(--scrim); animation: fade 220ms var(--ease-out); }
+  /* Compose floats over the list only: not over a conversation (Reply is there) and not over the open drawer. */
+  .rail .compose-btn { position: fixed; visibility: visible; inset-inline-end: var(--s4); bottom: calc(var(--s4) + env(safe-area-inset-bottom)); z-index: 5; width: auto; padding: 0 var(--s5); box-shadow: var(--lift); }
+  .app.reading .rail .compose-btn, .app.nav-open .rail .compose-btn, .app:has(.compose-dock > .compose) .rail .compose-btn { display: none; }
+  .list-title-row .list-title { display: none; } /* the top bar says where you are */
+  .list-title-row:not(:has(.btn)) { display: none; }
+  .toolbar { gap: 0; overflow-x: auto; scrollbar-width: none; }
+  .toolbar .tool-sep { display: none; }
   .app.reading .list, .app:not(.reading) .reader { display: none; }
   .thread { padding-bottom: 96px; }
   .thread .subject { font-size: var(--t-h2); }
@@ -459,7 +479,7 @@ a.chip:hover { background: var(--hover); border-color: var(--muted); }
   .message iframe { width: 100%; }
   .folded { grid-template-columns: 1fr auto; } .folded .snippet { display: none; }
   .compose { inset-inline-end: 0; width: 100vw; height: 100%; border-radius: 0; }
-  .fmts .btn:not([aria-label^="Attach"]):not([aria-label^="Bold"]):not([aria-label^="Link"]) { display: none; }
+  .fmts .btn:not(.keep) { display: none; } /* by class: labels are translated */
   .help dl, .settings .row2 { grid-template-columns: 1fr; }
   .toast { inset-inline-start: var(--s4); inset-inline-end: var(--s4); translate: none; bottom: 80px; }
   .menu-list { position: fixed; inset-inline-start: var(--s3) !important; inset-inline-end: var(--s3) !important; top: auto; bottom: var(--s3); min-width: 0; }
@@ -855,7 +875,7 @@ code.key { font-size: var(--t-sm); letter-spacing: .04em; user-select: all; }
 .comment-meta b { color: var(--ink); font-weight: 600; }
 .comment-meta .btn { margin-inline-start: auto; }
 .comment-text { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--t-md); color: var(--ink); }
-@media (max-width: 860px) { .shared-banner { flex: none; white-space: nowrap; } .shared-rail .rail-label, .shared-rail .rail-link { display: none; } .team-comments { margin-inline-start: 0; } }
+@media (max-width: 860px) { .team-comments { margin-inline-start: 0; } }
 .admin-table .member { display: flex; align-items: center; gap: var(--s1); }
 /* Settings → Shared files: name and details wrap on narrow screens instead of hiding the expiry. */
 .files-list li > .grow { white-space: normal; overflow-wrap: anywhere; padding: var(--s2) 0; }
@@ -950,3 +970,27 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
 }
 /* Room for the schedule and formatting-bar buttons next to the others. */
 @media (min-width: 861px) { .compose:not(.min):not(.popped) { width: min(720px, calc(100vw - var(--s8))); } }
+
+/* ═══ Touch: swipe instead of hover ════════════════════ */
+/* Rows off screen aren't laid out or painted until they scroll near (long folders stay quick). */
+.row { content-visibility: auto; contain-intrinsic-size: auto 78px; }
+/* No hover on a touch screen: the floating row buttons would stick after a tap. Swipe does the same jobs. */
+@media (hover: none) {
+  .row:hover { background: none; }
+  .row.active:hover, .row.selected:hover { background: var(--accent-wash); }
+  .row:hover .row-actions:not(.screen-actions), .row:focus-within .row-actions:not(.screen-actions) { display: none; }
+  .row:hover .check { opacity: 0; } .rows.selecting .row .check { opacity: 1; }
+  .row.unread:hover::before { display: block; } .rows.selecting .row.unread::before { display: none; }
+}
+/* Swipe (Swipe.tsx): the row follows the finger; what it will do shows in the space it leaves behind. */
+.rows { overflow-x: clip; }
+.row { touch-action: pan-y; }
+.row.swiping { background: var(--list); content-visibility: visible; }
+.row.settling { transition: translate 160ms var(--ease-out); }
+.row.swiping::after {
+  position: absolute; top: 0; bottom: -1px; width: 100%; display: flex; align-items: center; padding: 0 var(--s5);
+  color: var(--on-tint); font-weight: 600; white-space: nowrap;
+}
+/* physical sides on purpose: they follow the finger, not the reading direction */
+.row.swiping[data-dir="left"]::after { content: attr(data-swipe-left); left: 100%; justify-content: flex-start; background: var(--safe); color: var(--paper); }
+.row.swiping[data-dir="right"]::after { content: attr(data-swipe-right); right: 100%; justify-content: flex-end; background: var(--accent); color: var(--accent-ink); }

@@ -14,7 +14,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Unified folders + labels (tags) | ✅ | ✅ | A conversation can live in several folders (JMAP), no tag/folder split |
 | Star / flag | ✅ | ✅ | |
 | Snooze | 🟡 (reminders) | ✅ | Real snooze: leaves the inbox, returns unread |
-| Archive, delete, spam / not spam | ✅ | ✅ | Auto-advance to the next conversation |
+| Archive, delete, spam / not spam | ✅ | ✅ | Auto-advance to the next conversation; Undo on the toast (or `z`) puts it back |
 | Multi-select + bulk actions | ✅ | ✅ | Shift-click ranges, keyboard `x` |
 | Keyboard shortcuts | ✅ | ✅ | Gmail-compatible keys plus a ⌘K command palette |
 | Search | ✅ | ✅ | `from:` `to:` `subject:` `has:attachment` `is:unread` `in:` `before:` `after:` `-negation` |
@@ -89,7 +89,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 
 | Feature | Zoho | Us | Plan |
 |---|---|---|---|
-| Web app | ✅ | ✅ | Local-first: instant UI, light and dark, phone layout |
+| Web app | ✅ | ✅ | Local-first: instant UI, light and dark. Phones: folder drawer, swipe a row to archive or mark read. Back button and links work (`#/in/<folder>/t/<conversation>`, web/src/route.ts) |
 | Interface languages | ✅ | 🟡 | 11: English, Hindi, Kannada, Tamil, Spanish, French, German, Portuguese (Brazil), Arabic (right to left), Japanese, Simplified Chinese. Settings → Appearance → Language (Automatic follows the browser), per device; only the chosen language downloads. Machine-drafted with `// review:` notes, not yet checked by native speakers; account-service errors show in English when their code isn't mapped |
 | Installable app / offline | 🟡 | 🟡 | Installable (PWA: install button, unread badge, Compose shortcut, “Share to OpenMail”, mailto handler), shell works offline; mail offline in Phase 2.5 |
 | Desktop app | ✅ | 🟡 | `apps/desktop` (Electron): any server, opens mailto: links, Dock badge; unsigned, no installers yet |

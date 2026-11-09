@@ -31,14 +31,18 @@ import { cache } from './store';
 import { describe } from './when';
 import { SharedRail, TeamComments, useShared } from './Sharing';
 import { boxName, locale, t } from './i18n';
+import { clearRoute, readRoute, writeRoute, type Route } from './route';
+import { useSwipe } from './Swipe';
 
 const PAGE = 50;
+const UNDO_MS = 7000; // how long "Archived · Undo" stays
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
 const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
 // Virtual folders: views that aren't mailboxes on the server.
 /** Always in the rail (Gmail's set); everything else folds under More. */
 const MAIN = ['inbox', 'starred', 'snoozed', 'sent', 'drafts'];
 const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks', NOTES = 'notes';
+const VIRTUAL = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS, NOTES];
 
 // Read by list servers, not people: never translated (RFC 2369 / RFC 8058).
 const UNSUB = 'unsubscribe', ONE_CLICK = 'List-Unsubscribe=One-Click';
@@ -71,7 +75,7 @@ export function Mail(props: MailProps) {
   const client = useMemo(() => (open ? props.client.as(open.acc) : props.client), [props.client, open]);
   const shared = useShared(props.client);
   return <MailView key={open ? `${open.acc.id}/${open.box ?? ''}` : ''} {...props} client={client} own={props.client} sharing={shared}
-    opened={open?.acc ?? null} startView={open?.box} onOpenShared={(acc, box) => setOpen(acc && { acc, box })} />;
+    opened={open?.acc ?? null} startView={open?.box} onOpenShared={(acc, box) => { clearRoute(); setOpen(acc && { acc, box }); }} />;
 }
 
 function MailView({ client, own, sharing, opened, startView, onOpenShared, onLogout, accounts, onSwitch, onAddAccount }: MailProps & {
@@ -81,7 +85,9 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
 }) {
   const key = (k: string) => `${client.scope}:${k}`;
   const [boxes, setBoxes] = useState<Mailbox[]>(() => cache.get(key('boxes')) ?? []);
-  const [view, setView] = useState<string | null>(startView ?? null); // mailbox id or virtual folder; null = Inbox
+  // Where the address bar says we are (route.ts); another person's mailbox starts from the folder that was opened.
+  const start = useRef<Route>(opened ? { view: startView ?? null, query: '', thread: null } : readRoute()).current;
+  const [view, setView] = useState<string | null>(start.view); // mailbox id or virtual folder; null = Inbox
   const [tab, setTab] = useState<'primary' | Tab>('primary'); // Inbox categories
   const [categories, setCategories] = useState(true);
   const [tabs, setTabs] = useState<Tab[]>(() => cache.get(key('tabs')) ?? ['updates']); // which tabs show next to Primary (cached: no flash of two tabs)
@@ -90,14 +96,14 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const [people, setPeople] = useState<Contact[] | null>(null);
   const [personId, setPersonId] = useState<string | null>(null);
   const [editingPerson, setEditingPerson] = useState<boolean | 'group'>(false);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(start.query);
   const [list, setList] = useState<EmailSummary[] | null>(null);
   /** Priority Inbox: how many rows at the top are "Important and unread" (from people you write to). */
   const [important, setImportant] = useState(0);
   const correspondents = useRef<Set<string>>(new Set());
   const [scheduled, setScheduled] = useState<Scheduled[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [threadId, setThreadId] = useState<string | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(start.thread);
   const [messages, setMessages] = useState<EmailFull[] | null>(null);
   const [readerError, setReaderError] = useState('');
   const [toast, setToast] = useState<Toast>(null);
@@ -142,12 +148,30 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const [railOpen, setRailOpen] = useState(() => { try { return localStorage.getItem('om:rail') === 'open'; } catch { return false; } });
   const toggleRail = (open: boolean) => { setRailOpen(open); try { localStorage.setItem('om:rail', open ? 'open' : 'closed'); } catch { /* fine */ } };
 
+  // Phones: the rail is a drawer, opened from the top bar.
+  const [navOpen, setNavOpen] = useState(false);
+
   const inbox = boxes.find((b) => b.role === 'inbox')?.id ?? null;
+  // The address bar follows the screen, and Back / Forward (or an edited link) move the screen.
+  const place = useRef(start);
+  useEffect(() => {
+    const next = { view: view === inbox ? null : view, query, thread: threadId };
+    writeRoute(place.current, next); place.current = next;
+  }, [view, query, threadId, inbox]);
+  useEffect(() => {
+    const onPop = () => { const r = readRoute(); place.current = r; setView(r.view); setQuery(r.query); setThreadId(r.thread); setNavOpen(false); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  // A link to a folder that no longer exists (or another account's) shows the Inbox.
+  useEffect(() => {
+    if (view && boxes.length && !VIRTUAL.includes(view) && !boxes.some((b) => b.id === view)) setView(null);
+  }, [boxes, view]);
   /** Cache key for a list: the Inbox has one per category tab. */
   const listKey = (box: string | null) => `list:${box}${box && box === inbox && categories ? `:${tab}` : ''}`;
   const current = query ? null : view ?? inbox;
   const currentBox = boxes.find((b) => b.id === current);
-  const role = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS, NOTES].includes(current ?? '') ? current : currentBox?.role ?? null;
+  const role = VIRTUAL.includes(current ?? '') ? current : currentBox?.role ?? null;
   // Moves need a real source folder; from Starred or search results, act on the Inbox copy.
   const source = currentBox ? currentBox.id : inbox;
   const folders = useMemo(() => boxes.filter((b) => (!b.role || b.role === 'archive' || b.role === 'inbox') && b.id !== source), [boxes, source]);
@@ -308,7 +332,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   }, [client, threadId, threadVersion]);
   useEffect(() => setMessages(null), [threadId]); // loading bar only when switching conversations
 
-  function openFolder(id: string) { setView(id); setQuery(''); setThreadId(null); }
+  function openFolder(id: string) { setView(id); setQuery(''); setThreadId(null); setNavOpen(false); }
 
   // In Drafts, opening a conversation resumes the draft in the editor.
   openRef.current = (tid) => { setQuery(''); setView(null); openThread(tid); }; // from a notification: show it in the Inbox
@@ -371,18 +395,25 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     try {
       const each = (f: (t: string) => Promise<unknown>) => Promise.all(tids.map(f));
       const box = (r: string) => { const id = boxes.find((b) => b.role === r)?.id; if (!id) throw new Error(t('mail.noFolderForThat')); return id; };
+      // Undo (the toast's link, or z): put them back where they were.
+      // ponytail: moves the whole conversation's copies in `to` back, including a message that was already there.
+      const back = (to: string, kw: Record<string, true | null> = {}) => async () => {
+        say({ text: t('mail.undoing') }, 0);
+        try { await each((t) => client.move(t, to, source, kw)); say({ text: t('mail.undone') }); } catch (e) { fail(e); }
+        refresh();
+      };
       if (typeof a === 'object' && 'snooze' in a) { await each((t) => client.snooze(t, source, a.snooze, boxes)); say({ text: t('mail.snoozedUntil', { count: n, time: describe(a.snooze) }) }); }
       else if (typeof a === 'object') {
         const b = boxes.find((x) => x.id === target), name = b ? shown(b) : t('mail.theNewFolder');
         await each((t) => (label ? client.addToMailbox(t, target!) : client.move(t, source, target!)));
-        say({ text: label ? t('mail.labelled', { name }) : t('mail.movedTo', { count: n, name }) });
+        say(label ? { text: t('mail.labelled', { name }) } : { text: t('mail.movedTo', { count: n, name }), undo: back(target!) }, UNDO_MS);
       }
       else if (a === 'mute') { await each((t) => client.mute(t, source, boxes)); say({ text: t('mail.muted', { count: n }) }); }
-      else if (a === 'archive') { const to = await client.mailboxFor('archive', 'Archive', boxes); await each((t) => client.move(t, source, to)); say({ text: t('mail.archived', { count: n }) }); }
+      else if (a === 'archive') { const to = await client.mailboxFor('archive', 'Archive', boxes); await each((t) => client.move(t, source, to)); say({ text: t('mail.archived', { count: n }), undo: back(to) }, UNDO_MS); }
       else if (a === 'trash' && role === 'trash') { await each((t) => client.destroyThread(t, source)); say({ text: t('mail.deletedForever') }); }
-      else if (a === 'trash') { await each((t) => client.move(t, source, box('trash'))); say({ text: t('mail.movedToTrash') }); }
+      else if (a === 'trash') { const to = box('trash'); await each((t) => client.move(t, source, to)); say({ text: t('mail.movedToTrash'), undo: back(to) }, UNDO_MS); }
       else if (a === 'junk' && role === 'junk') { await each((t) => client.move(t, source, inbox!, { $junk: null, $notjunk: true })); say({ text: t('mail.notSpam') }); }
-      else if (a === 'junk') { await each((t) => client.move(t, source, box('junk'), { $junk: true, $notjunk: null })); say({ text: t('mail.reportedSpam') }); }
+      else if (a === 'junk') { const to = box('junk'); await each((t) => client.move(t, source, to, { $junk: true, $notjunk: null })); say({ text: t('mail.reportedSpam'), undo: back(to, { $junk: null }) }, UNDO_MS); }
     } catch (e) { fail(e); }
     refresh();
   }
@@ -738,7 +769,15 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   );
 
   return (
-    <div className={`app${role === CALENDAR || role === NOTES ? ' calendar-mode' : ''}${threadId || (role === CONTACTS && (personId || editingPerson)) ? ' reading' : ''}`}>
+    <div className={`app${role === CALENDAR || role === NOTES ? ' calendar-mode' : ''}${threadId || (role === CONTACTS && (personId || editingPerson)) ? ' reading' : ''}${navOpen ? ' nav-open' : ''}`}
+      onKeyDown={(e) => { if (e.key === 'Escape' && navOpen) { e.stopPropagation(); setNavOpen(false); } }}>
+      {/* Phones only: the way to the folders, the account and Settings (the rail is a drawer there). */}
+      <header className="topbar">
+        <Button variant="quiet" icon="menu" label={t('mail.openMenu')} aria-expanded={navOpen} onClick={() => setNavOpen(true)} />
+        <h1 className="topbar-title">{heading}</h1>
+        <Button variant="quiet" icon="settings" label={t('mail.settings')} onClick={() => setOverlay('settings')} />
+      </header>
+      {navOpen && <div className="nav-scrim" onClick={() => setNavOpen(false)} />}
       <nav className="rail" aria-label={t('mail.folders')}>
         <p className="wordmark">OpenMail</p>
         <Button variant="primary" size="lg" icon="compose" className="compose-btn" onClick={newMessage} title={t('mail.composeTitle')}>{t('mail.compose')}</Button>
@@ -778,7 +817,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
             <ul>
               {saved.map((x) => (
                 <li key={x.name} className="saved-item">
-                  <button className={`nav-item${query === x.query ? ' active' : ''}`} onClick={() => { setQuery(x.query); setThreadId(null); }} title={x.query}>
+                  <button className={`nav-item${query === x.query ? ' active' : ''}`} onClick={() => { setQuery(x.query); setThreadId(null); setNavOpen(false); }} title={x.query}>
                     <Icon name="search" /><span className="name">{x.name}</span>
                   </button>
                   <Button variant="quiet" size="sm" icon="close" label={t('mail.removeSavedSearch', { name: x.name })} onClick={() => removeSearch(x.name)} />
@@ -813,8 +852,8 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
             </>}
           </Menu>
           <span className="links">
-            <Button variant="quiet" size="sm" icon="settings" label={t('mail.settings')} onClick={() => setOverlay('settings')} />
-            <Button variant="quiet" size="sm" icon="command" label={t('mail.findAnyAction')} shortcut="⌘K" onClick={() => setOverlay('palette')} />
+            <Button variant="quiet" size="sm" icon="settings" label={t('mail.settings')} onClick={() => { setNavOpen(false); setOverlay('settings'); }} />
+            <Button variant="quiet" size="sm" icon="command" label={t('mail.findAnyAction')} shortcut="⌘K" onClick={() => { setNavOpen(false); setOverlay('palette'); }} />
             <Button variant="quiet" size="sm" icon="logout" label={t('mail.signOutOf', { address: client.username })} onClick={onLogout} />
           </span>
         </div>
@@ -901,7 +940,10 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
             <ul className={`rows${selected.size ? ' selecting' : ''}`}>
               {list?.map((e, i) => (<Fragment key={e.threadId}>
                 {important > 0 && (i === 0 || i === important) && <li className="list-section" role="presentation">{t(i === 0 ? 'mail.importantUnread' : 'mail.everythingElse')}</li>}
-                <li className={`row${e.keywords.$seen ? '' : ' unread'}${e.threadId === threadId ? ' active' : ''}${selected.has(e.threadId) ? ' selected' : ''}`}>
+                <SwipeRow className={`row${e.keywords.$seen ? '' : ' unread'}${e.threadId === threadId ? ' active' : ''}${selected.has(e.threadId) ? ' selected' : ''}`}
+                  off={!!selected.size || inScreener || role === 'trash'}
+                  left={role === 'archive' ? t('common.delete') : t('mail.archive')} onLeft={() => act(role === 'archive' ? 'trash' : 'archive', [e.threadId])}
+                  right={t(e.keywords.$seen ? 'mail.markUnread' : 'mail.markRead')} onRight={() => act(e.keywords.$seen ? 'unread' : 'read', [e.threadId])}>
                   <input type="checkbox" className="check" checked={selected.has(e.threadId)} aria-label={e.subject ? t('mail.selectSubject', { subject: e.subject }) : t('mail.selectConversation')}
                     onChange={() => {}} onClick={(ev) => toggleSelect(e.threadId, ev.shiftKey)} />
                   <button className="open" onClick={(ev) => (ev.shiftKey || selected.size ? toggleSelect(e.threadId, ev.shiftKey) : openThread(e.threadId))}>
@@ -926,7 +968,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
                       <Button variant="quiet" size="sm" icon="trash" label={t('common.delete')} shortcut="#" onClick={() => act('trash', [e.threadId])} />
                     </span>
                   )}
-                </li>
+                </SwipeRow>
               </Fragment>))}
             </ul>
             {hasMore && <div className="list-more"><Button variant="link" onClick={loadMore}>{t('mail.showMore')}</Button></div>}
@@ -993,6 +1035,14 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       )}
     </div>
   );
+}
+
+/** A conversation row you can swipe on a touch screen: left and right each do one thing, named as you drag. */
+function SwipeRow({ className, off, left, right, onLeft, onRight, children }: {
+  className: string; off: boolean; left: string; right: string; onLeft: () => void; onRight: () => void; children: ReactNode;
+}) {
+  const swipe = useSwipe<HTMLLIElement>({ off, onLeft, onRight });
+  return <li ref={swipe} className={className} data-swipe-left={left} data-swipe-right={right}>{children}</li>;
 }
 
 const TAB_ICON = { primary: 'inbox', promotions: 'tag', social: 'person', updates: 'bell', forums: 'replyAll' } as const;

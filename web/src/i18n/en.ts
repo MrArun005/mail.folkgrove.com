@@ -240,6 +240,8 @@ export const en = {
   'mail.myMailbox': 'My mailbox',
   'mail.addAccount': 'Add another account',
   'mail.settings': 'Settings',
+  'mail.openMenu': 'Folders and account',
+  'mail.undone': 'Undone',
   'mail.findAnyAction': 'Find any action',
   'mail.signOutOf': 'Sign out of {address}',
   'mail.conversations': 'Conversations',
