@@ -1096,3 +1096,24 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
 .me > .menu { min-width: 0; }
 .me .account-btn { display: flex; align-items: center; gap: var(--s1); min-width: 0; max-width: 100%; overflow: hidden; }
 .me .account-btn .addr { min-width: 0; }
+.me .menu > span { display: flex; min-width: 0; max-width: 100%; }
+
+/* ═══ Settings: a list of its sections beside the form ═══ */
+.settings-link {
+  display: flex; align-items: center; height: var(--h-sm); padding: 0 var(--s3); border-radius: var(--r-full);
+  color: var(--ink-2); font-size: var(--t-sm); white-space: nowrap; flex: none;
+}
+.settings-link:hover { background: var(--hover); color: var(--ink); }
+.settings-link.on { background: var(--accent-wash); color: var(--accent); font-weight: 600; }
+.settings section > h3 { scroll-margin-top: var(--s5); }
+@media (min-width: 861px) {
+  .sheet.settings { width: min(880px, 100%); display: grid; grid-template-columns: 208px minmax(0, 1fr); column-gap: var(--s8); align-content: start; }
+  .sheet.settings > * { grid-column: 2; }
+  .sheet.settings > h2, .sheet.settings > footer { grid-column: 1 / -1; }
+  .sheet.settings > .settings-nav { grid-column: 1; grid-row: 2 / span 80; align-self: start; position: sticky; top: 0; display: grid; gap: 2px; padding-top: var(--s4); max-height: calc(88vh - 190px); overflow: auto; }
+  .settings-link { white-space: normal; height: auto; min-height: var(--h-sm); padding-block: var(--s1); text-align: start; }
+}
+@media (max-width: 860px) {
+  .settings-nav { position: sticky; top: calc(-1 * var(--s6)); z-index: 2; display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--s4)); padding: var(--s2) var(--s4); background: var(--paper); border-bottom: 1px solid var(--rule); }
+  .settings section > h3 { scroll-margin-top: 56px; }
+}
