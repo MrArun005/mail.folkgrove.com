@@ -136,7 +136,11 @@ export interface DnsRecord { kind: 'verify' | 'mx' | 'spf' | 'dkim' | 'dmarc'; n
 export interface CustomDomain {
   name: string; status: 'pending' | 'active' | 'missing' | 'paused'; missingSince: string | null; pausesAt: string | null; dkimPending: boolean;
   records: DnsRecord[]; addresses: { name: string; email: string; enabled: boolean; main: boolean }[]; maxAddresses: number;
+  /** Addresses the owner gave to other accounts on this server (`account`: that person's own address). maxAddresses counts both lists. */
+  members?: { account: string; name: string; email: string; enabled: boolean }[];
 }
+/** An address on someone else's domain that its owner gave to this account. */
+export interface GivenAddress { domain: string; name: string; email: string; enabled: boolean; owner: string | null }
 export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
 /** A large file sent as a download link (signup/files.mjs). url is absolute; expires is ms since 1970, null = never. */
 export interface SharedFile { id: string; url: string; name: string; size: number; created: number; expires: number | null; downloads: number }

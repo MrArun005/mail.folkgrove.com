@@ -263,7 +263,7 @@ function NewAccounts({ client }: { client: Jmap }) {
 
 /** Users' own domains (signup/domains.mjs): who owns each and whether its ownership record is still there. */
 function Domains({ client }: { client: Jmap }) {
-  const { data, error } = useLoad(() => client.admin<{ domains: { name: string; owner: string | null; status: string; added: string; checked: string | null; missingSince: string | null; addresses: number }[] }>('domains'));
+  const { data, error } = useLoad(() => client.admin<{ domains: { name: string; owner: string | null; status: string; added: string; checked: string | null; missingSince: string | null; addresses: number; members?: number }[] }>('domains'));
   return (
     <section>
       <h2>{t('admin.domainsTitle')}</h2>
@@ -278,7 +278,7 @@ function Domains({ client }: { client: Jmap }) {
                 <td data-label={t('admin.colDomain')}><code>{d.name}</code></td>
                 <td data-label={t('admin.colOwner')}>{d.owner ?? t('admin.ownerDeleted')}</td>
                 <td data-label={t('admin.colStatus')}><span className={`pill ${d.status === 'active' ? 'on' : 'pill--warn'}`}>{named(DOMAIN_STATE, d.status)}</span>{d.missingSince && <span className="fine"> {t('admin.missingSince', { date: when(d.missingSince) })}</span>}</td>
-                <td data-label={t('admin.colAddresses')}>{d.addresses}</td>
+                <td data-label={t('admin.colAddresses')}>{d.addresses}{!!d.members && <span className="fine"> · {t('admin.domainMembers', { count: d.members })}</span>}</td>
                 <td data-label={t('admin.colAdded')}>{when(d.added)}</td>
                 <td data-label={t('admin.colLastChecked')}>{when(d.checked)}</td>
               </tr>

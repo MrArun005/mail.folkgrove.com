@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { callerOf } from './aliases.mjs';
 import { isHeld } from './retention.mjs';
 import { forgetFiles } from './files.mjs';
-import { readMeta, writeMeta } from './domains.mjs';
+import { domainsOfDeleted } from './domains.mjs';
 
 export const readRetired = (file) =>
   file && existsSync(file) ? readFileSync(file, 'utf8').split('\n').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
@@ -30,11 +30,10 @@ export async function retireNames({ cfg, jmap }, id, name) {
   const names = [...new Set([String(name).toLowerCase(), ...Object.values(acct.list?.[0]?.aliases ?? {}).map(full)])];
   retire(cfg, names);
   // Their domains lose their owner now: account ids can come back, and a later account must never match this one.
-  // Paused, and released for others after RELEASE_DAYS (domains.mjs); their addresses stay retired.
-  const now = new Date().toISOString();
-  const theirs = (doms.list ?? []).map((d) => ({ d, m: readMeta(d.description) })).filter(({ m }) => m?.owner === id);
-  if (theirs.length) await jmap([['x:Domain/set', { update: Object.fromEntries(theirs.map(({ d, m }) =>
-    [d.id, { description: writeMeta({ ...m, owner: null, orphaned: now, paused: true }) }])) }, 'o']]);
+  // Paused, and released for others after RELEASE_DAYS (domains.mjs); their addresses stay retired. Addresses the
+  // owner gave to other accounts on those domains are retired and removed too, and where this account was only a
+  // member of someone's domain it leaves that domain's list (domainsOfDeleted).
+  await domainsOfDeleted({ cfg, jmap }, id);
   return names;
 }
 

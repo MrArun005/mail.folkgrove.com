@@ -4,10 +4,21 @@
 // new addresses show up in Compose's From menu by themselves.
 //
 // State lives in Stalwart, not here: a claimed domain is an x:Domain whose description is TAG + JSON
-// { owner, token, added, checked, missing, paused }. A domain still waiting for its TXT record isn't stored at all:
-// its token is an HMAC of (account, domain), so the same person always sees the same record to add.
-// ponytail: v1 = one owner, addresses for that owner only. Sharing a domain with other accounts (an organisation)
-// would add a member list to the JSON and let the owner pick an account per address.
+// { owner, token, added, checked, missing, paused, members }. A domain still waiting for its TXT record isn't stored
+// at all: its token is an HMAC of (account, domain), so the same person always sees the same record to add.
+//
+// Shared (organisation) domains: the owner can give addresses on the domain to other accounts on this server
+// ("members"). Such an address is an alias of the member's account, so its mail lands in their mailbox and it shows
+// up in their From menu like any other alias. The claim keeps the list: members = { <account id>: [local parts] }.
+// It lives in the claim, next to the owner, because that is the one record every path that ends a domain already
+// reads (removal, pause, release, the owner's account being deleted), so none of them can forget the members.
+// The aliases on the members' accounts are what actually exists; the list says where to look and what was given
+// out. A listed address that is no longer on its account (the account was deleted behind our back, in Stalwart's
+// own admin) is retired the next time the list is written, so it still can't be handed to someone else.
+// What a member can do: use the address, see who gave it to them, and give it up. Nothing else: the domain, its
+// records and its other addresses are the owner's.
+// ponytail: one owner per domain, and no invitation step: the owner adds an address to an account and it is there
+// (the member can remove it). Co-owners and "accept first" would be more fields in the claim.
 import { createHmac } from 'node:crypto';
 import { Resolver } from 'node:dns/promises';
 import { randomBytes } from 'node:crypto';
@@ -25,6 +36,7 @@ const LOCAL_RE = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 
 export const cleanDomain = (s) => (typeof s === 'string' ? s.trim().toLowerCase().replace(/\.$/, '') : '');
 const under = (d, parent) => d === parent || d.endsWith(`.${parent}`);
+const sameAddress = (a, b) => a.id === b.id && a.name === b.name;
 
 /** null if the user may try to add this domain, else { code, message }. `ours`: our own domains and host names. */
 export function checkDomain(d, ours = []) {
@@ -115,16 +127,83 @@ export async function customDomains(jmap) {
 /** Admin console view: every custom domain with its owner (null once that account was deleted) and status. */
 export async function adminDomainList(jmap) {
   const doms = await customDomains(jmap);
-  const owners = [...new Set(doms.map((d) => d.meta.owner))];
-  const accts = owners.length ? (await jmap([['x:Account/get', { ids: owners, properties: ['emailAddress', 'aliases'] }, 'g']])).list : [];
+  const ids = [...new Set(doms.flatMap((d) => [d.meta.owner, ...Object.keys(d.meta.members ?? {})]).filter(Boolean))];
+  const accts = ids.length ? (await jmap([['x:Account/get', { ids, properties: ['emailAddress', 'aliases'] }, 'g']])).list : [];
   const byId = new Map(accts.map((a) => [a.id, a]));
+  const on = (accountId, domainId) => Object.values(byId.get(accountId)?.aliases ?? {}).filter((x) => x.domainId === domainId).length;
   return doms.map(({ id, name, meta }) => {
-    const a = byId.get(meta.owner);
-    return { name, owner: a?.emailAddress ?? null, status: meta.paused ? 'paused' : meta.missing ? 'missing' : 'active',
+    // addresses: the owner's and the members' together; members: other accounts that have one.
+    const members = Object.keys(meta.members ?? {}).filter((m) => on(m, id) > 0);
+    return { name, owner: byId.get(meta.owner)?.emailAddress ?? null, status: meta.paused ? 'paused' : meta.missing ? 'missing' : 'active',
       added: meta.added, checked: meta.checked ?? null, missingSince: meta.missing ?? null,
-      addresses: Object.values(a?.aliases ?? {}).filter((x) => x.domainId === id).length };
+      addresses: on(meta.owner, id) + members.reduce((n, m) => n + on(m, id), 0), members: members.length };
   });
 }
+
+const aliasesOf = async (jmap, id) => (await jmap([['x:Account/get', { ids: [id], properties: ['aliases'] }, 'g']])).list[0]?.aliases ?? {};
+const setAccount = async (jmap, id, patch) => {
+  const r = await jmap([['x:Account/set', { update: { [id]: patch } }, 'u']]);
+  if (!r.updated || !(id in r.updated)) throw Object.assign(new Error('account update refused'), { detail: r.notUpdated?.[id] });
+};
+// The claim is one string, rewritten whole. Whoever changes it holds the domain's lock and starts from what
+// Stalwart has now, so a status re-check and a member change can't overwrite each other.
+// Lock order: the domain first, then an account (aliases.mjs `serial`). Never call these while holding the lock.
+const lockDomain = (d, fn) => serial(`domain:${d.id}`, fn);
+const claimOf = async (jmap, d) => readMeta((await jmap([['x:Domain/get', { ids: [d.id], properties: ['description'] }, 'm']])).list[0]?.description) ?? d.meta;
+const putClaim = (jmap, d, meta) => jmap([['x:Domain/set', { update: { [d.id]: { description: writeMeta(meta) } } }, 'm']]).then(() => (d.meta = meta));
+/** Change a domain's claim: `change` is the fields to set, or a function of the claim as it is now. */
+export const updateClaim = (jmap, d, change) => lockDomain(d, async () => {
+  const cur = await claimOf(jmap, d);
+  return putClaim(jmap, d, typeof change === 'function' ? change(cur) : { ...cur, ...change });
+});
+
+/** Members' addresses that really exist: [{ id, account, name, enabled }] (id: the member's account). */
+export async function memberAddresses(jmap, d, meta = d.meta) {
+  const listed = meta.members ?? {}, ids = Object.keys(listed);
+  if (!ids.length) return [];
+  const accts = (await jmap([['x:Account/get', { ids, properties: ['emailAddress', 'aliases'] }, 'g']])).list;
+  return accts.flatMap((a) => Object.values(a.aliases ?? {}).filter((x) => x.domainId === d.id && listed[a.id].includes(x.name))
+    .map((x) => ({ id: a.id, account: a.emailAddress, name: x.name, enabled: x.enable !== false })));
+}
+const asList = (addresses) => addresses.reduce((m, x) => ({ ...m, [x.id]: [...(m[x.id] ?? []), x.name] }), {});
+const retireNew = (cfg, names) => { const fresh = names.filter((n) => !cfg.extraReserved?.includes(n)); if (fresh.length) retire(cfg, fresh); };
+
+/** Take addresses on this domain off one account (all of them when names is null). Retired first, so nobody gets them later. */
+export const removeAddresses = ({ cfg, jmap }, accountId, d, names) => serial(accountId, async () => {
+  const current = Object.values(await aliasesOf(jmap, accountId));
+  const gone = current.filter((a) => a.domainId === d.id && (!names || names.includes(a.name)));
+  if (!gone.length) return 0;
+  retireNew(cfg, gone.map((a) => `${a.name}@${d.name}`));
+  // The whole list is written back: positions shift when entries go, and this runs under the account's lock.
+  await setAccount(jmap, accountId, { aliases: Object.fromEntries(current.filter((a) => !gone.includes(a)).map((a, i) => [String(i), a])) });
+  return gone.length;
+});
+
+/**
+ * Under the domain's lock, before the member list is rewritten: the claim as it is now and the members' addresses
+ * that really exist. Listed ones that are no longer on their account are retired here (see the top of this file).
+ */
+async function membersNow({ cfg, jmap }, d) {
+  const meta = await claimOf(jmap, d);
+  const real = await memberAddresses(jmap, d, meta);
+  retireNew(cfg, Object.entries(meta.members ?? {}).flatMap(([id, names]) => names.filter((name) => !real.some((x) => sameAddress(x, { id, name }))).map((name) => `${name}@${d.name}`)));
+  return { meta, real };
+}
+
+/**
+ * Take members' addresses off their accounts and out of the claim: those `pick` chooses, or all of them. Retired
+ * like every removed address, never recycled. The aliases go first and the claim second: stopping halfway leaves a
+ * listed address that no longer exists (retired again next time), never an address nobody knows about.
+ * Used when the owner or the member removes one, when the domain is removed or released, and by account.mjs when
+ * the owner's or a member's account is deleted. Resolves to how many went.
+ */
+export const removeMembers = ({ cfg, jmap }, d, pick = null) => lockDomain(d, async () => {
+  const { meta, real } = await membersNow({ cfg, jmap }, d);
+  const gone = pick ? real.filter(pick) : real;
+  for (const id of new Set(gone.map((x) => x.id))) await removeAddresses({ cfg, jmap }, id, d, gone.filter((x) => x.id === id).map((x) => x.name));
+  await putClaim(jmap, d, { ...meta, members: asList(real.filter((x) => !gone.includes(x))) });
+  return gone.length;
+});
 
 /**
  * The key for verification tokens: DOMAIN_SECRET, or a random one made on first start and kept next to RETIRED_FILE.
@@ -157,23 +236,22 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     .find((r) => r.type === 'MX')?.value.split(' ')[1]?.replace(/\.$/, '') ?? `mail.${cfg.domain}`;
   const ours = async () => [cfg.domain, await host(), ...(cfg.reservedDomains ?? [])];
   const zoneOf = async (id) => (await jmap([['x:Domain/get', { ids: [id], properties: ['dnsZoneFile'] }, 'z']])).list[0]?.dnsZoneFile ?? '';
-  const aliasesOf = async (id) => (await jmap([['x:Account/get', { ids: [id], properties: ['aliases'] }, 'g']])).list[0]?.aliases ?? {};
-  const setAccount = async (id, patch) => {
-    const r = await jmap([['x:Account/set', { update: { [id]: patch } }, 'u']]);
-    if (!r.updated || !(id in r.updated)) throw Object.assign(new Error('account update refused'), { detail: r.notUpdated?.[id] });
-  };
+  const ctx = { cfg, jmap };
   // The account's creation time is part of the token: Stalwart may hand a deleted account's id to a new account, and
   // an old record left in DNS must never verify the newcomer's claim.
   const tokenOf = async (who, name) => {
     const at = (await jmap([['x:Account/get', { ids: [who.id], properties: ['createdAt'] }, 'c']])).list[0]?.createdAt ?? '';
     return tokenFor(secret, `${who.id}/${at}`, name);
   };
-  const setMeta = (d, meta) => jmap([['x:Domain/set', { update: { [d.id]: { description: writeMeta(meta) } } }, 'm']]);
-  /** Switch every address on the domain on or off (paused domains neither send nor receive). */
-  const switchAll = (owner, domainId, enable) => serial(owner, async () => {
-    const patch = Object.fromEntries(Object.entries(await aliasesOf(owner)).filter(([, a]) => a.domainId === domainId).map(([pos]) => [`aliases/${pos}/enable`, enable]));
-    if (Object.keys(patch).length) await setAccount(owner, patch);
-  });
+  /** Switch every address on the domain on or off, the members' too (paused domains neither send nor receive). */
+  const switchAll = async (d, enable) => {
+    const members = await memberAddresses(jmap, d, await claimOf(jmap, d));
+    for (const id of new Set([d.meta.owner, ...members.map((x) => x.id)])) await serial(id, async () => {
+      const mine = (a) => a.domainId === d.id && (id === d.meta.owner || members.some((x) => sameAddress(x, { id, name: a.name })));
+      const patch = Object.fromEntries(Object.entries(await aliasesOf(jmap, id)).filter(([, a]) => mine(a)).map(([pos]) => [`aliases/${pos}/enable`, enable]));
+      if (Object.keys(patch).length) await setAccount(jmap, id, patch);
+    });
+  };
 
   /**
    * Record what the verification TXT says now. Gone for GRACE_DAYS: pause the domain (addresses off) and tell the
@@ -184,25 +262,27 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     // Released for someone else: its account is gone, or the record has been missing well past the pause.
     const since = m.orphaned ?? (m.paused && m.missing ? new Date(Date.parse(m.missing) + GRACE_DAYS * 86400e3).toISOString() : null);
     if (since && now - Date.parse(since) > RELEASE_DAYS * 86400e3 && (m.orphaned || found === false)) {
-      if (m.owner) await removeAddresses({ id: m.owner }, d, null);
+      await removeMembers(ctx, d); // members' addresses first: retired with the owner's, nothing left pointing at the domain
+      if (m.owner) await removeAddresses(ctx, m.owner, d, null);
       await destroyDomain(d);
       console.log(`domains: released ${d.name}`);
       return null;
     }
-    if (found === null || m.orphaned) { if (!m.orphaned) return d.meta; await setMeta(d, m); return (d.meta = m); }
+    // Only the fields this check owns are written, over the claim as it is now (updateClaim): the member list in
+    // `m` may be a moment old.
+    if (found === null || m.orphaned) return m.orphaned ? updateClaim(jmap, d, { checked: m.checked }) : d.meta;
     if (found) {
-      if (m.paused) await switchAll(m.owner, d.id, true);
+      if (m.paused) await switchAll(d, true);
       Object.assign(m, { missing: null, paused: false });
     } else {
       m.missing ??= m.checked;
       if (!m.paused && now - Date.parse(m.missing) > GRACE_DAYS * 86400e3) {
-        await switchAll(m.owner, d.id, false);
+        await switchAll(d, false);
         m.paused = true;
         await tell(m.owner, d.name).catch((e) => console.error('domains: couldn’t email the owner:', e.message));
       }
     }
-    await setMeta(d, m);
-    return (d.meta = m);
+    return updateClaim(jmap, d, { checked: m.checked, missing: m.missing, paused: m.paused });
   }
   async function tell(owner, name) {
     if (!cfg.systemMail) return; // without system mail, Settings → Your domain shows it
@@ -218,41 +298,61 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     }
   }
 
-  /** What Settings shows for one domain: its status, the records with live status, and its addresses. */
+  /** What Settings shows the owner for one domain: its status, the records with live status, and its addresses. */
   async function view(d, who) {
     const recs = wantedRecords(d.name, { token: d.meta?.token ?? await tokenOf(who, d.name), mailHost: await host(), spfDomain: cfg.domain, zone: d.id ? await zoneOf(d.id) : '' });
     const records = await Promise.all(recs.map(async (r) => ({ ...r, ok: await hasRecord(dns, r) })));
     if (d.id) await refresh(d, records[0].ok);
-    const addresses = d.id ? Object.values(await aliasesOf(who.id)).filter((a) => a.domainId === d.id)
+    const addresses = d.id ? Object.values(await aliasesOf(jmap, who.id)).filter((a) => a.domainId === d.id)
       .map((a) => ({ name: a.name, email: `${a.name}@${d.name}`, enabled: a.enable !== false, main: a.name === who.name })) : [];
+    // Addresses given to other accounts. maxAddresses is for the domain: the owner's and the members' together.
+    const members = d.id ? (await memberAddresses(jmap, d)).map((x) => ({ account: x.account, name: x.name, email: `${x.name}@${d.name}`, enabled: x.enabled })) : [];
     return { name: d.name, status: !d.id ? 'pending' : d.meta.paused ? 'paused' : d.meta.missing ? 'missing' : 'active',
       missingSince: d.meta?.missing ?? null, pausesAt: d.meta?.missing && !d.meta.paused ? new Date(Date.parse(d.meta.missing) + GRACE_DAYS * 86400e3).toISOString() : null,
-      dkimPending: !!d.id && !records.some((r) => r.kind === 'dkim'), records, addresses, maxAddresses };
+      dkimPending: !!d.id && !records.some((r) => r.kind === 'dkim'), records, addresses, members, maxAddresses };
   }
 
-  async function addAddress(who, d, name) {
+  /**
+   * Add name@domain as an alias of `to`: the owner's own account, or a member's (then the claim lists it first, so
+   * an address can never exist that the claim doesn't know about). One cap for the whole domain, and no name twice.
+   */
+  const addAddress = (who, d, name, to = who.id) => {
     const email = `${name}@${d.name}`;
-    if ((cfg.extraReserved ?? []).includes(email)) return [409, 'retired', `${email} was used before and can’t be used again.`];
-    return serial(who.id, async () => {
-      const current = await aliasesOf(who.id);
-      if (Object.values(current).some((a) => a.domainId === d.id && a.name === name)) return [409, 'exists', `You already have ${email}.`];
-      if (Object.values(current).filter((a) => a.domainId === d.id).length >= maxAddresses) return [409, 'too_many', `You can have up to ${maxAddresses} addresses on ${d.name}.`];
-      if (Object.keys(current).length >= (cfg.maxAliasesTotal ?? 1000)) return [409, 'too_many_total', 'This account has used all of its addresses. Contact support to raise the limit.'];
-      await setAccount(who.id, { [`aliases/${Object.keys(current).length + 1000}`]: { name, domainId: d.id, enable: !d.meta.paused, description: `domain: ${d.name}` } });
-      return null;
+    return lockDomain(d, async () => {
+      const { meta, real: members } = await membersNow(ctx, d);
+      if ((cfg.extraReserved ?? []).includes(email)) return [409, 'retired', `${email} was used before and can’t be used again.`];
+      const own = Object.values(await aliasesOf(jmap, who.id)).filter((a) => a.domainId === d.id);
+      if (own.some((a) => a.name === name)) return [409, 'exists', `You already have ${email}.`];
+      if (members.some((x) => x.name === name)) return [409, 'exists', `${email} already belongs to ${members.find((x) => x.name === name).account}.`];
+      if (own.length + members.length >= maxAddresses) return [409, 'too_many', `You can have up to ${maxAddresses} addresses on ${d.name}.`];
+      const listed = asList(members);
+      if (to !== who.id) await putClaim(jmap, d, { ...meta, members: asList([...members, { id: to, name }]) });
+      let no;
+      try {
+        no = await serial(to, async () => {
+          const current = await aliasesOf(jmap, to);
+          if (Object.keys(current).length >= (cfg.maxAliasesTotal ?? 1000)) return [409, 'too_many_total', `${to === who.id ? 'This' : 'That'} account has used all of its addresses. Contact support to raise the limit.`];
+          await setAccount(jmap, to, { [`aliases/${Object.keys(current).length + 1000}`]: { name, domainId: d.id, enable: !meta.paused, description: `domain: ${d.name}` } });
+          return null;
+        });
+      } catch (e) { no = e; }
+      if (no && to !== who.id) await putClaim(jmap, d, { ...meta, members: listed }).catch(() => {}); // not given after all
+      if (no instanceof Error) throw no;
+      return no;
     });
-  }
+  };
 
-  /** Remove addresses (all of them when names is null). They're retired first, so nobody gets them later. */
-  const removeAddresses = (who, d, names) => serial(who.id, async () => {
-    const current = Object.values(await aliasesOf(who.id));
-    const gone = current.filter((a) => a.domainId === d.id && (!names || names.includes(a.name)));
-    if (!gone.length) return 0;
-    retire(cfg, gone.map((a) => `${a.name}@${d.name}`));
-    // The whole list is written back: positions shift when entries go, and this runs under the account's lock.
-    await setAccount(who.id, { aliases: Object.fromEntries(current.filter((a) => !gone.includes(a)).map((a, i) => [String(i), a])) });
-    return gone.length;
-  });
+  /** The account on our own domain with exactly this address, for the owner to give an address to. */
+  async function memberAccount(address) {
+    const [local, domain, extra] = address.split('@');
+    if (!local || domain !== cfg.domain || extra !== undefined || local.length > 64) return [400, 'bad_account', `Enter their full address here, like sam@${cfg.domain}.`];
+    const { ids } = await jmap([['x:Account/query', { filter: { '@type': 'User', name: local, domainId: await getDomainId() } }, 'q']]);
+    const [a] = ids.length === 1 ? (await jmap([['x:Account/get', { ids, properties: ['name', 'roles'] }, 'g']])).list : [];
+    if (!a || String(a.name).toLowerCase() !== local) return [404, 'no_such_account', `There’s no account ${address} on this server.`];
+    // Server administrators (a Stalwart role other than User) are managed in Stalwart's own admin, as in admin.mjs.
+    if (a.roles?.['@type'] !== 'User') return [403, 'protected', 'That account can’t be given addresses here.'];
+    return a.id;
+  }
 
   /** Its DKIM keys first (Stalwart refuses to destroy a domain they still point at), then the domain. */
   async function destroyDomain(d) {
@@ -265,8 +365,15 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
 
   const handlers = {
     'GET ': async (who) => {
-      const mine = (await customDomains(jmap)).filter((d) => d.meta.owner === who.id);
-      return { domains: await Promise.all(mine.map((d) => view(d, who))), maxDomains };
+      const all = await customDomains(jmap);
+      const mine = all.filter((d) => d.meta.owner === who.id);
+      // Addresses the caller was given on other people's domains: what it is, who gave it, nothing about the domain.
+      const given = all.filter((d) => d.meta.members?.[who.id]);
+      const theirs = given.length ? await aliasesOf(jmap, who.id) : {};
+      const owners = new Map(given.length ? (await jmap([['x:Account/get', { ids: [...new Set(given.map((d) => d.meta.owner).filter(Boolean))], properties: ['emailAddress'] }, 'o']])).list.map((a) => [a.id, a.emailAddress]) : []);
+      const memberOf = given.flatMap((d) => Object.values(theirs).filter((a) => a.domainId === d.id && d.meta.members[who.id].includes(a.name))
+        .map((a) => ({ domain: d.name, name: a.name, email: `${a.name}@${d.name}`, enabled: a.enable !== false, owner: owners.get(d.meta.owner) ?? null })));
+      return { domains: await Promise.all(mine.map((d) => view(d, who))), maxDomains, memberOf };
     },
     // Add a domain, or "Check again" while it waits for its TXT record. Claimed the moment the record is seen.
     'POST ': async (who, req) => {
@@ -308,11 +415,34 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     },
     'DELETE addresses': async (who, _req, d, name) => {
       if (name === who.name) return [400, 'main', 'This is your main address on the domain. Remove the whole domain instead.'];
-      if (!(await removeAddresses(who, d, [name]))) return [404, 'not_found', 'That address no longer exists.'];
+      if (!(await removeAddresses(ctx, who.id, d, [name]))) return [404, 'not_found', 'That address no longer exists.'];
       return { domain: await view(d, who) };
     },
+    // Give an address on the domain to another account on this server: { account: "sam@DOMAIN", name: "sam" }.
+    'POST members': async (who, req, d) => {
+      const body = await readJson(req).catch(() => ({}));
+      const name = typeof body.name === 'string' ? body.name.trim().toLowerCase().replace(/@.*$/, '') : '';
+      const bad = checkLocal(name);
+      if (bad) return [400, 'bad_name', bad];
+      // The same budget as the owner's own addresses; it also keeps this from being a fast way to test which accounts exist.
+      const wait = addrLimit.take(who.id);
+      if (wait) return [429, 'rate_limited', 'You’ve made a lot of addresses recently. Try again in a little while.', { retryAfter: wait }];
+      const to = await memberAccount(typeof body.account === 'string' ? body.account.trim().toLowerCase() : '');
+      if (Array.isArray(to)) return to;
+      if (to === who.id) return [400, 'self', 'That’s your own account. Add the address for yourself instead.'];
+      const no = await addAddress(who, d, name, to);
+      if (!no) console.log(`domains: ${who.name} gave ${name}@${d.name} to account ${to}`);
+      return no ?? { domain: await view(d, who) };
+    },
+    // The owner takes a member's address back, or a member gives up their own. Retired either way.
+    'DELETE members': async (who, _req, d, name) => {
+      const owner = d.meta.owner === who.id;
+      if (!(await removeMembers(ctx, d, (x) => x.name === name && (owner || x.id === who.id)))) return [404, 'not_found', 'That address no longer exists.'];
+      return owner ? { domain: await view(d, who) } : {};
+    },
     'DELETE domain': async (who, _req, d) => {
-      await removeAddresses(who, d, null);
+      await removeMembers(ctx, d); // members' addresses are retired with the owner's
+      await removeAddresses(ctx, who.id, d, null);
       await destroyDomain(d);
       console.log(`domains: ${who.name} removed ${d.name}`);
       return {};
@@ -320,7 +450,7 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
   };
 
   const handle = async function handle(req, res, url) {
-    const m = url.pathname.match(/^\/api\/domains(?:\/([a-z0-9.-]{1,253})(?:\/addresses(?:\/([a-z0-9._-]{1,64}))?)?)?$/);
+    const m = url.pathname.match(/^\/api\/domains(?:\/([a-z0-9.-]{1,253})(?:\/(addresses|members)(?:\/([a-z0-9._-]{1,64}))?)?)?$/);
     if (!m) return false;
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);
     if (blocked) return fail(res, 429, 'rate_limited', 'Too many failed sign-ins from your network. Try again later.', { retryAfter: blocked }), true;
@@ -329,21 +459,22 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     if (!who) return fail(res, 401, 'unauthorized', 'Please sign in again.'), true;
     badAuth.refund(ip, win);
 
-    const sub = !m[1] ? '' : url.pathname.includes('/addresses') ? 'addresses' : 'domain';
+    const sub = !m[1] ? '' : m[2] ?? 'domain';
     const key = `${req.method} ${sub}`;
     const fn = handlers[key];
-    if (!fn || (sub === 'addresses' && (req.method === 'DELETE') !== !!m[2])) return fail(res, 405, 'method_not_allowed', 'Not allowed.'), true;
+    if (!fn || (m[2] && (req.method === 'DELETE') !== !!m[3])) return fail(res, 405, 'method_not_allowed', 'Not allowed.'), true;
     if (!sub || key === 'POST ') {
       const wait = lookups.take(who.id);
       if (wait) return fail(res, 429, 'rate_limited', 'That’s a lot of checks. DNS changes take a while to show up anyway: try again in a few minutes.', { retryAfter: wait }), true;
     }
     let d;
     if (sub) {
-      d = (await customDomains(jmap)).find((x) => x.name === m[1] && x.meta.owner === who.id);
+      // The owner manages the domain. A member gets one thing: giving up their own address (DELETE members).
+      d = (await customDomains(jmap)).find((x) => x.name === m[1] && (x.meta.owner === who.id || (key === 'DELETE members' && x.meta.members?.[who.id])));
       if (!d) return fail(res, 404, 'not_found', 'That domain isn’t on your account.'), true;
     }
     let out;
-    try { out = await fn(who, req, d, m[2]); }
+    try { out = await fn(who, req, d, m[3]); }
     catch (e) {
       console.error(`domains: ${key} by ${who.name} failed:`, e.message, e.detail ? JSON.stringify(e.detail) : '');
       return fail(res, 502, 'stalwart_refused', 'The mail server refused that change. Try again in a few minutes.'), true;
@@ -352,4 +483,20 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     return send(res, 200, { ok: true, ...out }), true;
   };
   return Object.assign(handle, { recheckAll, refresh });
+}
+
+/**
+ * An account is about to be deleted (account.mjs retireNames, before the destroy): nothing of its domains may be
+ * left dangling. Its own domains lose their owner (paused, released after RELEASE_DAYS) and every member's address
+ * on them is retired and taken off the member's account now: nobody is left to manage them. Where it was a member,
+ * its addresses are retired and it leaves the claim: account ids can come back, and a later account with the same
+ * id must never be taken for a member.
+ */
+export async function domainsOfDeleted({ cfg, jmap }, id, now = new Date().toISOString()) {
+  for (const d of await customDomains(jmap)) {
+    if (d.meta.owner === id) {
+      await removeMembers({ cfg, jmap }, d);
+      await updateClaim(jmap, d, (m) => ({ ...m, owner: null, orphaned: now, paused: true, members: {} }));
+    } else if (d.meta.members?.[id]) await removeMembers({ cfg, jmap }, d, (x) => x.id === id);
+  }
 }

@@ -1038,6 +1038,27 @@ export const en = {
   'domains.addressPlaceholder': 'hello',
   'domains.newAddress': 'New address at {domain}',
   'domains.addAddress': 'Add address',
+  // Shared (organisation) domains: addresses the owner gives to other accounts
+  'domains.membersTitle': 'Addresses for other people',
+  'domains.membersIntro': 'Give an address at {domain} to someone else who has an account here. Mail to it goes to their mailbox, not yours, and they can send from it. Only you can change the domain.',
+  'domains.addressesUsed': '{used} of {max} addresses used, yours included.',
+  'domains.memberFor': 'for {account}',
+  'domains.memberNamePlaceholder': 'sam',
+  'domains.memberNewAddress': 'Their new address at {domain}',
+  'domains.memberAccountPlaceholder': 'sam@{domain}',
+  'domains.memberAccountLabel': 'The address they sign in with, at {domain}',
+  'domains.giveAddress': 'Give address',
+  'domains.takeBack': 'Take back {email}',
+  'domains.takeBackTitle': 'Take {email} back from {account}?',
+  'domains.takeBackBody': 'Mail sent to it will bounce, and it can’t be given to anyone again. Mail they already received stays with them.',
+  'domains.takeBackConfirm': 'Take back',
+  'domains.givenTitle': 'Addresses you were given',
+  'domains.givenIntro': 'The owner of a domain gave you these. Mail to them arrives here, and you can pick them in From when you write. The owner can take them back.',
+  'domains.givenBy': 'from {owner}',
+  'domains.giveUp': 'Give up {email}',
+  'domains.giveUpTitle': 'Give up {email}?',
+  'domains.giveUpBody': 'Mail sent to it will bounce, and it can’t be brought back, by you or anyone.',
+  'domains.giveUpConfirm': 'Give up address',
 
   // Sharing, delegation, team comments
   'sharing.read': 'Can read',
@@ -1439,6 +1460,7 @@ export const en = {
   'admin.tabDomains': 'Domains',
   'admin.tabAbuse': 'Suspended & inactive',
   'admin.tabRetention': 'Retention',
+  'admin.tabAudit': 'Audit log',
   // Why the mail server blocked an IP address
   'admin.reasonAuthFailure': 'Too many failed sign-ins',
   'admin.reasonRcptToFailure': 'Too many unknown recipients',
@@ -1460,7 +1482,6 @@ export const en = {
   'admin.statQueued': 'Waiting to send',
   'admin.blockedIps': 'Blocked IP addresses',
   'admin.statNewAccounts': 'On new-account limits',
-  'admin.tabAudit': 'Audit log',
   'admin.sendingSuspended': 'Sending suspended',
   'admin.statHeld': 'Held for review',
   'admin.open': 'Open',
@@ -1555,8 +1576,9 @@ export const en = {
   'admin.noNewLimits': 'No accounts are on new-account limits.',
   'admin.liftLimits': 'Lift limits',
   'admin.domainsTitle': 'Users’ domains',
-  'admin.domainsHelp': 'Domains people added in Settings → Your domain. Each belongs to one account. Its ownership record is checked every few hours; after 7 days without it, the domain’s addresses pause.',
+  'admin.domainsHelp': 'Domains people added in Settings → Your domain. Each belongs to one account, which can give addresses on it to other accounts. Its ownership record is checked every few hours; after 7 days without it, the domain’s addresses pause.',
   'admin.noDomains': 'Nobody has added a domain yet.',
+  'admin.domainMembers': { one: 'some for {count} other account', other: 'some for {count} other accounts' },
   'admin.ownerDeleted': 'Deleted account (kept, never reused)',
   // After "Record missing": since when
   'admin.missingSince': 'since {date}',
@@ -1609,28 +1631,6 @@ export const en = {
   'admin.byHold': 'after several messages were held as spam; only an admin can lift it',
   'admin.refusingMail': 'Refusing new mail',
   'admin.disableInactiveRefuses': 'They can’t sign in or send, and new mail to them is refused as an inactive mailbox, until you enable the account again (Users tab). Nothing is deleted.',
-  'admin.inactiveTitle': 'Inactive accounts',
-  // {count}: months without signing in; {since}: a date
-  'admin.inactiveHelp': {
-    one: 'A daily check emails accounts with no sign-in for close to {count} month (60, 30 and 7 days before). Accounts past {count} month are listed as due: blocking or deleting them is up to you. Sign-ins are counted since {since}.',
-    other: 'A daily check emails accounts with no sign-in for close to {count} months (60, 30 and 7 days before). Accounts past {count} months are listed as due: blocking or deleting them is up to you. Sign-ins are counted since {since}.',
-  },
-  // INACTIVE_MONTHS is a setting name; keep it as is
-  'admin.inactiveOff': 'The inactive-account check is off on this server (INACTIVE_MONTHS).',
-  'admin.noInactive': 'No inactive accounts.',
-  'admin.notSince': 'Not since {date}',
-  'admin.dueBlocking': 'Due for blocking',
-  'admin.reminded': { one: 'Reminded ({count} day before)', other: 'Reminded ({count} days before)' },
-  // ── Inbox smarts: tabs, purchase and travel cards, add to calendar, verified senders ──
-  // context: inbox tab for marketing mail (Gmail calls it Promotions)
-  'smarts.promotions': 'Promotions',
-  // context: inbox tab for mail from social networks
-  'smarts.social': 'Social',
-  // context: inbox tab for discussion lists and forums
-  'smarts.forums': 'Forums',
-  // context: search filter chip: receipts, deliveries, flights and hotel bookings
-  'smarts.chipPurchases': 'Purchases & trips',
-  'smarts.sortLabel': 'Sort newsletters, notifications and social mail into tabs',
   // Audit log (what administrators changed in this console)
   'admin.auditHelp': 'Every change made in this console: who made it, what it was, who or what it was about, and whether it went through. Newest first. Passwords and the contents of messages are never recorded.',
   'admin.noAudit': 'Nothing has been changed in this console yet.',
@@ -1677,6 +1677,28 @@ export const en = {
   'admin.auditKeepForever': 'mail kept forever',
   'admin.auditKeepServer': 'the server’s rule for how long mail is kept',
 
+  'admin.inactiveTitle': 'Inactive accounts',
+  // {count}: months without signing in; {since}: a date
+  'admin.inactiveHelp': {
+    one: 'A daily check emails accounts with no sign-in for close to {count} month (60, 30 and 7 days before). Accounts past {count} month are listed as due: blocking or deleting them is up to you. Sign-ins are counted since {since}.',
+    other: 'A daily check emails accounts with no sign-in for close to {count} months (60, 30 and 7 days before). Accounts past {count} months are listed as due: blocking or deleting them is up to you. Sign-ins are counted since {since}.',
+  },
+  // INACTIVE_MONTHS is a setting name; keep it as is
+  'admin.inactiveOff': 'The inactive-account check is off on this server (INACTIVE_MONTHS).',
+  'admin.noInactive': 'No inactive accounts.',
+  'admin.notSince': 'Not since {date}',
+  'admin.dueBlocking': 'Due for blocking',
+  'admin.reminded': { one: 'Reminded ({count} day before)', other: 'Reminded ({count} days before)' },
+  // ── Inbox smarts: tabs, purchase and travel cards, add to calendar, verified senders ──
+  // context: inbox tab for marketing mail (Gmail calls it Promotions)
+  'smarts.promotions': 'Promotions',
+  // context: inbox tab for mail from social networks
+  'smarts.social': 'Social',
+  // context: inbox tab for discussion lists and forums
+  'smarts.forums': 'Forums',
+  // context: search filter chip: receipts, deliveries, flights and hotel bookings
+  'smarts.chipPurchases': 'Purchases & trips',
+  'smarts.sortLabel': 'Sort newsletters, notifications and social mail into tabs',
   'smarts.tabsLegend': 'Tabs next to Primary',
   'smarts.tabsNote': 'People’s messages stay in Primary. Sorting happens on the server as mail arrives, so every device shows the same tabs.',
   // {count}: messages already in the Inbox that were sorted into tabs
