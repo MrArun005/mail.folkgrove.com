@@ -271,6 +271,94 @@ export default {
   'privacy.reset': 'Neu zählen', // review: new
   'privacy.resetTitle': 'Datenschutzbericht löschen?', // review: new
   'privacy.resetBody': 'Die Zähler auf diesem Gerät beginnen wieder bei null. Ihre Post bleibt unverändert.', // review: new
+  'folder.feed': 'Feed', // review: new
+  'filters.wouldCatch': { one: 'Das hätte {count} Ihrer letzten {of} Unterhaltungen erfasst:', other: 'Das hätte {count} Ihrer letzten {of} Unterhaltungen erfasst:' }, // review: new
+  'filters.wouldCatchNone': 'Das hätte keine Ihrer letzten {of} Unterhaltungen erfasst.', // review: new
+  'filters.andMore': { one: 'und {count} weitere', other: 'und {count} weitere' }, // review: new
+  'threadNotes.private': 'Private Notizen', // review: new
+  'threadNotes.privateNote': 'nur Sie können sie sehen; sie werden nie gesendet', // review: new
+  'threadNotes.add': 'Private Notiz hinzufügen', // review: new
+  'threadNotes.placeholder': 'Eine Notiz für Sie selbst zu dieser Unterhaltung…', // review: new
+  'threadNotes.save': 'Notiz speichern', // review: new
+  'threadNotes.delete': 'Notiz löschen', // review: new
+  'compose.whenActive': 'Wenn {name} normalerweise E-Mails liest', // review: new
+  'feed.intro': 'Newsletter und Benachrichtigungen aus Ihrem Posteingang, zum Lesen wie eine Seite. Nichts wird als gelesen markiert, bis Sie es sagen.', // review: new
+  'feed.empty': 'Keine Newsletter oder Benachrichtigungen in Ihrem Posteingang.', // review: new
+  'feed.markAllRead': 'Alle als gelesen markieren', // review: new
+  'feed.allRead': { one: '{count} als gelesen markiert', other: '{count} als gelesen markiert' }, // review: new
+  'feed.archived': 'Archiviert', // review: new
+  'feed.open': 'Unterhaltung öffnen', // review: new
+  'privacy.thisWeek': 'Die letzten 7 Tage', // review: new
+  'privacy.weekTotal': { one: '{count} Tracker diese Woche entfernt.', other: '{count} Tracker diese Woche entfernt.' }, // review: new
+  'privacy.weekBefore': { one: 'In der Woche davor: {count}.', other: 'In der Woche davor: {count}.' }, // review: new
+  'privacy.weekBadge': { one: '{count} Tracker diese Woche entfernt', other: '{count} Tracker diese Woche entfernt' }, // review: new
+  'display.grove': 'Grove', // review: new
+  'domains.membersTitle': 'Adressen für andere Personen', // review: new
+  'domains.membersIntro': 'Geben Sie jemand anderem, der hier ein Konto hat, eine Adresse bei {domain}. E-Mails an diese Adresse landen in dessen Postfach, nicht in Ihrem, und die Person kann von ihr senden. Nur Sie können die Domain ändern.', // review: new
+  'domains.addressesUsed': '{used} von {max} Adressen vergeben, Ihre eigenen eingeschlossen.', // review: new
+  'domains.memberFor': 'für {account}', // review: new
+  'domains.memberNamePlaceholder': 'sam', // review: new
+  'domains.memberNewAddress': 'Die neue Adresse der Person bei {domain}', // review: new
+  'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
+  'domains.memberAccountLabel': 'Die Adresse, mit der sich die Person anmeldet, bei {domain}', // review: new
+  'domains.giveAddress': 'Adresse vergeben', // review: new
+  'domains.takeBack': '{email} zurücknehmen', // review: new
+  'domains.takeBackTitle': '{email} von {account} zurücknehmen?', // review: new
+  'domains.takeBackBody': 'E-Mails an diese Adresse werden zurückgewiesen, und sie kann nie wieder an jemanden vergeben werden. Bereits empfangene E-Mails bleiben bei der Person.', // review: new
+  'domains.takeBackConfirm': 'Zurücknehmen', // review: new
+  'domains.givenTitle': 'Adressen, die Sie erhalten haben', // review: new
+  'domains.givenIntro': 'Diese Adressen hat Ihnen der Inhaber einer Domain gegeben. E-Mails an sie kommen hier an, und Sie können sie beim Schreiben unter „Von“ wählen. Der Inhaber kann sie zurücknehmen.', // review: new
+  'domains.givenBy': 'von {owner}', // review: new
+  'domains.giveUp': '{email} aufgeben', // review: new
+  'domains.giveUpTitle': '{email} aufgeben?', // review: new
+  'domains.giveUpBody': 'E-Mails an diese Adresse werden zurückgewiesen, und sie kann nicht wiederhergestellt werden, weder von Ihnen noch von anderen.', // review: new
+  'domains.giveUpConfirm': 'Adresse aufgeben', // review: new
+  'admin.tabAudit': 'Audit-Protokoll', // review: new
+  'admin.domainMembers': { one: 'einige für {count} anderes Konto', other: 'einige für {count} andere Konten' }, // review: new
+  'admin.auditHelp': 'Jede Änderung, die in dieser Konsole vorgenommen wurde: wer sie vorgenommen hat, was es war, wen oder was sie betraf und ob sie durchgeführt wurde. Neueste zuerst. Passwörter und der Inhalt von Nachrichten werden nie aufgezeichnet.', // review: new
+  'admin.noAudit': 'In dieser Konsole wurde noch nichts geändert.', // review: new
+  'admin.auditShowing': '{from} bis {to} von {total}', // review: new
+  'admin.auditNewer': 'Neuere', // review: new
+  'admin.auditOlder': 'Ältere', // review: new
+  'admin.colTime': 'Zeit', // review: new
+  'admin.colAdmin': 'Admin', // review: new
+  'admin.colAction': 'Aktion', // review: new
+  'admin.colTarget': 'Betrifft', // review: new
+  'admin.colOutcome': 'Ergebnis', // review: new
+  'admin.auditDone': 'Erledigt', // review: new
+  'admin.auditNotDone': 'Nicht erledigt', // review: new
+  'admin.auditUserCreate': 'Konto erstellt', // review: new
+  'admin.auditUserUpdate': 'Konto geändert', // review: new
+  'admin.auditUserDelete': 'Konto gelöscht', // review: new
+  'admin.auditTeamCreate': 'Team-Postfach erstellt', // review: new
+  'admin.auditTeamMembers': 'Mitglieder eines Team-Postfachs geändert', // review: new
+  'admin.auditTeamDelete': 'Team-Postfach gelöscht', // review: new
+  'admin.auditIpUnblock': 'IP-Adresse entsperrt', // review: new
+  'admin.auditLimitsAdd': 'Konto mit Limits für neue Konten belegt', // review: new
+  'admin.auditLimitsLift': 'Limits für neue Konten aufgehoben', // review: new
+  'admin.auditQueueRetry': 'Wartende Nachricht erneut versucht', // review: new
+  'admin.auditQueueCancel': 'Wartende Nachricht abgebrochen', // review: new
+  'admin.auditHeldRelease': 'Zurückgehaltene Nachricht gesendet', // review: new
+  'admin.auditHeldDelete': 'Zurückgehaltene Nachricht gelöscht', // review: new
+  'admin.auditRetentionRules': 'Aufbewahrungsregeln geändert', // review: new
+  'admin.auditRetentionRun': 'Aufbewahrungslauf gestartet', // review: new
+  'admin.auditRetentionAccount': 'Aufbewahrung eines Kontos geändert', // review: new
+  'admin.auditEnable': 'Anmeldung aktiviert', // review: new
+  'admin.auditDisable': 'Anmeldung deaktiviert', // review: new
+  'admin.auditSendingSuspend': 'Senden gesperrt', // review: new
+  'admin.auditSendingAllow': 'Senden erlaubt', // review: new
+  'admin.auditPasswordReset': 'Passwort zurückgesetzt', // review: new
+  'admin.auditHoldOn': 'Legal Hold an', // review: new
+  'admin.auditHoldOff': 'Legal Hold aus', // review: new
+  'admin.auditQuota': 'Speicherlimit {size}', // review: new
+  'admin.auditQuotaNone': 'kein Speicherlimit', // review: new
+  'admin.auditMemberAdd': '{member} hinzugefügt', // review: new
+  'admin.auditMemberRemove': '{member} entfernt', // review: new
+  'admin.auditTrashDays': { one: 'Papierkorb und Spam werden nach {count} Tag geleert', other: 'Papierkorb und Spam werden nach {count} Tagen geleert' }, // review: new
+  'admin.auditTrashNever': 'Papierkorb und Spam werden nie geleert', // review: new
+  'admin.auditKeepDays': { one: 'E-Mails werden {count} Tag aufbewahrt', other: 'E-Mails werden {count} Tage aufbewahrt' }, // review: new
+  'admin.auditKeepForever': 'E-Mails werden für immer aufbewahrt', // review: new
+  'admin.auditKeepServer': 'die Serverregel dafür, wie lange E-Mails aufbewahrt werden', // review: new
   'mail.findAnyAction': 'Aktion suchen',
   'mail.signOutOf': 'Von {address} abmelden',
   'mail.conversations': 'Unterhaltungen',

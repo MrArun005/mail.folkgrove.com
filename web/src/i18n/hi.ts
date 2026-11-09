@@ -271,6 +271,94 @@ export default {
   'privacy.reset': 'फिर से गिनना शुरू करें', // review: new
   'privacy.resetTitle': 'गोपनीयता रिपोर्ट मिटाएँ?', // review: new
   'privacy.resetBody': 'इस डिवाइस की गिनती शून्य हो जाएगी। आपकी मेल नहीं बदलेगी।', // review: new
+  'folder.feed': 'फ़ीड', // review: new
+  'filters.wouldCatch': { one: 'यह आपकी पिछली {of} बातचीत में से {count} को पकड़ता:', other: 'यह आपकी पिछली {of} बातचीत में से {count} को पकड़ता:' }, // review: new
+  'filters.wouldCatchNone': 'यह आपकी पिछली {of} बातचीत में से किसी को नहीं पकड़ता।', // review: new
+  'filters.andMore': { one: 'और {count} और', other: 'और {count} और' }, // review: new
+  'threadNotes.private': 'निजी नोट', // review: new
+  'threadNotes.privateNote': 'इन्हें सिर्फ़ आप देख सकते हैं; ये कभी भेजे नहीं जाते', // review: new
+  'threadNotes.add': 'निजी नोट जोड़ें', // review: new
+  'threadNotes.placeholder': 'इस बातचीत के बारे में अपने लिए एक नोट…', // review: new
+  'threadNotes.save': 'नोट सेव करें', // review: new
+  'threadNotes.delete': 'नोट मिटाएं', // review: new
+  'compose.whenActive': 'जब {name} आम तौर पर अपनी मेल देखते हैं', // review: new
+  'feed.intro': 'आपके इनबॉक्स के न्यूज़लेटर और अपडेट, एक पेज की तरह पढ़ने के लिए। जब तक आप न कहें, कुछ भी पढ़ा हुआ मार्क नहीं होता।', // review: new
+  'feed.empty': 'आपके इनबॉक्स में कोई न्यूज़लेटर या अपडेट नहीं है।', // review: new
+  'feed.markAllRead': 'सभी को पढ़ा हुआ मार्क करें', // review: new
+  'feed.allRead': { one: '{count} को पढ़ा हुआ मार्क किया गया', other: '{count} को पढ़ा हुआ मार्क किया गया' }, // review: new
+  'feed.archived': 'संग्रहित', // review: new
+  'feed.open': 'बातचीत खोलें', // review: new
+  'privacy.thisWeek': 'पिछले 7 दिन', // review: new
+  'privacy.weekTotal': { one: 'इस हफ़्ते {count} ट्रैकर हटाया गया।', other: 'इस हफ़्ते {count} ट्रैकर हटाए गए।' }, // review: new
+  'privacy.weekBefore': { one: 'उससे पिछले हफ़्ते: {count}।', other: 'उससे पिछले हफ़्ते: {count}।' }, // review: new
+  'privacy.weekBadge': { one: 'इस हफ़्ते {count} ट्रैकर हटाया गया', other: 'इस हफ़्ते {count} ट्रैकर हटाए गए' }, // review: new
+  'display.grove': 'Grove', // review: new
+  'domains.membersTitle': 'दूसरे लोगों के लिए पते', // review: new
+  'domains.membersIntro': '{domain} पर एक पता किसी और को दें जिसका यहां खाता है। उस पर आने वाले मेल उनके मेलबॉक्स में जाते हैं, आपके में नहीं, और वे उससे भेज भी सकते हैं। डोमेन सिर्फ़ आप बदल सकते हैं।', // review: new
+  'domains.addressesUsed': '{max} में से {used} पते इस्तेमाल में हैं, आपके पते मिलाकर।', // review: new
+  'domains.memberFor': '{account} के लिए', // review: new
+  'domains.memberNamePlaceholder': 'sam', // review: new
+  'domains.memberNewAddress': '{domain} पर उनका नया पता', // review: new
+  'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
+  'domains.memberAccountLabel': '{domain} पर वह पता जिससे वे साइन इन करते हैं', // review: new
+  'domains.giveAddress': 'पता दें', // review: new
+  'domains.takeBack': '{email} वापस लें', // review: new
+  'domains.takeBackTitle': '{account} से {email} वापस लें?', // review: new
+  'domains.takeBackBody': 'इस पर भेजे गए मेल वापस लौट जाएंगे, और यह पता फिर किसी को नहीं दिया जा सकेगा। जो मेल उन्हें पहले मिल चुके हैं, वे उनके पास रहेंगे।', // review: new
+  'domains.takeBackConfirm': 'वापस लें', // review: new
+  'domains.givenTitle': 'आपको दिए गए पते', // review: new
+  'domains.givenIntro': 'ये पते आपको एक डोमेन के मालिक ने दिए हैं। इन पर आने वाले मेल यहां आते हैं, और लिखते समय आप इन्हें “भेजने वाला” में चुन सकते हैं। मालिक इन्हें वापस ले सकता है।', // review: new
+  'domains.givenBy': '{owner} की ओर से', // review: new
+  'domains.giveUp': '{email} छोड़ें', // review: new
+  'domains.giveUpTitle': '{email} छोड़ दें?', // review: new
+  'domains.giveUpBody': 'इस पर भेजे गए मेल वापस लौट जाएंगे, और इसे वापस नहीं लाया जा सकता, न आपसे न किसी और से।', // review: new
+  'domains.giveUpConfirm': 'पता छोड़ें', // review: new
+  'admin.tabAudit': 'ऑडिट लॉग', // review: new
+  'admin.domainMembers': { one: 'कुछ {count} दूसरे खाते के लिए', other: 'कुछ {count} दूसरे खातों के लिए' }, // review: new
+  'admin.auditHelp': 'इस कंसोल में किया गया हर बदलाव: किसने किया, क्या किया, किसके या किस चीज़ के बारे में था, और वह हो पाया या नहीं। सबसे नया सबसे ऊपर। पासवर्ड और संदेशों की सामग्री कभी दर्ज नहीं की जाती।', // review: new
+  'admin.noAudit': 'इस कंसोल में अभी तक कुछ नहीं बदला गया है।', // review: new
+  'admin.auditShowing': '{total} में से {from} से {to} दिखाए जा रहे हैं', // review: new
+  'admin.auditNewer': 'नए', // review: new
+  'admin.auditOlder': 'पुराने', // review: new
+  'admin.colTime': 'समय', // review: new
+  'admin.colAdmin': 'एडमिन', // review: new
+  'admin.colAction': 'कार्रवाई', // review: new
+  'admin.colTarget': 'किसके बारे में', // review: new
+  'admin.colOutcome': 'नतीजा', // review: new
+  'admin.auditDone': 'हो गया', // review: new
+  'admin.auditNotDone': 'नहीं हुआ', // review: new
+  'admin.auditUserCreate': 'खाता बनाया', // review: new
+  'admin.auditUserUpdate': 'खाता बदला', // review: new
+  'admin.auditUserDelete': 'खाता मिटाया', // review: new
+  'admin.auditTeamCreate': 'टीम मेलबॉक्स बनाया', // review: new
+  'admin.auditTeamMembers': 'टीम मेलबॉक्स के सदस्य बदले', // review: new
+  'admin.auditTeamDelete': 'टीम मेलबॉक्स मिटाया', // review: new
+  'admin.auditIpUnblock': 'IP पता अनब्लॉक किया', // review: new
+  'admin.auditLimitsAdd': 'खाते पर नए खाते की सीमाएं लगाईं', // review: new
+  'admin.auditLimitsLift': 'नए खाते की सीमाएं हटाईं', // review: new
+  'admin.auditQueueRetry': 'इंतज़ार में पड़ा संदेश फिर भेजने की कोशिश की', // review: new
+  'admin.auditQueueCancel': 'इंतज़ार में पड़ा संदेश रद्द किया', // review: new
+  'admin.auditHeldRelease': 'रोका गया संदेश भेजा', // review: new
+  'admin.auditHeldDelete': 'रोका गया संदेश मिटाया', // review: new
+  'admin.auditRetentionRules': 'रिटेंशन के नियम बदले', // review: new
+  'admin.auditRetentionRun': 'रिटेंशन का काम चलाया', // review: new
+  'admin.auditRetentionAccount': 'एक खाते का रिटेंशन बदला', // review: new
+  'admin.auditEnable': 'साइन-इन चालू', // review: new
+  'admin.auditDisable': 'साइन-इन बंद', // review: new
+  'admin.auditSendingSuspend': 'भेजना निलंबित', // review: new
+  'admin.auditSendingAllow': 'भेजने की अनुमति', // review: new
+  'admin.auditPasswordReset': 'पासवर्ड रीसेट', // review: new
+  'admin.auditHoldOn': 'कानूनी होल्ड चालू', // review: new
+  'admin.auditHoldOff': 'कानूनी होल्ड बंद', // review: new
+  'admin.auditQuota': 'स्टोरेज की सीमा {size}', // review: new
+  'admin.auditQuotaNone': 'स्टोरेज की कोई सीमा नहीं', // review: new
+  'admin.auditMemberAdd': '{member} को जोड़ा', // review: new
+  'admin.auditMemberRemove': '{member} को हटाया', // review: new
+  'admin.auditTrashDays': { one: 'ट्रैश और स्पैम {count} दिन बाद खाली होते हैं', other: 'ट्रैश और स्पैम {count} दिन बाद खाली होते हैं' }, // review: new
+  'admin.auditTrashNever': 'ट्रैश और स्पैम कभी खाली नहीं होते', // review: new
+  'admin.auditKeepDays': { one: 'मेल {count} दिन रखी जाती है', other: 'मेल {count} दिन रखी जाती है' }, // review: new
+  'admin.auditKeepForever': 'मेल हमेशा रखी जाती है', // review: new
+  'admin.auditKeepServer': 'मेल कितने समय रखी जाए, इसका सर्वर का नियम', // review: new
   'mail.findAnyAction': 'कोई भी कार्रवाई ढूंढें',
   'mail.signOutOf': '{address} से साइन आउट करें',
   'mail.conversations': 'बातचीत',

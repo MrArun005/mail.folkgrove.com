@@ -272,6 +272,94 @@ export default {
   'privacy.reset': 'மீண்டும் எண்ணத் தொடங்கு', // review: new
   'privacy.resetTitle': 'தனியுரிமை அறிக்கையை அழிக்கவா?', // review: new
   'privacy.resetBody': 'இந்தச் சாதனத்தின் எண்ணிக்கைகள் பூஜ்ஜியமாகும். உங்கள் அஞ்சல் மாறாது.', // review: new
+  'folder.feed': 'ஊட்டம்', // review: new
+  'filters.wouldCatch': { one: 'இது உங்கள் கடைசி {of} உரையாடல்களில் {count} ஐப் பிடித்திருக்கும்:', other: 'இது உங்கள் கடைசி {of} உரையாடல்களில் {count} ஐப் பிடித்திருக்கும்:' }, // review: new
+  'filters.wouldCatchNone': 'இது உங்கள் கடைசி {of} உரையாடல்களில் எதையும் பிடித்திருக்காது.', // review: new
+  'filters.andMore': { one: 'மேலும் {count}', other: 'மேலும் {count}' }, // review: new
+  'threadNotes.private': 'தனிப்பட்ட குறிப்புகள்', // review: new
+  'threadNotes.privateNote': 'இவற்றை நீங்கள் மட்டுமே பார்க்க முடியும்; இவை ஒருபோதும் அனுப்பப்படாது', // review: new
+  'threadNotes.add': 'தனிப்பட்ட குறிப்பைச் சேர்', // review: new
+  'threadNotes.placeholder': 'இந்த உரையாடலைப் பற்றி உங்களுக்கான ஒரு குறிப்பு…', // review: new
+  'threadNotes.save': 'குறிப்பைச் சேமி', // review: new
+  'threadNotes.delete': 'குறிப்பை நீக்கு', // review: new
+  'compose.whenActive': '{name} வழக்கமாக மின்னஞ்சல் பார்க்கும் நேரத்தில்', // review: new
+  'feed.intro': 'உங்கள் இன்பாக்ஸில் உள்ள செய்திமடல்களும் புதுப்பிப்புகளும், ஒரு பக்கம் போலப் படிக்க. நீங்கள் சொல்லும் வரை எதுவும் படித்ததாகக் குறிக்கப்படாது.', // review: new
+  'feed.empty': 'உங்கள் இன்பாக்ஸில் செய்திமடல்களோ புதுப்பிப்புகளோ இல்லை.', // review: new
+  'feed.markAllRead': 'அனைத்தையும் படித்ததாகக் குறி', // review: new
+  'feed.allRead': { one: '{count} படித்ததாகக் குறிக்கப்பட்டது', other: '{count} படித்ததாகக் குறிக்கப்பட்டன' }, // review: new
+  'feed.archived': 'காப்பகப்படுத்தப்பட்டது', // review: new
+  'feed.open': 'உரையாடலைத் திற', // review: new
+  'privacy.thisWeek': 'கடந்த 7 நாட்கள்', // review: new
+  'privacy.weekTotal': { one: 'இந்த வாரம் {count} கண்காணிப்பி நீக்கப்பட்டது.', other: 'இந்த வாரம் {count} கண்காணிப்பிகள் நீக்கப்பட்டன.' }, // review: new
+  'privacy.weekBefore': { one: 'அதற்கு முந்தைய வாரம்: {count}.', other: 'அதற்கு முந்தைய வாரம்: {count}.' }, // review: new
+  'privacy.weekBadge': { one: 'இந்த வாரம் {count} கண்காணிப்பி நீக்கப்பட்டது', other: 'இந்த வாரம் {count} கண்காணிப்பிகள் நீக்கப்பட்டன' }, // review: new
+  'display.grove': 'Grove', // review: new
+  'domains.membersTitle': 'மற்றவர்களுக்கான முகவரிகள்', // review: new
+  'domains.membersIntro': 'இங்கே கணக்கு வைத்திருக்கும் வேறொருவருக்கு {domain} இல் ஒரு முகவரியைக் கொடுங்கள். அதற்கு வரும் மின்னஞ்சல்கள் உங்களுடையதற்கு அல்ல, அவருடைய அஞ்சல்பெட்டிக்குச் செல்லும்; அவர் அதிலிருந்து அனுப்பவும் முடியும். டொமைனை நீங்கள் மட்டுமே மாற்ற முடியும்.', // review: new
+  'domains.addressesUsed': '{max} இல் {used} முகவரிகள் பயன்பாட்டில் உள்ளன, உங்களுடையவை உட்பட.', // review: new
+  'domains.memberFor': '{account} க்காக', // review: new
+  'domains.memberNamePlaceholder': 'sam', // review: new
+  'domains.memberNewAddress': '{domain} இல் அவருடைய புதிய முகவரி', // review: new
+  'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
+  'domains.memberAccountLabel': '{domain} இல் அவர் உள்நுழையப் பயன்படுத்தும் முகவரி', // review: new
+  'domains.giveAddress': 'முகவரியைக் கொடு', // review: new
+  'domains.takeBack': '{email} ஐத் திரும்பப் பெறு', // review: new
+  'domains.takeBackTitle': '{account} இடமிருந்து {email} ஐத் திரும்பப் பெறவா?', // review: new
+  'domains.takeBackBody': 'அதற்கு அனுப்பப்படும் மின்னஞ்சல்கள் திரும்பிவிடும், அதை மீண்டும் யாருக்கும் கொடுக்க முடியாது. அவர் ஏற்கெனவே பெற்ற மின்னஞ்சல்கள் அவரிடமே இருக்கும்.', // review: new
+  'domains.takeBackConfirm': 'திரும்பப் பெறு', // review: new
+  'domains.givenTitle': 'உங்களுக்குக் கொடுக்கப்பட்ட முகவரிகள்', // review: new
+  'domains.givenIntro': 'ஒரு டொமைனின் உரிமையாளர் இவற்றை உங்களுக்குக் கொடுத்தார். இவற்றுக்கான மின்னஞ்சல்கள் இங்கே வரும், எழுதும்போது “அனுப்புநர்” பகுதியில் இவற்றைத் தேர்ந்தெடுக்கலாம். உரிமையாளர் இவற்றைத் திரும்பப் பெறலாம்.', // review: new
+  'domains.givenBy': '{owner} கொடுத்தது', // review: new
+  'domains.giveUp': '{email} ஐ விட்டுக்கொடு', // review: new
+  'domains.giveUpTitle': '{email} ஐ விட்டுக்கொடுக்கவா?', // review: new
+  'domains.giveUpBody': 'அதற்கு அனுப்பப்படும் மின்னஞ்சல்கள் திரும்பிவிடும், அதை உங்களாலோ வேறு யாராலோ திரும்பப் பெற முடியாது.', // review: new
+  'domains.giveUpConfirm': 'முகவரியை விட்டுக்கொடு', // review: new
+  'admin.tabAudit': 'தணிக்கைப் பதிவு', // review: new
+  'admin.domainMembers': { one: 'சில வேறு {count} கணக்குக்கு', other: 'சில வேறு {count} கணக்குகளுக்கு' }, // review: new
+  'admin.auditHelp': 'இந்தக் கன்சோலில் செய்யப்பட்ட ஒவ்வொரு மாற்றமும்: யார் செய்தார், என்ன செய்தார், யாரை அல்லது எதைப் பற்றியது, அது நடந்ததா இல்லையா. புதியவை முதலில். கடவுச்சொற்களும் செய்திகளின் உள்ளடக்கமும் ஒருபோதும் பதிவு செய்யப்படாது.', // review: new
+  'admin.noAudit': 'இந்தக் கன்சோலில் இதுவரை எதுவும் மாற்றப்படவில்லை.', // review: new
+  'admin.auditShowing': '{total} இல் {from} முதல் {to} வரை காட்டப்படுகிறது', // review: new
+  'admin.auditNewer': 'புதியவை', // review: new
+  'admin.auditOlder': 'பழையவை', // review: new
+  'admin.colTime': 'நேரம்', // review: new
+  'admin.colAdmin': 'நிர்வாகி', // review: new
+  'admin.colAction': 'செயல்', // review: new
+  'admin.colTarget': 'எதைப் பற்றி', // review: new
+  'admin.colOutcome': 'விளைவு', // review: new
+  'admin.auditDone': 'முடிந்தது', // review: new
+  'admin.auditNotDone': 'நடக்கவில்லை', // review: new
+  'admin.auditUserCreate': 'கணக்கு உருவாக்கப்பட்டது', // review: new
+  'admin.auditUserUpdate': 'கணக்கு மாற்றப்பட்டது', // review: new
+  'admin.auditUserDelete': 'கணக்கு நீக்கப்பட்டது', // review: new
+  'admin.auditTeamCreate': 'குழு அஞ்சல்பெட்டி உருவாக்கப்பட்டது', // review: new
+  'admin.auditTeamMembers': 'குழு அஞ்சல்பெட்டியின் உறுப்பினர்கள் மாற்றப்பட்டனர்', // review: new
+  'admin.auditTeamDelete': 'குழு அஞ்சல்பெட்டி நீக்கப்பட்டது', // review: new
+  'admin.auditIpUnblock': 'IP முகவரியின் தடை நீக்கப்பட்டது', // review: new
+  'admin.auditLimitsAdd': 'கணக்குக்குப் புதிய கணக்கு வரம்புகள் விதிக்கப்பட்டன', // review: new
+  'admin.auditLimitsLift': 'புதிய கணக்கு வரம்புகள் நீக்கப்பட்டன', // review: new
+  'admin.auditQueueRetry': 'காத்திருக்கும் செய்தி மீண்டும் முயலப்பட்டது', // review: new
+  'admin.auditQueueCancel': 'காத்திருக்கும் செய்தி ரத்துசெய்யப்பட்டது', // review: new
+  'admin.auditHeldRelease': 'நிறுத்திவைத்த செய்தி அனுப்பப்பட்டது', // review: new
+  'admin.auditHeldDelete': 'நிறுத்திவைத்த செய்தி நீக்கப்பட்டது', // review: new
+  'admin.auditRetentionRules': 'தக்கவைப்பு விதிகள் மாற்றப்பட்டன', // review: new
+  'admin.auditRetentionRun': 'தக்கவைப்புப் பணி இயக்கப்பட்டது', // review: new
+  'admin.auditRetentionAccount': 'ஒரு கணக்கின் தக்கவைப்பு மாற்றப்பட்டது', // review: new
+  'admin.auditEnable': 'உள்நுழைவு இயக்கப்பட்டது', // review: new
+  'admin.auditDisable': 'உள்நுழைவு முடக்கப்பட்டது', // review: new
+  'admin.auditSendingSuspend': 'அனுப்புதல் இடைநீக்கப்பட்டது', // review: new
+  'admin.auditSendingAllow': 'அனுப்புதல் அனுமதிக்கப்பட்டது', // review: new
+  'admin.auditPasswordReset': 'கடவுச்சொல் மீட்டமைக்கப்பட்டது', // review: new
+  'admin.auditHoldOn': 'சட்டரீதியான நிறுத்திவைப்பு இயக்கத்தில்', // review: new
+  'admin.auditHoldOff': 'சட்டரீதியான நிறுத்திவைப்பு நீக்கப்பட்டது', // review: new
+  'admin.auditQuota': 'சேமிப்பக வரம்பு {size}', // review: new
+  'admin.auditQuotaNone': 'சேமிப்பக வரம்பு இல்லை', // review: new
+  'admin.auditMemberAdd': '{member} சேர்க்கப்பட்டார்', // review: new
+  'admin.auditMemberRemove': '{member} நீக்கப்பட்டார்', // review: new
+  'admin.auditTrashDays': { one: 'குப்பையும் ஸ்பேமும் {count} நாளுக்குப் பிறகு காலியாக்கப்படும்', other: 'குப்பையும் ஸ்பேமும் {count} நாட்களுக்குப் பிறகு காலியாக்கப்படும்' }, // review: new
+  'admin.auditTrashNever': 'குப்பையும் ஸ்பேமும் ஒருபோதும் காலியாக்கப்படாது', // review: new
+  'admin.auditKeepDays': { one: 'மின்னஞ்சல்கள் {count} நாள் வைத்திருக்கப்படும்', other: 'மின்னஞ்சல்கள் {count} நாட்கள் வைத்திருக்கப்படும்' }, // review: new
+  'admin.auditKeepForever': 'மின்னஞ்சல்கள் எப்போதும் வைத்திருக்கப்படும்', // review: new
+  'admin.auditKeepServer': 'மின்னஞ்சல்களை எவ்வளவு காலம் வைத்திருப்பது என்பதற்கான சர்வரின் விதி', // review: new
   'mail.findAnyAction': 'எந்தச் செயலையும் தேடு',
   'mail.signOutOf': '{address} இலிருந்து வெளியேறு',
   'mail.conversations': 'உரையாடல்கள்',

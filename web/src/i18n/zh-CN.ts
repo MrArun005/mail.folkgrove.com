@@ -271,6 +271,94 @@ export default {
   'privacy.reset': '重新开始计数', // review: new
   'privacy.resetTitle': '清除隐私报告？', // review: new
   'privacy.resetBody': '此设备上的计数将归零。你的邮件不会改变。', // review: new
+  'folder.feed': '信息流', // review: new
+  'filters.wouldCatch': { other: '在您最近的 {of} 个会话中，它会匹配 {count} 个：' }, // review: new
+  'filters.wouldCatchNone': '在您最近的 {of} 个会话中，它一个也不会匹配。', // review: new
+  'filters.andMore': { other: '还有 {count} 个' }, // review: new
+  'threadNotes.private': '私人备注', // review: new
+  'threadNotes.privateNote': '只有您能看到，绝不会发送出去', // review: new
+  'threadNotes.add': '添加私人备注', // review: new
+  'threadNotes.placeholder': '给自己写一条关于此会话的备注…', // review: new
+  'threadNotes.save': '保存备注', // review: new
+  'threadNotes.delete': '删除备注', // review: new
+  'compose.whenActive': '在 {name} 通常查看邮件的时候', // review: new
+  'feed.intro': '收件箱里的新闻通讯和动态，像读网页一样阅读。在您确认之前，不会有任何邮件被标记为已读。', // review: new
+  'feed.empty': '收件箱里没有新闻通讯或动态。', // review: new
+  'feed.markAllRead': '全部标记为已读', // review: new
+  'feed.allRead': { other: '已将 {count} 封标记为已读' }, // review: new
+  'feed.archived': '已归档', // review: new
+  'feed.open': '打开会话', // review: new
+  'privacy.thisWeek': '最近 7 天', // review: new
+  'privacy.weekTotal': { other: '本周已移除 {count} 个跟踪器。' }, // review: new
+  'privacy.weekBefore': { other: '上一周：{count} 个。' }, // review: new
+  'privacy.weekBadge': { other: '本周已移除 {count} 个跟踪器' }, // review: new
+  'display.grove': 'Grove', // review: new
+  'domains.membersTitle': '给其他人的地址', // review: new
+  'domains.membersIntro': '把 {domain} 下的一个地址分给在这里有帐号的其他人。发往该地址的邮件会进入对方的邮箱，而不是您的，对方也可以用它发信。只有您可以更改域名。', // review: new
+  'domains.addressesUsed': '已使用 {used} 个地址，共 {max} 个（包括您自己的）。', // review: new
+  'domains.memberFor': '分给 {account}', // review: new
+  'domains.memberNamePlaceholder': 'sam', // review: new
+  'domains.memberNewAddress': '对方在 {domain} 下的新地址', // review: new
+  'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
+  'domains.memberAccountLabel': '对方用来登录的地址（{domain}）', // review: new
+  'domains.giveAddress': '分配地址', // review: new
+  'domains.takeBack': '收回 {email}', // review: new
+  'domains.takeBackTitle': '要从 {account} 收回 {email} 吗？', // review: new
+  'domains.takeBackBody': '发送到此地址的邮件将被退回，且此地址无法再分给任何人。对方已收到的邮件仍归对方所有。', // review: new
+  'domains.takeBackConfirm': '收回', // review: new
+  'domains.givenTitle': '别人分给您的地址', // review: new
+  'domains.givenIntro': '这些地址是某个域名的所有者分给您的。发往这些地址的邮件会送到这里，写邮件时可以在“发件人”中选择它们。所有者可以将其收回。', // review: new
+  'domains.givenBy': '来自 {owner}', // review: new
+  'domains.giveUp': '放弃 {email}', // review: new
+  'domains.giveUpTitle': '要放弃 {email} 吗？', // review: new
+  'domains.giveUpBody': '发送到此地址的邮件将被退回，且您或任何人都无法恢复此地址。', // review: new
+  'domains.giveUpConfirm': '放弃地址', // review: new
+  'admin.tabAudit': '审计日志', // review: new
+  'admin.domainMembers': { other: '其中一些分给了另外 {count} 个帐号' }, // review: new
+  'admin.auditHelp': '在此控制台中所做的每一项更改：谁做的、做了什么、涉及谁或什么，以及是否成功。最新的排在最前。密码和邮件内容绝不会被记录。', // review: new
+  'admin.noAudit': '此控制台中尚未做过任何更改。', // review: new
+  'admin.auditShowing': '显示第 {from} 到 {to} 条，共 {total} 条', // review: new
+  'admin.auditNewer': '较新', // review: new
+  'admin.auditOlder': '较早', // review: new
+  'admin.colTime': '时间', // review: new
+  'admin.colAdmin': '管理员', // review: new
+  'admin.colAction': '操作', // review: new
+  'admin.colTarget': '对象', // review: new
+  'admin.colOutcome': '结果', // review: new
+  'admin.auditDone': '已完成', // review: new
+  'admin.auditNotDone': '未完成', // review: new
+  'admin.auditUserCreate': '创建了帐号', // review: new
+  'admin.auditUserUpdate': '更改了帐号', // review: new
+  'admin.auditUserDelete': '删除了帐号', // review: new
+  'admin.auditTeamCreate': '创建了团队邮箱', // review: new
+  'admin.auditTeamMembers': '更改了团队邮箱的成员', // review: new
+  'admin.auditTeamDelete': '删除了团队邮箱', // review: new
+  'admin.auditIpUnblock': '解除了 IP 地址封禁', // review: new
+  'admin.auditLimitsAdd': '对帐号施加了新帐号限制', // review: new
+  'admin.auditLimitsLift': '解除了新帐号限制', // review: new
+  'admin.auditQueueRetry': '重试了等待中的邮件', // review: new
+  'admin.auditQueueCancel': '取消了等待中的邮件', // review: new
+  'admin.auditHeldRelease': '发送了暂扣的邮件', // review: new
+  'admin.auditHeldDelete': '删除了暂扣的邮件', // review: new
+  'admin.auditRetentionRules': '更改了保留规则', // review: new
+  'admin.auditRetentionRun': '运行了保留任务', // review: new
+  'admin.auditRetentionAccount': '更改了某个帐号的保留设置', // review: new
+  'admin.auditEnable': '已启用登录', // review: new
+  'admin.auditDisable': '已停用登录', // review: new
+  'admin.auditSendingSuspend': '发送已暂停', // review: new
+  'admin.auditSendingAllow': '已允许发送', // review: new
+  'admin.auditPasswordReset': '密码已重置', // review: new
+  'admin.auditHoldOn': '法律保留已开启', // review: new
+  'admin.auditHoldOff': '法律保留已关闭', // review: new
+  'admin.auditQuota': '存储上限 {size}', // review: new
+  'admin.auditQuotaNone': '无存储上限', // review: new
+  'admin.auditMemberAdd': '添加了 {member}', // review: new
+  'admin.auditMemberRemove': '移除了 {member}', // review: new
+  'admin.auditTrashDays': { other: '“已删除邮件”和“垃圾邮件”在 {count} 天后清空' }, // review: new
+  'admin.auditTrashNever': '“已删除邮件”和“垃圾邮件”永不清空', // review: new
+  'admin.auditKeepDays': { other: '邮件保留 {count} 天' }, // review: new
+  'admin.auditKeepForever': '邮件永久保留', // review: new
+  'admin.auditKeepServer': '服务器关于邮件保留时长的规则', // review: new
   'mail.findAnyAction': '查找任意操作',
   'mail.signOutOf': '退出 {address}',
   'mail.conversations': '会话',

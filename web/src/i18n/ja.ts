@@ -271,6 +271,94 @@ export default {
   'privacy.reset': '集計をやり直す', // review: new
   'privacy.resetTitle': 'プライバシーレポートを消去しますか？', // review: new
   'privacy.resetBody': 'この端末の集計がゼロに戻ります。メールは変更されません。', // review: new
+  'folder.feed': 'フィード', // review: new
+  'filters.wouldCatch': { other: '最近の {of} 件のスレッドのうち {count} 件が該当します:' }, // review: new
+  'filters.wouldCatchNone': '最近の {of} 件のスレッドに該当するものはありません。', // review: new
+  'filters.andMore': { other: 'ほか {count} 件' }, // review: new
+  'threadNotes.private': '非公開メモ', // review: new
+  'threadNotes.privateNote': '自分だけが見られます。送信されることはありません', // review: new
+  'threadNotes.add': '非公開メモを追加', // review: new
+  'threadNotes.placeholder': 'このスレッドについての自分用メモ…', // review: new
+  'threadNotes.save': 'メモを保存', // review: new
+  'threadNotes.delete': 'メモを削除', // review: new
+  'compose.whenActive': '{name} さんがふだんメールを見ている時間に', // review: new
+  'feed.intro': '受信トレイのニュースレターやお知らせを、1 つのページのように読めます。指定するまで既読にはなりません。', // review: new
+  'feed.empty': '受信トレイにニュースレターやお知らせはありません。', // review: new
+  'feed.markAllRead': 'すべて既読にする', // review: new
+  'feed.allRead': { other: '{count} 件を既読にしました' }, // review: new
+  'feed.archived': 'アーカイブしました', // review: new
+  'feed.open': 'スレッドを開く', // review: new
+  'privacy.thisWeek': '過去 7 日間', // review: new
+  'privacy.weekTotal': { other: '今週は {count} 個のトラッカーを削除しました。' }, // review: new
+  'privacy.weekBefore': { other: 'その前の週: {count} 個。' }, // review: new
+  'privacy.weekBadge': { other: '今週 {count} 個のトラッカーを削除' }, // review: new
+  'display.grove': 'Grove', // review: new
+  'domains.membersTitle': '他の人用のアドレス', // review: new
+  'domains.membersIntro': 'ここにアカウントを持つ他の人に、{domain} のアドレスを渡せます。そのアドレス宛てのメールはあなたではなく相手のメールボックスに届き、相手はそのアドレスから送信できます。ドメインを変更できるのはあなただけです。', // review: new
+  'domains.addressesUsed': '{max} 件中 {used} 件のアドレスを使用中（あなたの分を含む）。', // review: new
+  'domains.memberFor': '{account} 用', // review: new
+  'domains.memberNamePlaceholder': 'sam', // review: new
+  'domains.memberNewAddress': '{domain} での相手の新しいアドレス', // review: new
+  'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
+  'domains.memberAccountLabel': '相手がログインに使うアドレス（{domain}）', // review: new
+  'domains.giveAddress': 'アドレスを渡す', // review: new
+  'domains.takeBack': '{email} を取り戻す', // review: new
+  'domains.takeBackTitle': '{account} から {email} を取り戻しますか？', // review: new
+  'domains.takeBackBody': 'このアドレス宛てのメールは返送され、このアドレスを再び誰かに渡すことはできません。相手がすでに受信したメールは相手の手元に残ります。', // review: new
+  'domains.takeBackConfirm': '取り戻す', // review: new
+  'domains.givenTitle': '受け取ったアドレス', // review: new
+  'domains.givenIntro': 'ドメインの所有者から渡されたアドレスです。これらのアドレス宛てのメールはここに届き、メール作成時に [差出人] で選べます。所有者はこれらを取り戻すことができます。', // review: new
+  'domains.givenBy': '{owner} から', // review: new
+  'domains.giveUp': '{email} を手放す', // review: new
+  'domains.giveUpTitle': '{email} を手放しますか？', // review: new
+  'domains.giveUpBody': 'このアドレス宛てのメールは返送され、あなたも他の誰もこのアドレスを元に戻すことはできません。', // review: new
+  'domains.giveUpConfirm': 'アドレスを手放す', // review: new
+  'admin.tabAudit': '監査ログ', // review: new
+  'admin.domainMembers': { other: '一部は他の {count} 件のアカウント用' }, // review: new
+  'admin.auditHelp': 'このコンソールで行われたすべての変更です。誰が、何を、誰または何に対して行い、完了したかどうかを記録します。新しい順に表示されます。パスワードとメッセージの内容は記録されません。', // review: new
+  'admin.noAudit': 'このコンソールではまだ何も変更されていません。', // review: new
+  'admin.auditShowing': '{total} 件中 {from}～{to} 件を表示', // review: new
+  'admin.auditNewer': '新しい方へ', // review: new
+  'admin.auditOlder': '古い方へ', // review: new
+  'admin.colTime': '日時', // review: new
+  'admin.colAdmin': '管理者', // review: new
+  'admin.colAction': '操作', // review: new
+  'admin.colTarget': '対象', // review: new
+  'admin.colOutcome': '結果', // review: new
+  'admin.auditDone': '完了', // review: new
+  'admin.auditNotDone': '未完了', // review: new
+  'admin.auditUserCreate': 'アカウントを作成', // review: new
+  'admin.auditUserUpdate': 'アカウントを変更', // review: new
+  'admin.auditUserDelete': 'アカウントを削除', // review: new
+  'admin.auditTeamCreate': 'チームのメールボックスを作成', // review: new
+  'admin.auditTeamMembers': 'チームのメールボックスのメンバーを変更', // review: new
+  'admin.auditTeamDelete': 'チームのメールボックスを削除', // review: new
+  'admin.auditIpUnblock': 'IP アドレスのブロックを解除', // review: new
+  'admin.auditLimitsAdd': 'アカウントに新規アカウント制限を適用', // review: new
+  'admin.auditLimitsLift': '新規アカウント制限を解除', // review: new
+  'admin.auditQueueRetry': '待機中のメッセージを再試行', // review: new
+  'admin.auditQueueCancel': '待機中のメッセージをキャンセル', // review: new
+  'admin.auditHeldRelease': '保留中のメッセージを送信', // review: new
+  'admin.auditHeldDelete': '保留中のメッセージを削除', // review: new
+  'admin.auditRetentionRules': '保持ルールを変更', // review: new
+  'admin.auditRetentionRun': '保持ジョブを実行', // review: new
+  'admin.auditRetentionAccount': 'アカウントの保持設定を変更', // review: new
+  'admin.auditEnable': 'ログインを有効化', // review: new
+  'admin.auditDisable': 'ログインを無効化', // review: new
+  'admin.auditSendingSuspend': '送信を停止', // review: new
+  'admin.auditSendingAllow': '送信を許可', // review: new
+  'admin.auditPasswordReset': 'パスワードをリセット', // review: new
+  'admin.auditHoldOn': '訴訟ホールドをオン', // review: new
+  'admin.auditHoldOff': '訴訟ホールドをオフ', // review: new
+  'admin.auditQuota': '保存容量の上限 {size}', // review: new
+  'admin.auditQuotaNone': '保存容量の上限なし', // review: new
+  'admin.auditMemberAdd': '{member} を追加', // review: new
+  'admin.auditMemberRemove': '{member} を削除', // review: new
+  'admin.auditTrashDays': { other: 'ゴミ箱と迷惑メールを {count} 日後に空にする' }, // review: new
+  'admin.auditTrashNever': 'ゴミ箱と迷惑メールを自動で空にしない', // review: new
+  'admin.auditKeepDays': { other: 'メールを {count} 日間保持' }, // review: new
+  'admin.auditKeepForever': 'メールを無期限に保持', // review: new
+  'admin.auditKeepServer': 'メールの保持期間についてのサーバーのルール', // review: new
   'mail.findAnyAction': '操作を検索',
   'mail.signOutOf': '{address} からログアウト',
   'mail.conversations': 'スレッド',
