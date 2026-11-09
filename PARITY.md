@@ -17,7 +17,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Archive, delete, spam / not spam | ✅ | ✅ | Auto-advance to the next conversation; Undo on the toast (or `z`) puts it back |
 | Multi-select + bulk actions | ✅ | ✅ | Shift-click ranges, keyboard `x` |
 | Keyboard shortcuts | ✅ | ✅ | Gmail-compatible keys plus a ⌘K command palette |
-| Search | ✅ | ✅ | `from:` `to:` `subject:` `has:attachment` `is:unread` `in:` `before:` `after:` `-negation` |
+| Search | ✅ | ✅ | `from:` `to:` `subject:` `has:attachment` `is:unread` `in:` / `label:` `before:` `after:` `older_than:7d` `newer_than:2w` `larger:5M` `smaller:` `list:` `-negation` `a OR b` |
 | Saved searches / search folders | ✅ | ✅ | Pinned in the rail, synced through the account |
 | Live updates | ✅ | ✅ | Server push, no polling |
 | Show original / headers | ✅ | ✅ | |
@@ -54,7 +54,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Subscriptions manager | ⬜ | ✅ | Every newsletter in one list: unsubscribe or delete everything from a sender |
 | Vacation / out-of-office | ✅ | ✅ | Date range, once per sender |
 | Forwarding | ✅ | ✅ | Per-filter forwarding (keeps a copy) |
-| Folder management (rename, nest, delete) | ✅ | ✅ | Folders inside folders, in the rail, menus and filters |
+| Folder management (rename, nest, delete) | ✅ | ✅ | Folders inside folders, in the rail, menus and filters; drag conversations onto a folder; each folder has its own colour (from its name) on its icon and its chips |
 
 ## 4. Privacy and security (where we must win clearly)
 

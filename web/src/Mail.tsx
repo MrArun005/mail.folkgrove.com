@@ -12,7 +12,7 @@ import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { canAsk } from './ai';
 import { SubscriptionsList } from './Subscriptions';
-import { ContactList, ContactPanel, fullName, groupAddresses } from './Contacts';
+import { ContactList, ContactPanel, fullName, groupAddresses, hue } from './Contacts';
 import { CalendarView } from './CalendarView';
 import { localZone } from './calendar';
 import type { PartStat } from './ics';
@@ -150,6 +150,9 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
 
   // Phones: the rail is a drawer, opened from the top bar.
   const [navOpen, setNavOpen] = useState(false);
+  // Drag conversations onto a folder in the rail (pointer devices): what is being dragged, and the folder under it.
+  const [dragging, setDragging] = useState<string[] | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null);
 
   const inbox = boxes.find((b) => b.role === 'inbox')?.id ?? null;
   // The address bar follows the screen, and Back / Forward (or an edited link) move the screen.
@@ -746,6 +749,23 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // ── Drag to a folder ───────────────────────────────────
+
+  const canDrag = !['drafts', 'trash', SCHEDULED].includes(role ?? '');
+  /** Folders that take a drop: yours, plus Inbox, Archive, Deleted Items and Junk; never the one you're in. */
+  const takesDrop = (b: { id: string; role?: string | null }) =>
+    !!dragging && b.id !== current && !VIRTUAL.includes(b.id) && (!b.role || ['inbox', 'archive', 'trash', 'junk'].includes(b.role));
+  function drop(b: { id: string; role?: string | null }) {
+    const ids = dragging ?? [];
+    setDragging(null); setDropOn(null);
+    if (!ids.length) return;
+    // Deleted Items and Junk mean more than a move (confirmations, spam training), so they go the usual way.
+    if (b.role === 'trash') act('trash', ids);
+    else if (b.role === 'junk' || (role === 'junk' && b.role === 'inbox')) act('junk', ids);
+    else if (b.role === 'archive') act('archive', ids);
+    else act({ moveTo: b.id, label: false }, ids);
+  }
+
   // ── View ───────────────────────────────────────────────
 
   const navCurrent = navItems.find((b) => b.id === current);
@@ -792,8 +812,11 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
             <ul>
               {group.map((b) => (
                 <li key={b.id}>
-                  <button className={`nav-item${b.id === current ? ' active' : ''}`} aria-current={b.id === current ? 'page' : undefined} onClick={() => openFolder(b.id)}
-                    style={b.depth ? { paddingLeft: `calc(var(--s3) + ${b.depth} * var(--s4))` } : undefined}>
+                  <button className={`nav-item${b.id === current ? ' active' : ''}${!b.role && b.name !== SCREENER ? ' labelled' : ''}${takesDrop(b) ? ' drop-ok' : ''}${dropOn === b.id ? ' drop-over' : ''}`}
+                    aria-current={b.id === current ? 'page' : undefined} onClick={() => openFolder(b.id)}
+                    onDragOver={takesDrop(b) ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dropOn !== b.id) setDropOn(b.id); } : undefined}
+                    onDragLeave={() => setDropOn((x) => (x === b.id ? null : x))} onDrop={takesDrop(b) ? (e) => { e.preventDefault(); drop(b); } : undefined}
+                    style={{ ...(b.depth ? { paddingInlineStart: `calc(var(--s3) + ${b.depth} * var(--s4))` } : {}), ...(!b.role ? { '--h': hue(b.name) } : {}) } as React.CSSProperties}>
                     <Icon name={roleIcon(b.role)} /><span className="name">{shown(b)}</span>
                     {b.unreadEmails > 0 && !['trash', 'sent', 'drafts'].includes(b.role ?? '') && <span className="count">{b.unreadEmails}</span>}
                   </button>
@@ -942,6 +965,11 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
                 {important > 0 && (i === 0 || i === important) && <li className="list-section" role="presentation">{t(i === 0 ? 'mail.importantUnread' : 'mail.everythingElse')}</li>}
                 <SwipeRow className={`row${e.keywords.$seen ? '' : ' unread'}${e.threadId === threadId ? ' active' : ''}${selected.has(e.threadId) ? ' selected' : ''}`}
                   off={!!selected.size || inScreener || role === 'trash'}
+                  onDragStart={canDrag && !inScreener ? (ev) => {
+                    const ids = selected.has(e.threadId) ? [...selected] : [e.threadId];
+                    ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', e.subject ?? '');
+                    setDragging(ids);
+                  } : undefined} onDragEnd={() => { setDragging(null); setDropOn(null); }}
                   left={role === 'archive' ? t('common.delete') : t('mail.archive')} onLeft={() => act(role === 'archive' ? 'trash' : 'archive', [e.threadId])}
                   right={t(e.keywords.$seen ? 'mail.markUnread' : 'mail.markRead')} onRight={() => act(e.keywords.$seen ? 'unread' : 'read', [e.threadId])}>
                   <input type="checkbox" className="check" checked={selected.has(e.threadId)} aria-label={e.subject ? t('mail.selectSubject', { subject: e.subject }) : t('mail.selectConversation')}
@@ -951,7 +979,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
                       ? t('mail.toNames', { names: e.to?.map((a) => displayName(a)).join(', ') || t('mail.noRecipients') }) : displayName(e.from?.[0], client.username)}</span>
                     <time dateTime={e.receivedAt}>{e.keywords.$flagged && <span className="starmark" aria-label={t('folder.starred')}><Icon name="star" size={13} filled /></span>}{shortDate(e.receivedAt)}</time>
                     <span className="subject">{e.keywords.$nudge && role === 'inbox' && <span className="pill pill--warn">{t('mail.noReplyYet')}</span>}
-                      {Object.keys(e.mailboxIds ?? {}).filter((id) => id !== current && userFolders.has(id)).slice(0, 2).map((id) => <span key={id} className="pill">{userFolders.get(id)}</span>)}
+                      {Object.keys(e.mailboxIds ?? {}).filter((id) => id !== current && userFolders.has(id)).slice(0, 2).map((id) => <span key={id} className="pill pill--label" style={{ '--h': hue(userFolders.get(id)!) } as React.CSSProperties}>{userFolders.get(id)}</span>)}
                       {e.subject || t('mail.noSubject')}{e.hasAttachment && <Icon name="clip" size={14} />}</span>
                     <span className="preview">{e.preview}</span>
                   </button>
@@ -1038,11 +1066,14 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
 }
 
 /** A conversation row you can swipe on a touch screen: left and right each do one thing, named as you drag. */
-function SwipeRow({ className, off, left, right, onLeft, onRight, children }: {
-  className: string; off: boolean; left: string; right: string; onLeft: () => void; onRight: () => void; children: ReactNode;
+function SwipeRow({ className, off, left, right, onLeft, onRight, onDragStart, onDragEnd, children }: {
+  className: string; off: boolean; left: string; right: string; onLeft: () => void; onRight: () => void;
+  /** With a mouse: drag the row onto a folder in the rail. */
+  onDragStart?: (e: React.DragEvent<HTMLLIElement>) => void; onDragEnd?: () => void; children: ReactNode;
 }) {
   const swipe = useSwipe<HTMLLIElement>({ off, onLeft, onRight });
-  return <li ref={swipe} className={className} data-swipe-left={left} data-swipe-right={right}>{children}</li>;
+  return <li ref={swipe} className={className} data-swipe-left={left} data-swipe-right={right}
+    draggable={!!onDragStart} onDragStart={onDragStart} onDragEnd={onDragEnd}>{children}</li>;
 }
 
 const TAB_ICON = { primary: 'inbox', promotions: 'tag', social: 'person', updates: 'bell', forums: 'replyAll' } as const;

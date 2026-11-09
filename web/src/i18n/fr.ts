@@ -244,6 +244,8 @@ export default {
   'mail.myMailbox': 'Ma boîte',
   'mail.addAccount': 'Ajouter un autre compte',
   'mail.settings': 'Paramètres',
+  'mail.openMenu': 'Dossiers et compte', // review: new
+  'mail.undone': 'Annulé', // review: new
   'mail.findAnyAction': 'Trouver une action',
   'mail.signOutOf': 'Se déconnecter de {address}',
   'mail.conversations': 'Conversations',

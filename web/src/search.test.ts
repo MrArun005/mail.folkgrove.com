@@ -33,3 +33,23 @@ it('supports quotes, folders by name or role, dates and negation', () => {
 it('never drops what it does not understand', () => {
   expect(parseSearch('in:nowhere before:yesterday re:lunch', boxes)).toEqual({ text: 'in:nowhere before:yesterday re:lunch' });
 });
+
+it('understands sizes, relative dates, label: and mailing lists', () => {
+  expect(parseSearch('larger:5M')).toEqual({ minSize: 5 * 1024 * 1024 });
+  expect(parseSearch('smaller:200k')).toEqual({ maxSize: 204800 });
+  expect(parseSearch('larger:1.5mb')).toEqual({ minSize: 1572864 });
+  expect(parseSearch('label:projects', boxes)).toEqual({ inMailbox: 'p' });
+  expect(parseSearch('list:announce.example.org')).toEqual({ header: ['List-Id', 'announce.example.org'] });
+  const week = parseSearch('older_than:7d') as { before: string };
+  expect(Math.round((Date.now() - +new Date(week.before)) / 86400e3)).toBe(7);
+  expect(Object.keys(parseSearch('newer_than:2w'))).toEqual(['after']);
+  // Not a size or an age: searched as typed, never dropped.
+  expect(parseSearch('larger:huge older_than:soon')).toEqual({ text: 'larger:huge older_than:soon' });
+});
+
+it('OR finds either side; each side keeps its own operators', () => {
+  expect(parseSearch('from:priya OR from:carol')).toEqual({ operator: 'OR', conditions: [{ from: 'priya' }, { from: 'carol' }] });
+  expect(parseSearch('from:priya is:unread OR invoice')).toEqual({ operator: 'OR', conditions: [
+    { operator: 'AND', conditions: [{ from: 'priya' }, { notKeyword: '$seen' }] }, { text: 'invoice' }] });
+  expect(parseSearch('black or white')).toEqual({ text: 'black or white' }); // lower case is a word
+});

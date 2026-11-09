@@ -240,6 +240,8 @@ export default {
   'mail.myMailbox': 'صندوق بريدي',
   'mail.addAccount': 'إضافة حساب آخر',
   'mail.settings': 'الإعدادات',
+  'mail.openMenu': 'المجلدات والحساب', // review: new
+  'mail.undone': 'تم التراجع', // review: new
   'mail.findAnyAction': 'البحث عن أي إجراء',
   'mail.signOutOf': 'تسجيل الخروج من {address}',
   'mail.conversations': 'المحادثات',

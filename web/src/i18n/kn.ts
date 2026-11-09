@@ -240,6 +240,8 @@ export default {
   'mail.myMailbox': 'ನನ್ನ ಮೇಲ್‌ಬಾಕ್ಸ್',
   'mail.addAccount': 'ಮತ್ತೊಂದು ಖಾತೆ ಸೇರಿಸಿ',
   'mail.settings': 'ಸೆಟ್ಟಿಂಗ್‌ಗಳು',
+  'mail.openMenu': 'ಫೋಲ್ಡರ್‌ಗಳು ಮತ್ತು ಖಾತೆ', // review: new
+  'mail.undone': 'ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ', // review: new
   'mail.findAnyAction': 'ಯಾವುದೇ ಕ್ರಿಯೆಯನ್ನು ಹುಡುಕಿ',
   'mail.signOutOf': '{address} ನಿಂದ ಸೈನ್ ಔಟ್ ಮಾಡಿ',
   'mail.conversations': 'ಸಂವಾದಗಳು',

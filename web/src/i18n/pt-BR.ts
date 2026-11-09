@@ -241,6 +241,8 @@ export default {
   'mail.myMailbox': 'Minha caixa de correio',
   'mail.addAccount': 'Adicionar outra conta',
   'mail.settings': 'Configurações',
+  'mail.openMenu': 'Pastas e conta', // review: new
+  'mail.undone': 'Desfeito', // review: new
   'mail.findAnyAction': 'Encontrar qualquer ação',
   'mail.signOutOf': 'Sair de {address}',
   'mail.conversations': 'Conversas',

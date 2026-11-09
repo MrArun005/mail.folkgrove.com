@@ -240,6 +240,8 @@ export default {
   'mail.myMailbox': 'Mein Postfach',
   'mail.addAccount': 'Weiteres Konto hinzufügen',
   'mail.settings': 'Einstellungen',
+  'mail.openMenu': 'Ordner und Konto', // review: new
+  'mail.undone': 'Rückgängig gemacht', // review: new
   'mail.findAnyAction': 'Aktion suchen',
   'mail.signOutOf': 'Von {address} abmelden',
   'mail.conversations': 'Unterhaltungen',

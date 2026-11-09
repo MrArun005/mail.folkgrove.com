@@ -240,6 +240,8 @@ export default {
   'mail.myMailbox': '我的邮箱',
   'mail.addAccount': '添加其他帐号',
   'mail.settings': '设置',
+  'mail.openMenu': '文件夹和账户', // review: new
+  'mail.undone': '已撤销', // review: new
   'mail.findAnyAction': '查找任意操作',
   'mail.signOutOf': '退出 {address}',
   'mail.conversations': '会话',

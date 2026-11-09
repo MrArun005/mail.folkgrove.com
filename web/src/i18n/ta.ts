@@ -241,6 +241,8 @@ export default {
   'mail.myMailbox': 'என் அஞ்சல்பெட்டி',
   'mail.addAccount': 'மற்றொரு கணக்கைச் சேர்',
   'mail.settings': 'அமைப்புகள்',
+  'mail.openMenu': 'கோப்புறைகளும் கணக்கும்', // review: new
+  'mail.undone': 'செயல்தவிர்க்கப்பட்டது', // review: new
   'mail.findAnyAction': 'எந்தச் செயலையும் தேடு',
   'mail.signOutOf': '{address} இலிருந்து வெளியேறு',
   'mail.conversations': 'உரையாடல்கள்',

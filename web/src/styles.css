@@ -994,3 +994,12 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
 /* physical sides on purpose: they follow the finger, not the reading direction */
 .row.swiping[data-dir="left"]::after { content: attr(data-swipe-left); left: 100%; justify-content: flex-start; background: var(--safe); color: var(--paper); }
 .row.swiping[data-dir="right"]::after { content: attr(data-swipe-right); right: 100%; justify-content: flex-end; background: var(--accent); color: var(--accent-ink); }
+
+/* ═══ Drag to a folder, label colours ══════════════════ */
+/* While rows are being dragged, folders that can take them are outlined; the one under the pointer fills. */
+.nav-item.drop-ok { outline: 1px dashed var(--muted); outline-offset: -1px; }
+.nav-item.drop-over { background: var(--accent-wash); color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }
+.nav-item.drop-ok * { pointer-events: none; } /* children don't steal dragleave */
+/* A folder you made has its own colour, from its name: the same on its icon in the rail and its chip in the list. */
+.nav-item.labelled:not(.active) svg { color: color-mix(in oklch, oklch(60% 0.16 var(--h)) 75%, var(--ink)); }
+.pill--label { background: color-mix(in oklch, oklch(62% 0.16 var(--h)) 20%, var(--paper)); color: color-mix(in oklch, oklch(60% 0.16 var(--h)) 50%, var(--ink)); }

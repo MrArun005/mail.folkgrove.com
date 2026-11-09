@@ -240,6 +240,8 @@ export default {
   'mail.myMailbox': 'मेरा मेलबॉक्स',
   'mail.addAccount': 'दूसरा खाता जोड़ें',
   'mail.settings': 'सेटिंग',
+  'mail.openMenu': 'फ़ोल्डर और खाता', // review: new
+  'mail.undone': 'पहले जैसा कर दिया', // review: new
   'mail.findAnyAction': 'कोई भी कार्रवाई ढूंढें',
   'mail.signOutOf': '{address} से साइन आउट करें',
   'mail.conversations': 'बातचीत',

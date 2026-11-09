@@ -241,6 +241,8 @@ export default {
   'mail.myMailbox': 'Mi buzón',
   'mail.addAccount': 'Añadir otra cuenta',
   'mail.settings': 'Configuración',
+  'mail.openMenu': 'Carpetas y cuenta', // review: new
+  'mail.undone': 'Deshecho', // review: new
   'mail.findAnyAction': 'Buscar cualquier acción',
   'mail.signOutOf': 'Cerrar sesión de {address}',
   'mail.conversations': 'Conversaciones',

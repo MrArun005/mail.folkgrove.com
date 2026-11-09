@@ -5,7 +5,7 @@ import { parseAddresses } from './mailutil';
 import { t } from './i18n';
 
 export const fullName = (c: Pick<Contact, 'given' | 'surname'>) => `${c.given} ${c.surname}`.trim();
-const hue = (s: string) => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
+export const hue = (s: string) => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
 const Avatar = ({ c }: { c: Contact }) => (
   <span className="avatar" aria-hidden="true" style={{ '--h': hue(c.emails[0] ?? fullName(c)) } as React.CSSProperties}>
     {(fullName(c) || c.emails[0] || '?').slice(0, 1).toUpperCase()}

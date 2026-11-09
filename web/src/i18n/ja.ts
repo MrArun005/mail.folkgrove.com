@@ -240,6 +240,8 @@ export default {
   'mail.myMailbox': '自分のメールボックス',
   'mail.addAccount': '別のアカウントを追加',
   'mail.settings': '設定',
+  'mail.openMenu': 'フォルダとアカウント', // review: new
+  'mail.undone': '元に戻しました', // review: new
   'mail.findAnyAction': '操作を検索',
   'mail.signOutOf': '{address} からログアウト',
   'mail.conversations': 'スレッド',
