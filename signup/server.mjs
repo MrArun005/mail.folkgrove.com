@@ -83,6 +83,9 @@ export function configFromEnv(env = process.env) {
     dnsServers: (env.DNS_SERVERS || '').split(',').map((s) => s.trim()).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
     retentionFile: env.RETENTION_FILE || null, // retention rules (retention.mjs)
+    // Admin audit log (audit.mjs): JSON lines; rotated to AUDIT_FILE.1 once it holds AUDIT_MAX_ENTRIES lines.
+    auditFile: env.AUDIT_FILE || null,
+    auditMax: Number(env.AUDIT_MAX_ENTRIES || 10_000),
     // Single sign-on (sso.mjs): an outside OpenID Connect provider. PUBLIC_URL is the webmail address (callback).
     oidc: env.OIDC_ISSUER ? { issuer: env.OIDC_ISSUER, clientId: env.OIDC_CLIENT_ID, name: env.OIDC_NAME || 'your organisation',
       secret: env.OIDC_SECRET_FILE ? readFileSync(env.OIDC_SECRET_FILE, 'utf8').trim() : env.OIDC_SECRET, publicUrl: (env.PUBLIC_URL || '').replace(/\/$/, ''),
