@@ -146,6 +146,15 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
 
   // Phones: the rail is a drawer, opened from the top bar.
   const [navOpen, setNavOpen] = useState(false);
+  // Keyboard and screen readers: opening the drawer moves focus into it (the folder you're in), closing it hands
+  // focus back to the button that opened it, and the page behind can't be reached while it is open.
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (navOpen) document.querySelector<HTMLElement>('.rail .nav-item.active, .rail .nav-item')?.focus();
+    else if (wasOpen.current && document.activeElement?.closest('.rail, body') && !document.activeElement.closest('.list, .reader, .overlay, .compose')) menuButton.current?.focus();
+    wasOpen.current = navOpen;
+  }, [navOpen]);
   // Drag conversations onto a folder in the rail (pointer devices): what is being dragged, and the folder under it.
   const [dragging, setDragging] = useState<string[] | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
@@ -690,7 +699,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       onKeyDown={(e) => { if (e.key === 'Escape' && navOpen) { e.stopPropagation(); setNavOpen(false); } }}>
       {/* Phones only: the way to the folders, the account and Settings (the rail is a drawer there). */}
       <header className="topbar">
-        <Button variant="quiet" icon="menu" label={t('mail.openMenu')} aria-expanded={navOpen} onClick={() => setNavOpen(true)} />
+        <Button ref={menuButton} variant="quiet" icon="menu" label={t('mail.openMenu')} aria-expanded={navOpen} onClick={() => setNavOpen(true)} />
         <h1 className="topbar-title">{heading}</h1>
         <Button variant="quiet" icon="settings" label={t('mail.settings')} onClick={() => setOverlay('settings')} />
       </header>
@@ -704,7 +713,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         takesDrop={takesDrop} dropOn={dropOn} onDropOver={setDropOn} onDrop={drop} />
 
       {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : role === FEED ? <FeedView client={client} say={(text) => say({ text })} onOpen={(tid) => openRef.current(tid)} /> : role === NOTES ? <NotesView client={client} say={(text) => say({ text })} /> : <>
-      <section className="list" aria-label={t('mail.conversations')} onScroll={(e) => {
+      <section className="list" aria-label={t('mail.conversations')} inert={navOpen} onScroll={(e) => {
         const el = e.currentTarget;
         if (hasMore && el.scrollTop + el.clientHeight > el.scrollHeight - 600) loadMore();
       }}>
@@ -792,7 +801,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         )}
       </section>
 
-      <section className="reader" aria-label={t('mail.conversation')}>
+      <section className="reader" aria-label={t('mail.conversation')} inert={navOpen}>
         {role === CONTACTS
           ? <ContactPanel contact={people?.find((x) => x.id === personId) ?? null} editing={editingPerson} all={people ?? []}
               onEmailAll={(to) => setCompose(withSignature({ ...EMPTY_DRAFT, to }))}

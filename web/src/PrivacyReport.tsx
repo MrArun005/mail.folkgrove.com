@@ -15,7 +15,7 @@ export function PrivacyReport({ user, onClose, onSearch }: { user: string; onClo
   const since = new Date(tally.since).toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' });
   return (
     <div className="overlay" onClick={onClose} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
-      <section className="sheet privacy" role="dialog" aria-label={t('privacy.title')} onClick={(e) => e.stopPropagation()}>
+      <section className="sheet privacy" role="dialog" aria-modal="true" aria-label={t('privacy.title')} onClick={(e) => e.stopPropagation()}>
         <header className="privacy-head">
           <span className="privacy-mark"><Icon name="shield" size={22} /></span>
           <h2>{t('privacy.title')}</h2>
@@ -45,7 +45,7 @@ export function PrivacyReport({ user, onClose, onSearch }: { user: string; onClo
             {senders.slice(0, 8).map((s) => (
               <li key={s.email}>
                 <span className="avatar" aria-hidden="true" style={{ '--h': hue(s.email) } as React.CSSProperties}>{s.name.slice(0, 1).toUpperCase()}</span>
-                <span className="who"><b dir="auto">{s.name}</b><span className="bar" style={{ '--w': `${Math.round((s.n / most) * 100)}%` } as React.CSSProperties} /></span>
+                <span className="who"><b dir="auto">{s.name}</b><span className="bar" aria-hidden="true" style={{ '--w': `${Math.round((s.n / most) * 100)}%` } as React.CSSProperties} /></span>
                 <span className="n">{t('privacy.messages', { count: s.n })}</span>
                 <Button variant="link" onClick={() => onSearch(`from:${s.email}`)}>{t('privacy.show')}</Button>
               </li>

@@ -1166,3 +1166,12 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
 .feed-body { border: 1px solid var(--rule); border-radius: var(--r-md); overflow: hidden; background: var(--white); }
 .feed-body iframe { display: block; width: 100%; height: 48px; border: 0; } /* starts short: the frame then grows to its content */
 @media (max-width: 860px) { .feed-head { align-items: flex-start; flex-direction: column; padding: var(--s4); } .feed-head h2 { display: none; } .feed-items { padding: 0 var(--s4) var(--s10); } }
+
+/* Touch screens hide the row buttons from sight (swipe does their job), but a screen reader or a keyboard still
+   reaches them: they're kept in the page at one pixel and come back into view when one of them has focus. */
+@media (hover: none) {
+  .row .row-actions:not(.screen-actions), .row:hover .row-actions:not(.screen-actions), .row:focus-within .row-actions:not(.screen-actions) {
+    display: flex; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); box-shadow: none;
+  }
+  .row .row-actions:not(.screen-actions):focus-within { width: auto; height: auto; padding: 2px; overflow: visible; clip-path: none; box-shadow: var(--lift-sm); }
+}

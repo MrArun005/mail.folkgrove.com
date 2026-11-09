@@ -57,3 +57,14 @@ test('swipe left archives, Undo puts it back; a short swipe does nothing', async
   await page.locator('.toast').getByRole('button', { name: 'Undo' }).click();
   await expect(row(page, SEEDED)).toHaveCount(1);
 });
+
+test('accessibility: the phone list and the open drawer', async ({ page }) => {
+  const { default: AxeBuilder } = await import('@axe-core/playwright');
+  const problems = async () => (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations
+    .filter((v) => v.impact === 'serious' || v.impact === 'critical').flatMap((v) => v.nodes.map((n) => `${v.id}: ${n.target.join(' ')}`));
+  await signIn(page);
+  expect.soft(await problems()).toEqual([]);
+  await page.getByRole('button', { name: 'Folders and account' }).click();
+  await expect(page.locator('.rail .nav-item').first()).toBeVisible();
+  expect.soft(await problems()).toEqual([]);
+});
