@@ -4,19 +4,18 @@ import { confirmIt, promptIt } from './Dialog';
 import { Button } from './Button';
 import type { ComposeApi } from './Compose';
 import { ComposeDock, useComposeWindows } from './ComposeDock';
-import { reactionDraft } from './reactions';
+import { messageActions } from './messageActions';
+import { SearchChips } from './SearchChips';
 import { Icon, roleIcon } from './icons';
-import { Jmap, UNDO_SECONDS, type SharedAccount, type Attachment, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
-import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, fileSize, formatAddresses, parseAddresses, textToHtml, unsubscribePlan, type ReplyMode, type Signature } from './mailutil';
+import { Jmap, UNDO_SECONDS, type SharedAccount, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
+import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, fileSize, textToHtml, type ReplyMode, type Signature } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { canAsk } from './ai';
 import { SubscriptionsList } from './Subscriptions';
 import { ContactList, ContactPanel, fullName, groupAddresses } from './Contacts';
 import { CalendarView } from './CalendarView';
-import { localZone } from './calendar';
-import type { PartStat } from './ics';
-import { Reader, type Action, type MoreAction } from './Reader';
+import { Reader, type Action } from './Reader';
 import { TaskList } from './Tasks';
 import { NotesView } from './Notes';
 import { addRule, loadScript, saveScript } from './Filters';
@@ -24,13 +23,12 @@ import { DEFAULT_TABS, SCREENER, TAB_LABEL, tabKeyword, TABS, type Rule, type Sc
 import { enablePush, notifyOn, showMail } from './notify';
 import { setBadge, takeLaunch } from './launch';
 import { offlineStore } from './offline';
-import { buildSrcdoc } from './safeHtml';
 import { parseSearch } from './search';
 import { applyTheme, Settings } from './Settings';
 import { cache } from './store';
 import { describe } from './when';
 import { TeamComments, useShared } from './Sharing';
-import { locale, t } from './i18n';
+import { t } from './i18n';
 import { clearRoute, readRoute, writeRoute, type Route } from './route';
 import { ConversationRows, InboxZero } from './Rows';
 import { Rail, ShortcutsHelp, shown } from './Rail';
@@ -45,8 +43,6 @@ const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', at
 const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks', NOTES = 'notes';
 const VIRTUAL = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS, NOTES];
 
-// Read by list servers, not people: never translated (RFC 2369 / RFC 8058).
-const UNSUB = 'unsubscribe', ONE_CLICK = 'List-Unsubscribe=One-Click';
 
 type Toast = { text: string; undo?: () => void } | null;
 
@@ -426,114 +422,12 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     refresh();
   }
 
-  /** Shared by the reader's Unsubscribe link and the Subscriptions page. Returns true when it went through. */
-  async function unsubscribe(m: Pick<EmailFull, 'unsubscribe'> & { from: Address[] | null }): Promise<boolean> {
-    const who = displayName(m.from?.[0]);
-    const plan = unsubscribePlan(m.unsubscribe);
-    if (!plan) { say({ text: t('mail.noSafeUnsubscribe', { name: who }) }, 6000); return false; }
-        if (!(await confirmIt({ title: t('mail.unsubscribeTitle', { name: who }), body: plan.kind === 'mail' ? t('mail.unsubscribeByMail', { address: plan.to }) : t(plan.kind === 'post' ? 'mail.unsubscribeByPost' : 'mail.unsubscribeByLink', { host: plan.host }), confirm: t('mail.unsubscribe') }))) return false;
-    try {
-      if (plan.kind === 'post') {
-        // RFC 8058 one-click: a plain form POST. no-cors because we never need to read the reply.
-        await fetch(plan.url, { method: 'POST', mode: 'no-cors', credentials: 'omit', referrerPolicy: 'no-referrer',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: ONE_CLICK });
-        say({ text: t('mail.unsubscribed', { name: who }) });
-      } else if (plan.kind === 'mail') {
-        await client.send({ to: [{ name: null, email: plan.to }], cc: [], subject: UNSUB, html: `<p>${UNSUB}</p>`, text: UNSUB, attachments: [] }, boxes);
-        say({ text: t('mail.unsubscribeSent', { address: plan.to }) });
-      } else {
-        window.open(plan.url, '_blank', 'noopener,noreferrer');
-        say({ text: t('mail.unsubscribeOpened', { host: plan.host }) });
-      }
-      return true;
-    } catch (e) { fail(e); return false; }
-  }
-
-  async function deleteAllFrom(s: Subscription) {
-    const who = displayName(s.from);
-    if (!(await confirmIt({ title: t('mail.deleteAllTitle', { name: who }), body: t('mail.deleteAllBody', { address: s.from.email }), confirm: t('mail.moveToTrash'), danger: true }))) return;
-    try { const n = await client.trashFrom(s.from.email, boxes); say({ text: t('mail.deletedAllFrom', { count: n, name: who }) }); refresh(); }
-    catch (e) { fail(e); }
-  }
-
-  async function saveSearch() {
-    const name = await promptIt({ title: t('mail.saveSearch'), body: t('mail.saveSearchBody'), label: t('mail.name'), value: query, confirm: t('mail.saveSearchConfirm') });
-    if (!name) return;
-    try {
-      let next: { name: string; query: string }[] = [];
-      await saveScript(client, boxes, (d) => ({ ...d, savedSearches: (next = [...(d.savedSearches ?? []).filter((x) => x.name !== name), { name, query }]) }));
-      setSaved(next); say({ text: t('mail.savedSearch', { name }) });
-    } catch (e) { fail(e); }
-  }
-
-  async function removeSearch(name: string) {
-    try {
-      let next: { name: string; query: string }[] = [];
-      await saveScript(client, boxes, (d) => ({ ...d, savedSearches: (next = (d.savedSearches ?? []).filter((x) => x.name !== name)) }));
-      setSaved(next);
-    } catch (e) { fail(e); }
-  }
-
-  async function more(what: MoreAction, m: EmailFull) {
-    const sender = m.from?.[0]?.email ?? '';
-    try {
-      if (what === 'original') {
-        const url = URL.createObjectURL(new Blob([await client.original(m)], { type: 'text/plain;charset=utf-8' }));
-        window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      } else if (what === 'print') {
-        // Print from a hidden sandboxed frame: same isolation as reading (CSP, trackers removed). allow-same-origin
-        // lets us call print(); without allow-scripts nothing in the message can run. allow-modals shows the dialog.
-        const head = `<h1 style="font:600 20px system-ui">${escape(m.subject ?? '')}</h1><p style="font:13px system-ui;color:#555">${escape(t('mail.printFrom', { from: formatAddresses(m.from) }))}<br>${escape(t('mail.printTo', { to: formatAddresses(m.to) }))}<br>${new Date(m.receivedAt).toLocaleString(locale())}</p><hr>`;
-        const frame = Object.assign(document.createElement('iframe'), { srcdoc: buildSrcdoc(head + (m.html ?? textToHtml(m.text ?? '')), false).srcdoc });
-        frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
-        frame.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden';
-        frame.onload = () => { frame.contentWindow?.print(); setTimeout(() => frame.remove(), 1000); };
-        document.body.appendChild(frame);
-      } else if (what === 'fromSender') {
-        setQuery(`from:${sender}`); setThreadId(null);
-      } else if (what === 'task') {
-        await client.addTask(m.subject?.replace(/^((re|fwd?)\s*:\s*)+/i, '') || t('mail.followUp'), { threadId: m.threadId });
-        say({ text: t('mail.addedToTasks') });
-      } else if (what === 'unmute') {
-        await client.unmute(m.threadId); setThreadVersion((v) => v + 1); say({ text: t('mail.unmuted') });
-      } else if (what === 'filter') {
-        setRulePrefill({ from: sender }); setOverlay('settings');
-      } else if (what === 'addContact') {
-        const name = m.from?.[0]?.name?.trim() ?? '';
-        const [given, ...rest] = name.split(/\s+/);
-        await client.saveContact({ given: given ?? '', surname: rest.join(' '), emails: [sender], phones: [], org: '', note: '' });
-        say({ text: t('mail.addedContact', { name: name || sender }) }); loadContacts();
-      } else if (what === 'block') {
-        if (!parseAddresses(sender).list.length) return say({ text: t('mail.cantBlock') });
-        if (!(await confirmIt({ title: t('mail.blockTitle', { address: sender }), body: t('mail.blockBody'), confirm: t('mail.block'), danger: true }))) return;
-        await addRule(client, boxes, { id: crypto.randomUUID(), from: sender, fromExact: true, action: 'block' });
-        await act('junk', [m.threadId]);
-        say({ text: t('mail.blocked', { address: sender }) });
-      }
-    } catch (e) { fail(e); }
-  }
-  async function rsvp(m: EmailFull, ics: Attachment, status: PartStat) {
-    const was = (['accepted', 'tentative'] as const).some((p) => m.keywords[`$rsvp-${p}`]);
-    try {
-      const inv = await client.rsvp(m.id, ics, status, boxes);
-      // Yes / Maybe also put it in the calendar, once (changing Maybe → Yes doesn't duplicate it).
-      let added = false;
-      if (status !== 'DECLINED' && !was && !(await client.hasEvent(inv.uid))) {
-        const [ev] = await client.parseInvite(ics.blobId);
-        if (ev) { await client.saveEvent({ ...ev, id: undefined, uid: inv.uid, timeZone: ev.timeZone || localZone() }); added = true; }
-      }
-      say({ text: t(added ? 'mail.repliedAdded' : 'mail.replied', { answer: t(({ ACCEPTED: 'mail.rsvpYes', TENTATIVE: 'mail.rsvpMaybe', DECLINED: 'mail.rsvpNo' } as const)[status]), address: inv.organizerEmail }) });
-      setThreadVersion((v) => v + 1);
-    } catch (e) { fail(e); }
-  }
-
-  async function receipt(m: EmailFull, send: boolean) {
-    try {
-      if (send) { await client.sendReadReceipt(m, boxes); say({ text: t('mail.receiptSent', { address: m.receiptTo?.[0]?.email ?? '' }) }); }
-      else { await client.declineReadReceipt(m.id); say({ text: t('mail.noReceipt') }); }
-      setThreadVersion((v) => v + 1);
-    } catch (e) { fail(e); }
-  }
+  // What you can do with one message or sender (unsubscribe, block, print, RSVP, receipts, reactions…): messageActions.ts.
+  const { unsubscribe, deleteAllFrom, saveSearch, removeSearch, more, rsvp, receipt, react } = messageActions({
+    client, boxes, query, identities: identities.map((i) => i.email), say, fail, refresh, act: (a, tids) => act(a, tids), setSaved,
+    reloadThread: () => setThreadVersion((v) => v + 1), loadContacts,
+    search: (q) => { setQuery(q); setThreadId(null); }, filterLike: (from) => { setRulePrefill({ from }); setOverlay('settings'); },
+  });
 
   const escape = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -660,14 +554,6 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
       const draft = (await client.thread(s.email.threadId)).find((m) => m.id === s.email.id);
       if (draft) setCompose(draftFromEmail(draft));
       refresh();
-    } catch (e) { fail(e); }
-  }
-
-  /** RFC 9078 reaction: a tiny reply holding the emoji; it shows as a chip under the message. */
-  async function react(m: EmailFull, emoji: string) {
-    try {
-      await client.send(reactionDraft(m, emoji, client.username, identities.map((i) => i.email)), boxes);
-      say({ text: t('mail.reacted', { emoji }) }); setThreadVersion((v) => v + 1);
     } catch (e) { fail(e); }
   }
 
@@ -951,29 +837,3 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
 }
 
 const TAB_ICON = { primary: 'inbox', promotions: 'tag', social: 'person', updates: 'bell', forums: 'replyAll' } as const;
-
-/** Gmail-style one-click filters under the search box, plus "From <person>" for a name being typed. */
-function SearchChips({ query, contacts, onChange }: { query: string; contacts: Address[]; onChange: (q: string) => void }) {
-  const week = new Date(Date.now() - 7 * 86400e3).toISOString().slice(0, 10);
-  const chips: [string, string, RegExp][] = [
-    [t('mail.chipUnread'), 'is:unread', /(^|\s)is:unread\b/], [t('folder.starred'), 'is:starred', /(^|\s)is:starred\b/],
-    [t('mail.chipAttachment'), 'has:attachment', /(^|\s)has:attach\w*/], [t('mail.chipLastWeek'), `after:${week}`, /(^|\s)after:\S+/],
-    [t('folder.sent'), 'in:sent', /(^|\s)in:sent\b/], [t('smarts.chipPurchases'), 'is:purchase', /(^|\s)is:purchases?\b/],
-  ];
-  const toggle = (token: string, re: RegExp) => onChange(re.test(query) ? query.replace(re, ' ').replace(/\s+/g, ' ').trim() : `${query.trim()} ${token}`.trim());
-  // The last word, if it's plain text, may be the start of a name: offer people who match.
-  const last = /(?:^|\s)([^\s:"]{2,})$/.exec(query)?.[1]?.toLowerCase();
-  const people = last ? contacts.filter((c) => c.email.toLowerCase().includes(last) || c.name?.toLowerCase().includes(last)).slice(0, 3) : [];
-  return (
-    <div className="search-chips" role="toolbar" aria-label={t('mail.searchFilters')}>
-      {people.map((c) => (
-        <button key={c.email} className="filter-chip person" onClick={() => onChange(query.replace(new RegExp(`${last!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), `from:${c.email}`))}>
-          <Icon name="person" size={14} />{t('mail.fromPerson', { name: c.name || c.email })}
-        </button>
-      ))}
-      {chips.map(([label, token, re]) => (
-        <button key={label} className={`filter-chip${re.test(query) ? ' on' : ''}`} aria-pressed={re.test(query)} onClick={() => toggle(token, re)}>{label}</button>
-      ))}
-    </div>
-  );
-}
