@@ -6,11 +6,12 @@ import { RetentionAdmin } from './Retention';
 import { locale, t } from './i18n';
 
 /**
- * Admin console (/admin): users, blocked addresses and new-account limits, and the outgoing queue. Every call goes
- * to the account service (signup/admin.mjs), which checks that the signed-in account is on its ADMINS list.
+ * Admin console (/admin): users, blocked addresses and new-account limits, the outgoing queue, and the audit log of
+ * what was changed here. Every call goes to the account service (signup/admin.mjs), which checks that the signed-in
+ * account is on its ADMINS list.
  */
-type Tab = 'overview' | 'users' | 'teams' | 'limits' | 'queue' | 'held' | 'domains' | 'abuse' | 'retention';
-const TABS = [['overview', 'admin.tabOverview'], ['users', 'admin.tabUsers'], ['teams', 'admin.tabTeams'], ['limits', 'admin.tabLimits'], ['queue', 'admin.tabQueue'], ['held', 'admin.tabHeld'], ['domains', 'admin.tabDomains'], ['abuse', 'admin.tabAbuse'], ['retention', 'admin.tabRetention']] as const;
+type Tab = 'overview' | 'users' | 'teams' | 'limits' | 'queue' | 'held' | 'domains' | 'abuse' | 'retention' | 'audit';
+const TABS = [['overview', 'admin.tabOverview'], ['users', 'admin.tabUsers'], ['teams', 'admin.tabTeams'], ['limits', 'admin.tabLimits'], ['queue', 'admin.tabQueue'], ['held', 'admin.tabHeld'], ['domains', 'admin.tabDomains'], ['abuse', 'admin.tabAbuse'], ['retention', 'admin.tabRetention'], ['audit', 'admin.tabAudit']] as const;
 
 interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; sending: boolean; admin: boolean; newAccount: boolean }
 interface Held { id: string; at: string; login: string; from: string; to: string[]; subject: string; size: number; score: number; reasons: string[] }
@@ -23,6 +24,19 @@ const size = (b: number) => b >= GB ? `${one(b / GB)} GB` : b >= 1024 ** 2 ? `${
 const when = (d: string | null) => (d ? new Date(d).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) : '');
 const REASONS = { authFailure: 'admin.reasonAuthFailure', rcptToFailure: 'admin.reasonRcptToFailure', loitering: 'admin.reasonLoitering', portScanning: 'admin.reasonPortScanning', manual: 'admin.reasonManual', other: 'admin.reasonOther' } as const;
 const DOMAIN_STATE = { active: 'admin.stateWorking', missing: 'admin.stateMissing', paused: 'admin.statePaused' } as const;
+// The audit log's codes (signup/admin.mjs AUDITED, and what its handlers note) in words.
+const AUDIT_ACTION = {
+  'user.create': 'admin.auditUserCreate', 'user.update': 'admin.auditUserUpdate', 'user.delete': 'admin.auditUserDelete',
+  'team.create': 'admin.auditTeamCreate', 'team.members': 'admin.auditTeamMembers', 'team.delete': 'admin.auditTeamDelete',
+  'ip.unblock': 'admin.auditIpUnblock', 'limits.add': 'admin.auditLimitsAdd', 'limits.lift': 'admin.auditLimitsLift',
+  'queue.retry': 'admin.auditQueueRetry', 'queue.cancel': 'admin.auditQueueCancel', 'held.release': 'admin.auditHeldRelease', 'held.delete': 'admin.auditHeldDelete',
+  'retention.rules': 'admin.auditRetentionRules', 'retention.run': 'admin.auditRetentionRun', 'retention.account': 'admin.auditRetentionAccount',
+} as const;
+const AUDIT_DETAIL = {
+  enable: 'admin.auditEnable', disable: 'admin.auditDisable', sending_suspend: 'admin.auditSendingSuspend', sending_allow: 'admin.auditSendingAllow',
+  password_reset: 'admin.auditPasswordReset', hold_on: 'admin.auditHoldOn', hold_off: 'admin.auditHoldOff',
+} as const;
+const AUDIT_PAGE = 50;
 const STATUS = { Scheduled: 'admin.statusWaiting', TemporaryFailure: 'admin.statusRetrying', PermanentFailure: 'admin.statusFailed', Completed: 'admin.statusDelivered' } as const;
 /** A server code's words, or the code itself when we don't know it. */
 const named = <M extends Record<string, Parameters<typeof t>[0]>>(map: M, code: string) => (code in map ? t(map[code as keyof M]) : code);
@@ -63,6 +77,7 @@ export function Admin({ client }: { client: Jmap }) {
         {tab === 'abuse' && <><Suspended client={client} /><Inactive client={client} /></>}
         {tab === 'held' && <HeldMail client={client} />}
         {tab === 'retention' && <RetentionAdmin client={client} />}
+        {tab === 'audit' && <AuditLog client={client} />}
       </main>
     </div>
   );
@@ -464,6 +479,56 @@ function Inactive({ client }: { client: Jmap }) {
           </tbody>
         </table>
       ))}
+    </section>
+  );
+}
+
+interface AuditEntry { at: string; admin: string; action: string; target: string | null; detail?: string[]; outcome: string }
+
+/** One "what was asked" code from the audit log ("quota:5000000", "member_add:sam@x") in words; unknown ones as they are. */
+function auditDetail(code: string) {
+  const i = code.indexOf(':'), kind = i < 0 ? code : code.slice(0, i), value = i < 0 ? '' : code.slice(i + 1), n = Number(value);
+  if (kind === 'quota') return value === 'none' ? t('admin.auditQuotaNone') : t('admin.auditQuota', { size: size(n) });
+  if (kind === 'member_add') return t('admin.auditMemberAdd', { member: value });
+  if (kind === 'member_remove') return t('admin.auditMemberRemove', { member: value });
+  if (kind === 'trash_days') return n > 0 ? t('admin.auditTrashDays', { count: n }) : t('admin.auditTrashNever');
+  if (kind === 'max_age_days') return value === 'server' ? t('admin.auditKeepServer') : n > 0 ? t('admin.auditKeepDays', { count: n }) : t('admin.auditKeepForever');
+  return named(AUDIT_DETAIL, code);
+}
+
+/** What administrators changed in this console (signup/audit.mjs), newest first, a page at a time. */
+function AuditLog({ client }: { client: Jmap }) {
+  const [offset, setOffset] = useState(0);
+  const { data, error, reload } = useLoad(() => client.admin<{ entries: AuditEntry[]; total: number }>(`audit?limit=${AUDIT_PAGE}&offset=${offset}`), [offset]);
+  return (
+    <section>
+      <h2>{t('admin.tabAudit')}</h2>
+      <p className="fine">{t('admin.auditHelp')}</p>
+      <div className="admin-bar">
+        <Button variant="quiet" onClick={() => (offset ? setOffset(0) : reload())}>{t('admin.refresh')}</Button>
+        <Button variant="quiet" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - AUDIT_PAGE))}>{t('admin.auditNewer')}</Button>
+        <Button variant="quiet" disabled={!data || offset + AUDIT_PAGE >= data.total} onClick={() => setOffset(offset + AUDIT_PAGE)}>{t('admin.auditOlder')}</Button>
+      </div>
+      {error && <p className="error" role="alert">{error}</p>}
+      {data && (data.total === 0 ? <p className="empty">{t('admin.noAudit')}</p> : <>
+        <p className="fine">{t('admin.auditShowing', { from: offset + 1, to: offset + data.entries.length, total: data.total })}</p>
+        <table className="admin-table">
+          <thead><tr><th>{t('admin.colTime')}</th><th>{t('admin.colAdmin')}</th><th>{t('admin.colAction')}</th><th>{t('admin.colTarget')}</th><th>{t('admin.colOutcome')}</th></tr></thead>
+          <tbody>
+            {data.entries.map((e, i) => (
+              <tr key={`${e.at}${i}`}>
+                <td data-label={t('admin.colTime')}>{when(e.at)}</td>
+                <td data-label={t('admin.colAdmin')}>{e.admin}</td>
+                <td data-label={t('admin.colAction')}>{named(AUDIT_ACTION, e.action)}{e.detail?.length ? <span className="fine"> · {e.detail.map(auditDetail).join(', ')}</span> : null}</td>
+                <td data-label={t('admin.colTarget')}>{e.target ?? ''}</td>
+                <td data-label={t('admin.colOutcome')}>{e.outcome === 'ok'
+                  ? <span className="pill on">{t('admin.auditDone')}</span>
+                  : <><span className="pill pill--warn">{t('admin.auditNotDone')}</span><span className="fine"> <code>{e.outcome}</code></span></>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </>)}
     </section>
   );
 }

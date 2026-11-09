@@ -87,6 +87,7 @@ services:
       ARF_REPORTERS: ${ARF_REPORTERS:-}  # spam complaints to abuse@: trusted feedback loops (domains, IPs); empty = any that pass DKIM/DMARC
       HOLD_DIR: /data/held   # outgoing mail held as likely spam, waiting for an admin (signup/hold.mjs)
       RETENTION_FILE: /data/retention.json   # retention rules (signup/retention.mjs)
+      AUDIT_FILE: /data/audit.jsonl   # what administrators changed in the admin console (signup/audit.mjs); backup.sh copies it
       # Single sign-on (install.sh --oidc-*); empty = off.
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}

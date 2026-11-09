@@ -2,6 +2,7 @@
 // Who is an admin: the ADMINS setting (comma-separated usernames on DOMAIN). The caller proves who they are with
 // their own sign-in token (checked by Stalwart, as for aliases); then their name must be on that list.
 // This is a short, explicit list of Stalwart admin operations, never a passthrough.
+// Every change made here (anything but a GET) goes into the audit log (audit.mjs), written in handle() below.
 import { randomBytes } from 'node:crypto';
 import { callerOf } from './aliases.mjs';
 import { retireNames } from './account.mjs';
@@ -9,6 +10,7 @@ import { forgetFiles } from './files.mjs';
 import { checkUsername } from './lib.mjs';
 import { isHeld, policyStore, retentionAdmin } from './retention.mjs';
 import { adminDomainList } from './domains.mjs';
+import { auditLog } from './audit.mjs';
 
 const NEW = 'new-accounts'; // x:MemoryLookupKey namespace for the stricter sending tier (key = full address)
 const USER_PROPS = ['name', 'emailAddress', 'description', 'createdAt', 'usedDiskQuota', 'quotas', 'aliases', 'permissions', 'roles'];
@@ -49,6 +51,17 @@ export function queueView(m) {
   };
 }
 
+// What the audit log calls each change. A route missing here isn't recorded: only retention/preview (a dry run).
+// Handlers add the target by name and what was asked for through note(); see handle().
+export const AUDITED = {
+  'POST users': 'user.create', 'PATCH users/:id': 'user.update', 'DELETE users/:id': 'user.delete',
+  'POST groups': 'team.create', 'PATCH groups/:id': 'team.members', 'DELETE groups/:id': 'team.delete',
+  'DELETE blocked/:id': 'ip.unblock', 'POST new-accounts': 'limits.add', 'DELETE new-accounts/:id': 'limits.lift',
+  'POST queue/:id/retry': 'queue.retry', 'DELETE queue/:id': 'queue.cancel',
+  'POST held/:id/release': 'held.release', 'DELETE held/:id': 'held.delete',
+  'PUT retention': 'retention.rules', 'POST retention/run': 'retention.run', 'PATCH retention/:id': 'retention.account',
+};
+
 const password = () => randomBytes(12).toString('base64url'); // 16 characters, about 96 bits
 
 export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, abuse, hold = null, retention = policyStore(null) }) {
@@ -59,6 +72,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   const isAdmin = (a) => a.roles?.['@type'] !== 'User' || admins.has(String(a.name).toLowerCase());
   const caller = callerOf({ cfg, jmap, getDomainId });
   const badAuth = new RateLimiter(20, 15 * 60e3); // failed sign-ins per network, as for /api/aliases
+  const audit = cfg.audit ?? auditLog(cfg.auditFile, { max: cfg.auditMax || undefined });
 
   const set = async (type, args) => {
     const r = await jmap([[`${type}/set`, args, 's']]);
@@ -96,9 +110,10 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       return { users: list.map((a) => userView(a, keys)), total: r.total };
     },
 
-    'POST users': async (req) => {
+    'POST users': async (req, _url, _id, _who, note) => {
       const body = await readJson(req).catch(() => ({}));
       const name = typeof body.name === 'string' ? body.name.trim().toLowerCase() : '';
+      note(`${name.slice(0, 64)}@${cfg.domain}`);
       const bad = checkUsername(name);
       if (bad && bad.code !== 'username_reserved') return [400, bad.code, bad.message]; // admins may use reserved names
       const quota = body.quotaBytes == null || body.quotaBytes === '' ? (cfg.quotaBytes || null) : Number(body.quotaBytes);
@@ -116,10 +131,14 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       return { user: userView(await account(r.created.n.id)), ...(secret && { password: secret }) };
     },
 
-    'PATCH users/:id': async (req, _url, id, who) => {
+    'PATCH users/:id': async (req, _url, id, who, note) => {
       const body = await readJson(req).catch(() => ({}));
       let a = await account(id);
       if (!a) return [404, 'not_found', 'That account no longer exists.'];
+      // What was asked for, in the audit log's words. The new password itself is never noted.
+      note(a.emailAddress, ...[typeof body.sending === 'boolean' && abuse && (body.sending ? 'sending_allow' : 'sending_suspend'),
+        typeof body.enabled === 'boolean' && (body.enabled ? 'enable' : 'disable'),
+        'quotaBytes' in body && `quota:${body.quotaBytes === null ? 'none' : Number(body.quotaBytes) || 0}`, body.resetPassword === true && 'password_reset'].filter(Boolean));
       if (isAdmin(a)) return [403, 'protected', 'Administrator accounts are managed in Stalwart’s own admin.'];
       if (typeof body.sending === 'boolean' && abuse) { // suspend or allow sending, with the reason kept (abuse.mjs)
         if (body.sending) await abuse.liftAccount(a, who.name); else await abuse.suspendAccount(a, 'An administrator suspended sending.', who.name);
@@ -154,9 +173,10 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       return { user: userView(await account(id)), ...(secret && { password: secret }) };
     },
 
-    'DELETE users/:id': async (_req, _url, id, who) => {
+    'DELETE users/:id': async (_req, _url, id, who, note) => {
       const a = await account(id);
       if (!a) return [404, 'not_found', 'That account no longer exists.'];
+      note(a.emailAddress);
       if (isAdmin(a)) return [403, 'protected', 'Administrator accounts are managed in Stalwart’s own admin.'];
       if (id === who.id) return [400, 'self', 'You can’t delete your own account.'];
       if (isHeld(a.permissions)) return [409, 'on_hold', 'This account is on legal hold. Release the hold first (Retention).'];
@@ -180,9 +200,10 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       }));
       return { groups: groups.map((g, i) => ({ id: g.id, name: g.name, email: g.emailAddress, description: g.description ?? '', members: members[i] })) };
     },
-    'POST groups': async (req) => {
+    'POST groups': async (req, _url, _id, _who, note) => {
       const body = await readJson(req).catch(() => ({}));
       const name = typeof body.name === 'string' ? body.name.trim().toLowerCase() : '';
+      note(`${name.slice(0, 64)}@${cfg.domain}`);
       const bad = checkUsername(name);
       if (bad && bad.code !== 'username_reserved') return [400, bad.code, bad.message.replace('username', 'name')]; // support@ is reserved for sign-up, fine here
       const r = await jmap([['x:Account/set', { create: { g: { '@type': 'Group', name, domainId: await getDomainId(),
@@ -192,10 +213,11 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       return { group: { id: r.created.g.id, name, email: `${name}@${cfg.domain}`, members: [] } };
     },
     // { add: 'sam' } or { remove: 'sam@domain' }: membership lives on the user (memberGroupIds).
-    'PATCH groups/:id': async (req, _url, id) => {
+    'PATCH groups/:id': async (req, _url, id, _who, note) => {
       const body = await readJson(req).catch(() => ({}));
-      const [g] = await get('x:Account', [id], ['@type', 'roles', 'permissions', 'memberGroupIds']);
+      const [g] = await get('x:Account', [id], ['@type', 'emailAddress', 'roles', 'permissions', 'memberGroupIds']);
       if (g?.['@type'] !== 'Group') return [404, 'not_found', 'That team mailbox no longer exists.'];
+      note(g.emailAddress);
       // Only plain team mailboxes (default roles, inherited permissions, as this console creates them): a group that
       // grants extra rights is managed in Stalwart's own admin, or adding someone here would hand them those rights.
       // A group inside another group inherits that one's rights, so nested groups are left to Stalwart's admin too.
@@ -203,6 +225,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       const on = typeof body.add === 'string', who = String(on ? body.add : body.remove ?? '').trim().toLowerCase();
       const [local, domain] = who.split('@');
       if (!local || (domain && domain !== cfg.domain)) return [400, 'bad_member', `Enter a username or address on ${cfg.domain}.`];
+      note(null, `${on ? 'member_add' : 'member_remove'}:${local.slice(0, 64)}@${cfg.domain}`);
       const { ids } = await query('x:Account', { filter: { '@type': 'User', name: local, domainId: await getDomainId() } });
       const [u] = ids.length === 1 ? await get('x:Account', ids, ['name', 'roles']) : [];
       if (!u || String(u.name).toLowerCase() !== local) return [404, 'no_such_user', `There’s no account ${local}@${cfg.domain}.`];
@@ -210,9 +233,10 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       await set('x:Account', { update: { [ids[0]]: { [`memberGroupIds/${id}`]: on ? true : null } } });
       return {};
     },
-    'DELETE groups/:id': async (_req, _url, id) => {
-      const [g] = await get('x:Account', [id], ['@type', 'name']);
+    'DELETE groups/:id': async (_req, _url, id, _who, note) => {
+      const [g] = await get('x:Account', [id], ['@type', 'name', 'emailAddress']);
       if (g?.['@type'] !== 'Group') return [404, 'not_found', 'That team mailbox no longer exists.'];
+      note(g.emailAddress);
       // Stalwart refuses to delete a group that still has members (objectIsLinked): take them out first.
       const { ids } = await query('x:Account', { filter: { '@type': 'User', memberGroupIds: id }, limit: 500 });
       if (ids.length) await set('x:Account', { update: Object.fromEntries(ids.map((u) => [u, { [`memberGroupIds/${id}`]: null }])) });
@@ -246,23 +270,29 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       const list = await get('x:BlockedIp', ids);
       return { blocked: list.map(({ id, address, reason, createdAt, expiresAt }) => ({ id, address, reason, createdAt, expiresAt: expiresAt ?? null })) };
     },
-    'DELETE blocked/:id': async (_req, _url, id) => { await set('x:BlockedIp', { destroy: [id] }); return {}; },
+    'DELETE blocked/:id': async (_req, _url, id, _who, note) => {
+      note((await get('x:BlockedIp', [id]))[0]?.address); // the address, not Stalwart's id for the block
+      await set('x:BlockedIp', { destroy: [id] });
+      return {};
+    },
 
     'GET new-accounts': async () => ({ keys: (await newTier()).map(({ id, key }) => ({ id, address: key })) }),
-    'POST new-accounts': async (req) => {
+    'POST new-accounts': async (req, _url, _id, _who, note) => {
       const body = await readJson(req).catch(() => ({}));
       const address = typeof body.address === 'string' ? body.address.trim().toLowerCase() : '';
       const full = address.includes('@') ? address : `${address}@${cfg.domain}`;
       if (!/^[a-z0-9.-]{1,64}@[a-z0-9.-]+$/.test(full)) return [400, 'bad_address', 'Enter a username or full address, like bob@' + cfg.domain + '.'];
+      note(full);
       const tier = await newTier();
       if (tier.some((k) => k.key.toLowerCase() === full)) return { address: full };
       await set('x:MemoryLookupKey', { create: { k: { namespace: NEW, key: full, isGlobPattern: false } } });
       await reloadLookups(); // Stalwart only sees lookup-key changes after this
       return { address: full };
     },
-    'DELETE new-accounts/:id': async (_req, _url, id) => {
+    'DELETE new-accounts/:id': async (_req, _url, id, _who, note) => {
       const [k] = await get('x:MemoryLookupKey', [id]);
       if (!k || k.namespace !== NEW) return [404, 'not_found', 'That entry no longer exists.']; // only ever this namespace
+      note(k.key);
       await set('x:MemoryLookupKey', { destroy: [id] });
       await reloadLookups();
       return {};
@@ -278,20 +308,36 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       return { messages: list.sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt))) };
     },
     // Retry now: what Stalwart's own admin does (next attempt due in the past).
-    'POST queue/:id/retry': async (_req, _url, id) => { await set('x:QueuedMessage', { update: { [id]: { nextRetry: '2000-01-01T00:00:00Z' } } }); return {}; },
-    'DELETE queue/:id': async (_req, _url, id) => { await set('x:QueuedMessage', { destroy: [id] }); return {}; },
+    'POST queue/:id/retry': async (_req, _url, id, _who, note) => { note(await queuedFrom(id)); await set('x:QueuedMessage', { update: { [id]: { nextRetry: '2000-01-01T00:00:00Z' } } }); return {}; },
+    'DELETE queue/:id': async (_req, _url, id, _who, note) => { note(await queuedFrom(id)); await set('x:QueuedMessage', { destroy: [id] }); return {}; },
 
     // Outgoing mail held as likely spam (hold.mjs). Off (404) unless HOLD_HOOK_SECRET is set.
     'GET held': async () => (hold ? { held: hold.list() } : [404, 'not_found', 'Holding outgoing spam is off on this server.']),
-    'POST held/:id/release': async (_req, _url, id) => (await hold?.release(id)) ? {} : [404, 'not_found', 'That message is no longer held.'],
-    'DELETE held/:id': async (_req, _url, id) => hold?.remove(id) ? {} : [404, 'not_found', 'That message is no longer held.'],
+    // The audit log names a held or queued message by its sender (never its subject or text).
+    'POST held/:id/release': async (_req, _url, id, _who, note) => { note(heldFrom(id)); return (await hold?.release(id)) ? {} : [404, 'not_found', 'That message is no longer held.']; },
+    'DELETE held/:id': async (_req, _url, id, _who, note) => { note(heldFrom(id)); return hold?.remove(id) ? {} : [404, 'not_found', 'That message is no longer held.']; },
     // Retention and legal hold (retention.mjs).
-    ...Object.fromEntries(Object.entries(retentionAdmin({ jmap: (c) => jmap(c, ['urn:ietf:params:jmap:mail']), store: retention, isAdmin })).map(([k, fn]) => [k, async (req, _url, id, who) =>
-      fn(req.method === 'GET' ? {} : await readJson(req).catch(() => ({})), (msg) => console.log(`${msg} (run by ${who.name})`), id)])),
+    ...Object.fromEntries(Object.entries(retentionAdmin({ jmap: (c) => jmap(c, ['urn:ietf:params:jmap:mail']), store: retention, isAdmin })).map(([k, fn]) => [k, async (req, _url, id, who, note) => {
+      const body = req.method === 'GET' ? {} : await readJson(req).catch(() => ({}));
+      // For the audit log: whose rule (by address), and the numbers asked for.
+      const whose = id ?? (typeof body.accountId === 'string' ? body.accountId : null), days = (v) => (v === null ? 'server' : Number(v) || 0);
+      if (req.method !== 'GET' && k !== 'POST retention/preview') note(whose && ((await get('x:Account', [whose], ['emailAddress']).catch(() => []))[0]?.emailAddress ?? whose),
+        ...['trashJunkDays' in body && `trash_days:${days(body.trashJunkDays)}`, 'maxAgeDays' in body && `max_age_days:${days(body.maxAgeDays)}`,
+          'accountMaxAgeDays' in body && `max_age_days:${days(body.accountMaxAgeDays)}`, typeof body.hold === 'boolean' && (body.hold ? 'hold_on' : 'hold_off')].filter(Boolean));
+      return fn(body, (msg) => console.log(`${msg} (run by ${who.name})`), id);
+    }])),
+    // The audit log itself, newest first: ?limit= (50, at most 200) and ?offset= to page back.
+    'GET audit': async (_req, url) => {
+      const n = (k, d, max) => Math.min(max, Math.max(0, Math.floor(Number(url.searchParams.get(k) ?? d)) || 0));
+      const limit = n('limit', 50, 200) || 50, offset = n('offset', 0, Number.MAX_SAFE_INTEGER);
+      return { ...audit.list({ offset, limit }), offset, limit };
+    },
   };
+  const heldFrom = (id) => hold?.list().find((x) => x.id === id)?.from;
+  const queuedFrom = async (id) => (await get('x:QueuedMessage', [id], ['returnPath']).catch(() => []))[0]?.returnPath; // audit log: the sender
 
   return async function handle(req, res, url) {
-    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains|suspended|inactive|groups|held|retention)(?:/(${ID}))?(/retry|/release)?$`));
+    const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains|suspended|inactive|groups|held|retention|audit)(?:/(${ID}))?(/retry|/release)?$`));
     if (!m) return false;
     if (!admins.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS is set
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);
@@ -306,14 +352,24 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     if (key === 'POST retention/:id') key = `POST retention/${m[2]}`; // preview, run
     const fn = handlers[key];
     if (!fn) return fail(res, 405, 'method_not_allowed', 'Not allowed.'), true;
+    // The audit log: every change an administrator asks for passes here, so this is the one place that records it,
+    // whatever its outcome ('ok', or the error code the admin was shown). Handlers only say whom it was about and
+    // what was asked (note): names, addresses and numbers, never the request body or a password.
+    // Not recorded: reads (GET), and requests refused before this point. Anyone signed in can earn a 403 here, and
+    // letting them write lines would let them push the real ones out of a bounded log.
+    const entry = AUDITED[key] ? { at: new Date().toISOString(), admin: who.name, ip, action: AUDITED[key], target: m[2] ?? null } : null;
+    const note = (target, ...detail) => { if (entry && target) entry.target = String(target); if (entry && detail.length) entry.detail = [...(entry.detail ?? []), ...detail.map(String)]; };
+    const done = (outcome) => { if (entry) audit.record({ ...entry, outcome }); };
     let out;
-    try { out = await fn(req, url, m[2], who); }
+    try { out = await fn(req, url, m[2], who, note); }
     catch (e) {
       console.error(`admin: ${key} by ${who.name} failed:`, e.message, e.detail ? JSON.stringify(e.detail) : '');
+      done('stalwart_refused');
       return fail(res, 502, 'stalwart_refused', 'The mail server refused that change. Details are in the account service log.'), true;
     }
-    if (Array.isArray(out)) return fail(res, out[0], out[1], out[2]), true;
-    if (req.method !== 'GET') console.log(`admin: ${who.name} ${key}${m[2] ? ` ${m[2]}` : ''}`); // ponytail: audit trail is the log
+    if (Array.isArray(out)) return done(out[1]), fail(res, out[0], out[1], out[2]), true;
+    done('ok');
+    if (req.method !== 'GET') console.log(`admin: ${who.name} ${key}${m[2] ? ` ${m[2]}` : ''}`); // the service log keeps a copy
     return send(res, 200, { ok: true, ...out }), true;
   };
 }

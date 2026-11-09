@@ -28,6 +28,8 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `ADMINS` | | Usernames on `DOMAIN` (comma-separated, e.g. `ann,raj`) who may use the admin console at `/admin`. Empty: the console is off and `/api/admin/*` answers 404. See [Admin console](#admin-console-apiadmin). |
 | `RESERVED_NAMES` | | Extra reserved usernames, comma-separated. They are added to the built-in list in `lib.mjs`. |
 | `RETENTION_FILE` | | JSON file for retention rules (`retention.mjs`). Without it rules last until restart. |
+| `AUDIT_FILE` | | File the admin console's [audit log](#audit-log) is appended to, one JSON object per line (`/data/audit.jsonl` in `docker-compose.yml`). Without it the log lasts until restart. |
+| `AUDIT_MAX_ENTRIES` | `10000` | Lines in `AUDIT_FILE` before it is rotated to `AUDIT_FILE.1` (one old file is kept, so the last 10,000 to 20,000 changes). |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_SECRET` (or `OIDC_SECRET_FILE`), `OIDC_NAME`, `OIDC_CLAIM` (default `email`, must be verified), `OIDC_TENANT` (Google `hd` / Entra `tid` that must match), `PUBLIC_URL` | | Single sign-on (`sso.mjs`). All but the name are needed together; `PUBLIC_URL` is the webmail address (callback `PUBLIC_URL/api/sso/callback`). Stalwart's OIDC directory must point at the same provider (`install.sh --oidc-*`). |
 | `FILES_DB` | | JSON file with the large-file links (`/api/files`). Set it in production (`docker-compose.yml` does); without it links last until restart. The files themselves live in each user's own storage in Stalwart. |
 | `MAX_FILE_BYTES` | `2147483648` (2 GiB) | Biggest file one link can hold. |
@@ -161,7 +163,7 @@ What's stored: the domain's description in Stalwart is `openmail-custom-domain {
 
 ### Admin console (`/api/admin/*`)
 
-The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change is logged with the admin's name.
+The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change goes into the [audit log](#audit-log) with the admin's name.
 
 | Request | What it does (Stalwart object) |
 |---|---|
@@ -192,6 +194,7 @@ Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) 
 
 The caller's own rule (sign-in token): `{trashDays}` = empty my Trash and Junk after 1–365 days (null = server default). Answers `{trashDays, serverTrashDays, maxAgeDays, held}`.
 
+| `GET audit?limit=&offset=` | The [audit log](#audit-log), newest first: `{entries, total, offset, limit}` (`limit` 50 by default, at most 200) |
 ### Single sign-on: `GET /api/sso`, `/api/sso/start`, `/api/sso/callback`
 
 Only with `OIDC_ISSUER`. `GET /api/sso` → `{name}` (the login page shows "Sign in with {name}"). `start` redirects to the provider (authorization code + PKCE S256, `state` bound to an HttpOnly SameSite=Lax cookie, `nonce`). `callback` exchanges the code with the client secret, verifies the ID token (JWKS signature RS/PS/ES, `iss`, `aud`/`azp`, `exp`, `iat`, `nonce`), requires a verified address (`email_verified` or Entra `xms_edov`) and the `OIDC_TENANT` if set, refuses `ADMINS`, reserved and retired names, asks Stalwart which account it opens (Stalwart creates it on first sign-in, only in local domains), puts the provider's refresh token in the `/api/session` cookie, and redirects to `/?sso=<address>` (or `/?sso_error=expired|cancelled|refused|no_account|unavailable|rate_limited`). `/api/session/refresh` then returns a fresh ID token as the access token; `forget` revokes at the provider's `revocation_endpoint`.
@@ -202,6 +205,24 @@ The web app's banner. Sign-in token required, as for `/api/aliases`. `GET` answe
 ### `GET /api/blocked`
 
 No sign-in. `{"ok": true, "blocked": true, "until": "<time>", "reason": "authFailure"}` when the caller's own IP is in Stalwart's blocked list (`x:BlockedIp`, exact address), else `{"ok": true, "blocked": false}`. The sign-in form asks after a failed sign-in, because Stalwart answers a banned address exactly like a wrong password. 30 per network per minute.
+#### Audit log
+
+Every change made through `/api/admin/*` (anything but a `GET`, and not the `retention/preview` dry run) is appended to `AUDIT_FILE` as one JSON line, written in the one place all admin requests pass through (`handle()` in `admin.mjs`; the format is in `audit.mjs`):
+
+```json
+{"at":"2026-11-09T10:12:03.511Z","admin":"ann","ip":"203.0.113.7","action":"user.update","target":"sam@example.com","detail":["disable","quota:5000000000"],"outcome":"ok"}
+```
+
+- `action`: `user.create|update|delete`, `team.create|members|delete`, `ip.unblock`, `limits.add|lift`, `queue.retry|cancel`, `held.release|delete`, `retention.rules|run|account`.
+- `target`: the account, team mailbox or sender address, or the blocked IP (Stalwart's id when the object was already gone).
+- `detail`: what was asked for: `enable`, `disable`, `sending_suspend`, `sending_allow`, `password_reset`, `quota:<bytes|none>`, `member_add:<address>`, `member_remove:<address>`, `hold_on`, `hold_off`, `trash_days:<n>`, `max_age_days:<n|server>`.
+- `outcome`: `ok`, or the error code the admin was shown (`protected`, `not_found`, `stalwart_refused`, …). Refused and failed changes are recorded too.
+- `ip`: the admin's address as the rate limiters see it (IPv6 cut to its /64).
+
+Never recorded: passwords (generated ones included), tokens, request bodies, subjects or message text. Not recorded either: reads, and requests from accounts that aren't administrators (they get `403` before anything runs). Users' own actions (their domains, masked addresses, deleting their account) and automatic ones (suspensions by the abuse jobs) are in the service log, not here.
+
+The file is append-only and bounded: at `AUDIT_MAX_ENTRIES` lines it is renamed to `AUDIT_FILE.1` (replacing the previous one) and a new file starts. It is not tamper-proof: an administrator with a shell on the server can edit it, and one without can push old lines out by making 20,000 changes. Ship the service log elsewhere if you need more (each change is also printed there).
+
 
 ### `POST /api/events` (Stalwart only)
 
