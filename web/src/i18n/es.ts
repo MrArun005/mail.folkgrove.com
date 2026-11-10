@@ -299,14 +299,14 @@ export default {
   'privacy.weekBadge': { one: '{count} rastreador eliminado esta semana', other: '{count} rastreadores eliminados esta semana' }, // review: new
   'display.grove': 'Grove', // review: new
   'domains.membersTitle': 'Direcciones para otras personas', // review: new
-  'domains.membersIntro': 'Da una dirección en {domain} a otra persona que tenga una cuenta aquí. El correo enviado a ella llega a su buzón, no al tuyo, y esa persona puede enviar desde ella. Solo tú puedes cambiar el dominio.', // review: new
-  'domains.addressesUsed': '{used} de {max} direcciones en uso, incluidas las tuyas.', // review: new
+  'domains.membersIntro': 'Ofrece una dirección en {domain} a otra persona que tenga una cuenta aquí. Será suya cuando acepte la invitación en sus propios ajustes: entonces el correo enviado a ella llegará a su buzón, no al tuyo, y esa persona podrá enviar desde ella. Solo tú puedes cambiar el dominio.', // review: new
+  'domains.addressesUsed': '{used} de {max} direcciones en uso, incluidas las tuyas y las invitaciones pendientes.', // review: new
   'domains.memberFor': 'para {account}', // review: new
   'domains.memberNamePlaceholder': 'sam', // review: new
   'domains.memberNewAddress': 'Su nueva dirección en {domain}', // review: new
   'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
   'domains.memberAccountLabel': 'La dirección con la que inicia sesión, en {domain}', // review: new
-  'domains.giveAddress': 'Dar dirección', // review: new
+  'domains.invite': 'Invitar', // review: new
   'domains.takeBack': 'Retirar {email}', // review: new
   'domains.takeBackTitle': '¿Retirar {email} a {account}?', // review: new
   'domains.takeBackBody': 'El correo enviado a ella se rechazará y no se podrá volver a dar a nadie. El correo que esa persona ya recibió se queda con ella.', // review: new
@@ -318,6 +318,16 @@ export default {
   'domains.giveUpTitle': '¿Renunciar a {email}?', // review: new
   'domains.giveUpBody': 'El correo enviado a ella se rechazará y no se podrá recuperar, ni por ti ni por nadie.', // review: new
   'domains.giveUpConfirm': 'Renunciar a la dirección', // review: new
+  'domains.invitedWaiting': 'Invitación enviada, a la espera de respuesta hasta el {date}', // review: new
+  'domains.withdraw': 'Retirar', // review: new
+  'domains.withdrawLabel': 'Retirar la invitación a {email}', // review: new
+  'domains.invitesTitle': 'Invitaciones', // review: new
+  'domains.invitesIntro': 'El propietario de un dominio te ofrece estas direcciones. Si aceptas una, el correo enviado a ella llegará aquí y podrás elegirla en De al escribir. Nada cambia hasta que aceptes.', // review: new
+  'domains.inviteAnswerBy': 'responde antes del {date}', // review: new
+  'domains.accept': 'Aceptar', // review: new
+  'domains.decline': 'Rechazar', // review: new
+  'domains.acceptLabel': 'Aceptar {email}', // review: new
+  'domains.declineLabel': 'Rechazar {email}', // review: new
   'admin.tabAudit': 'Registro de auditoría', // review: new
   'admin.domainMembers': { one: 'algunas para {count} cuenta más', other: 'algunas para {count} cuentas más' }, // review: new
   'admin.auditHelp': 'Todos los cambios hechos en esta consola: quién lo hizo, qué fue, sobre quién o qué, y si se llevó a cabo. Lo más reciente primero. Nunca se registran las contraseñas ni el contenido de los mensajes.', // review: new

@@ -298,14 +298,14 @@ export default {
   'privacy.weekBadge': { one: 'ಈ ವಾರ {count} ಟ್ರ್ಯಾಕರ್ ತೆಗೆದುಹಾಕಲಾಗಿದೆ', other: 'ಈ ವಾರ {count} ಟ್ರ್ಯಾಕರ್‌ಗಳನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ' }, // review: new
   'display.grove': 'Grove', // review: new
   'domains.membersTitle': 'ಇತರರಿಗಾಗಿ ವಿಳಾಸಗಳು', // review: new
-  'domains.membersIntro': 'ಇಲ್ಲಿ ಖಾತೆ ಹೊಂದಿರುವ ಬೇರೊಬ್ಬರಿಗೆ {domain} ನಲ್ಲಿ ಒಂದು ವಿಳಾಸ ನೀಡಿ. ಅದಕ್ಕೆ ಬರುವ ಮೇಲ್ ನಿಮ್ಮದಲ್ಲ, ಅವರ ಮೇಲ್‌ಬಾಕ್ಸ್‌ಗೆ ಹೋಗುತ್ತದೆ, ಮತ್ತು ಅವರು ಅದರಿಂದ ಕಳುಹಿಸಬಹುದು. ಡೊಮೇನ್ ಅನ್ನು ನೀವು ಮಾತ್ರ ಬದಲಾಯಿಸಬಹುದು.', // review: new
-  'domains.addressesUsed': '{max} ರಲ್ಲಿ {used} ವಿಳಾಸಗಳು ಬಳಕೆಯಲ್ಲಿವೆ, ನಿಮ್ಮದೂ ಸೇರಿ.', // review: new
+  'domains.membersIntro': 'ಇಲ್ಲಿ ಖಾತೆ ಹೊಂದಿರುವ ಬೇರೊಬ್ಬರಿಗೆ {domain} ನಲ್ಲಿ ಒಂದು ವಿಳಾಸವನ್ನು ನೀಡಲು ಮುಂದಾಗಿ. ಅವರು ತಮ್ಮ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಆಹ್ವಾನವನ್ನು ಒಪ್ಪಿಕೊಂಡಾಗ ಅದು ಅವರದಾಗುತ್ತದೆ: ನಂತರ ಅದಕ್ಕೆ ಬರುವ ಮೇಲ್ ನಿಮ್ಮದಲ್ಲ, ಅವರ ಮೇಲ್‌ಬಾಕ್ಸ್‌ಗೆ ಹೋಗುತ್ತದೆ, ಮತ್ತು ಅವರು ಅದರಿಂದ ಕಳುಹಿಸಬಹುದು. ಡೊಮೇನ್ ಅನ್ನು ನೀವು ಮಾತ್ರ ಬದಲಾಯಿಸಬಹುದು.', // review: new
+  'domains.addressesUsed': '{max} ರಲ್ಲಿ {used} ವಿಳಾಸಗಳು ಬಳಕೆಯಲ್ಲಿವೆ, ನಿಮ್ಮದೂ ಉತ್ತರಕ್ಕಾಗಿ ಕಾಯುತ್ತಿರುವ ಆಹ್ವಾನಗಳೂ ಸೇರಿ.', // review: new
   'domains.memberFor': '{account} ಗಾಗಿ', // review: new
   'domains.memberNamePlaceholder': 'sam', // review: new
   'domains.memberNewAddress': '{domain} ನಲ್ಲಿ ಅವರ ಹೊಸ ವಿಳಾಸ', // review: new
   'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
   'domains.memberAccountLabel': '{domain} ನಲ್ಲಿ ಅವರು ಸೈನ್ ಇನ್ ಮಾಡುವ ವಿಳಾಸ', // review: new
-  'domains.giveAddress': 'ವಿಳಾಸ ನೀಡಿ', // review: new
+  'domains.invite': 'ಆಹ್ವಾನಿಸಿ', // review: new
   'domains.takeBack': '{email} ಹಿಂಪಡೆಯಿರಿ', // review: new
   'domains.takeBackTitle': '{account} ಅವರಿಂದ {email} ಹಿಂಪಡೆಯಬೇಕೇ?', // review: new
   'domains.takeBackBody': 'ಇದಕ್ಕೆ ಕಳುಹಿಸಿದ ಮೇಲ್ ಹಿಂತಿರುಗುತ್ತದೆ, ಮತ್ತು ಇದನ್ನು ಮತ್ತೆ ಯಾರಿಗೂ ನೀಡಲು ಸಾಧ್ಯವಿಲ್ಲ. ಅವರು ಈಗಾಗಲೇ ಸ್ವೀಕರಿಸಿದ ಮೇಲ್ ಅವರ ಬಳಿಯೇ ಉಳಿಯುತ್ತದೆ.', // review: new
@@ -317,6 +317,16 @@ export default {
   'domains.giveUpTitle': '{email} ಬಿಟ್ಟುಕೊಡಬೇಕೇ?', // review: new
   'domains.giveUpBody': 'ಇದಕ್ಕೆ ಕಳುಹಿಸಿದ ಮೇಲ್ ಹಿಂತಿರುಗುತ್ತದೆ, ಮತ್ತು ನೀವಾಗಲಿ ಬೇರೆ ಯಾರಾಗಲಿ ಇದನ್ನು ಮರಳಿ ತರಲು ಸಾಧ್ಯವಿಲ್ಲ.', // review: new
   'domains.giveUpConfirm': 'ವಿಳಾಸ ಬಿಟ್ಟುಕೊಡಿ', // review: new
+  'domains.invitedWaiting': 'ಆಹ್ವಾನಿಸಲಾಗಿದೆ, {date} ವರೆಗೆ ಉತ್ತರಕ್ಕಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ', // review: new
+  'domains.withdraw': 'ಹಿಂತೆಗೆದುಕೊಳ್ಳಿ', // review: new
+  'domains.withdrawLabel': '{email} ಗೆ ನೀಡಿದ ಆಹ್ವಾನವನ್ನು ಹಿಂತೆಗೆದುಕೊಳ್ಳಿ', // review: new
+  'domains.invitesTitle': 'ಆಹ್ವಾನಗಳು', // review: new
+  'domains.invitesIntro': 'ಒಂದು ಡೊಮೇನ್‌ನ ಮಾಲೀಕರು ಈ ವಿಳಾಸಗಳನ್ನು ನಿಮಗೆ ನೀಡಲು ಮುಂದಾಗಿದ್ದಾರೆ. ನೀವು ಒಂದನ್ನು ಒಪ್ಪಿಕೊಂಡರೆ, ಅದಕ್ಕೆ ಬರುವ ಮೇಲ್ ಇಲ್ಲಿಗೆ ಬರುತ್ತದೆ, ಮತ್ತು ಬರೆಯುವಾಗ ‘ಇವರಿಂದ’ ನಲ್ಲಿ ನೀವು ಅದನ್ನು ಆಯ್ಕೆ ಮಾಡಬಹುದು. ನೀವು ಒಪ್ಪಿಕೊಳ್ಳುವವರೆಗೆ ಏನೂ ಬದಲಾಗುವುದಿಲ್ಲ.', // review: new
+  'domains.inviteAnswerBy': '{date} ರೊಳಗೆ ಉತ್ತರಿಸಿ', // review: new
+  'domains.accept': 'ಒಪ್ಪಿಕೊಳ್ಳಿ', // review: new
+  'domains.decline': 'ನಿರಾಕರಿಸಿ', // review: new
+  'domains.acceptLabel': '{email} ಒಪ್ಪಿಕೊಳ್ಳಿ', // review: new
+  'domains.declineLabel': '{email} ನಿರಾಕರಿಸಿ', // review: new
   'admin.tabAudit': 'ಆಡಿಟ್ ಲಾಗ್', // review: new
   'admin.domainMembers': { one: 'ಕೆಲವು ಬೇರೆ {count} ಖಾತೆಗಾಗಿ', other: 'ಕೆಲವು ಬೇರೆ {count} ಖಾತೆಗಳಿಗಾಗಿ' }, // review: new
   'admin.auditHelp': 'ಈ ಕನ್ಸೋಲ್‌ನಲ್ಲಿ ಮಾಡಿದ ಪ್ರತಿಯೊಂದು ಬದಲಾವಣೆ: ಯಾರು ಮಾಡಿದರು, ಏನು ಮಾಡಿದರು, ಅದು ಯಾರ ಅಥವಾ ಯಾವುದರ ಬಗ್ಗೆ, ಮತ್ತು ಅದು ನಡೆಯಿತೇ ಇಲ್ಲವೇ. ಹೊಸದು ಮೊದಲು. ಪಾಸ್‌ವರ್ಡ್‌ಗಳು ಮತ್ತು ಸಂದೇಶಗಳ ವಿಷಯವನ್ನು ಎಂದಿಗೂ ದಾಖಲಿಸುವುದಿಲ್ಲ.', // review: new

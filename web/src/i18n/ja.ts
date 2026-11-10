@@ -298,14 +298,14 @@ export default {
   'privacy.weekBadge': { other: '今週 {count} 個のトラッカーを削除' }, // review: new
   'display.grove': 'Grove', // review: new
   'domains.membersTitle': '他の人用のアドレス', // review: new
-  'domains.membersIntro': 'ここにアカウントを持つ他の人に、{domain} のアドレスを渡せます。そのアドレス宛てのメールはあなたではなく相手のメールボックスに届き、相手はそのアドレスから送信できます。ドメインを変更できるのはあなただけです。', // review: new
-  'domains.addressesUsed': '{max} 件中 {used} 件のアドレスを使用中（あなたの分を含む）。', // review: new
+  'domains.membersIntro': 'ここにアカウントを持つ他の人に、{domain} のアドレスを提案できます。相手が自分の設定で招待を承諾すると、そのアドレスは相手のものになります。以後、そのアドレス宛てのメールはあなたではなく相手のメールボックスに届き、相手はそのアドレスから送信できます。ドメインを変更できるのはあなただけです。', // review: new
+  'domains.addressesUsed': '{max} 件中 {used} 件のアドレスを使用中（あなたの分と返答待ちの招待を含む）。', // review: new
   'domains.memberFor': '{account} 用', // review: new
   'domains.memberNamePlaceholder': 'sam', // review: new
   'domains.memberNewAddress': '{domain} での相手の新しいアドレス', // review: new
   'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
   'domains.memberAccountLabel': '相手がログインに使うアドレス（{domain}）', // review: new
-  'domains.giveAddress': 'アドレスを渡す', // review: new
+  'domains.invite': '招待する', // review: new
   'domains.takeBack': '{email} を取り戻す', // review: new
   'domains.takeBackTitle': '{account} から {email} を取り戻しますか？', // review: new
   'domains.takeBackBody': 'このアドレス宛てのメールは返送され、このアドレスを再び誰かに渡すことはできません。相手がすでに受信したメールは相手の手元に残ります。', // review: new
@@ -317,6 +317,16 @@ export default {
   'domains.giveUpTitle': '{email} を手放しますか？', // review: new
   'domains.giveUpBody': 'このアドレス宛てのメールは返送され、あなたも他の誰もこのアドレスを元に戻すことはできません。', // review: new
   'domains.giveUpConfirm': 'アドレスを手放す', // review: new
+  'domains.invitedWaiting': '招待済み、{date} まで返答待ち', // review: new
+  'domains.withdraw': '取り消す', // review: new
+  'domains.withdrawLabel': '{email} への招待を取り消す', // review: new
+  'domains.invitesTitle': '招待', // review: new
+  'domains.invitesIntro': 'ドメインの所有者が、これらのアドレスをあなたに提案しています。承諾すると、そのアドレス宛てのメールはここに届き、メール作成時に [差出人] で選べます。承諾するまでは何も変わりません。', // review: new
+  'domains.inviteAnswerBy': '{date} までに返答', // review: new
+  'domains.accept': '承諾', // review: new
+  'domains.decline': '辞退', // review: new
+  'domains.acceptLabel': '{email} を承諾', // review: new
+  'domains.declineLabel': '{email} を辞退', // review: new
   'admin.tabAudit': '監査ログ', // review: new
   'admin.domainMembers': { other: '一部は他の {count} 件のアカウント用' }, // review: new
   'admin.auditHelp': 'このコンソールで行われたすべての変更です。誰が、何を、誰または何に対して行い、完了したかどうかを記録します。新しい順に表示されます。パスワードとメッセージの内容は記録されません。', // review: new

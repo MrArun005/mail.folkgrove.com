@@ -302,14 +302,14 @@ export default {
   'privacy.weekBadge': { one: '{count} traceur supprimé cette semaine', other: '{count} traceurs supprimés cette semaine' }, // review: new
   'display.grove': 'Grove', // review: new
   'domains.membersTitle': 'Adresses pour d’autres personnes', // review: new
-  'domains.membersIntro': 'Donnez une adresse sur {domain} à une autre personne qui a un compte ici. Les messages envoyés à cette adresse arrivent dans sa boîte, pas dans la vôtre, et elle peut envoyer depuis cette adresse. Vous seul pouvez modifier le domaine.', // review: new
-  'domains.addressesUsed': '{used} adresses utilisées sur {max}, les vôtres comprises.', // review: new
+  'domains.membersIntro': 'Proposez une adresse sur {domain} à une autre personne qui a un compte ici. Elle devient la sienne quand cette personne accepte l’invitation dans ses propres réglages : les messages envoyés à cette adresse arrivent alors dans sa boîte, pas dans la vôtre, et elle peut envoyer depuis cette adresse. Vous seul pouvez modifier le domaine.', // review: new
+  'domains.addressesUsed': '{used} adresses utilisées sur {max}, les vôtres et les invitations en attente comprises.', // review: new
   'domains.memberFor': 'pour {account}', // review: new
   'domains.memberNamePlaceholder': 'sam', // review: new
   'domains.memberNewAddress': 'Sa nouvelle adresse sur {domain}', // review: new
   'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
   'domains.memberAccountLabel': 'L’adresse avec laquelle cette personne se connecte, sur {domain}', // review: new
-  'domains.giveAddress': 'Donner l’adresse', // review: new
+  'domains.invite': 'Inviter', // review: new
   'domains.takeBack': 'Reprendre {email}', // review: new
   'domains.takeBackTitle': 'Reprendre {email} à {account} ?', // review: new
   'domains.takeBackBody': 'Les messages envoyés à cette adresse seront renvoyés à leur expéditeur, et elle ne pourra plus être donnée à personne. Les messages que cette personne a déjà reçus lui restent.', // review: new
@@ -321,6 +321,16 @@ export default {
   'domains.giveUpTitle': 'Renoncer à {email} ?', // review: new
   'domains.giveUpBody': 'Les messages envoyés à cette adresse seront renvoyés à leur expéditeur, et elle ne pourra pas être récupérée, ni par vous ni par quiconque.', // review: new
   'domains.giveUpConfirm': 'Renoncer à l’adresse', // review: new
+  'domains.invitedWaiting': 'Invitation envoyée, en attente de réponse jusqu’au {date}', // review: new
+  'domains.withdraw': 'Retirer', // review: new
+  'domains.withdrawLabel': 'Retirer l’invitation à {email}', // review: new
+  'domains.invitesTitle': 'Invitations', // review: new
+  'domains.invitesIntro': 'Le propriétaire d’un domaine vous propose ces adresses. Si vous en acceptez une, les messages qui lui sont envoyés arrivent ici, et vous pouvez la choisir dans le champ De quand vous écrivez. Rien ne change tant que vous n’avez pas accepté.', // review: new
+  'domains.inviteAnswerBy': 'réponse attendue avant le {date}', // review: new
+  'domains.accept': 'Accepter', // review: new
+  'domains.decline': 'Refuser', // review: new
+  'domains.acceptLabel': 'Accepter {email}', // review: new
+  'domains.declineLabel': 'Refuser {email}', // review: new
   'admin.tabAudit': 'Journal d’audit', // review: new
   'admin.domainMembers': { one: 'dont certaines pour {count} autre compte', other: 'dont certaines pour {count} autres comptes' }, // review: new
   'admin.auditHelp': 'Toutes les modifications faites dans cette console : qui l’a faite, ce que c’était, qui ou quoi était concerné, et si elle a abouti. Les plus récentes d’abord. Les mots de passe et le contenu des messages ne sont jamais enregistrés.', // review: new

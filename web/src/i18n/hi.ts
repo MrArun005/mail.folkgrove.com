@@ -298,14 +298,14 @@ export default {
   'privacy.weekBadge': { one: 'इस हफ़्ते {count} ट्रैकर हटाया गया', other: 'इस हफ़्ते {count} ट्रैकर हटाए गए' }, // review: new
   'display.grove': 'Grove', // review: new
   'domains.membersTitle': 'दूसरे लोगों के लिए पते', // review: new
-  'domains.membersIntro': '{domain} पर एक पता किसी और को दें जिसका यहां खाता है। उस पर आने वाले मेल उनके मेलबॉक्स में जाते हैं, आपके में नहीं, और वे उससे भेज भी सकते हैं। डोमेन सिर्फ़ आप बदल सकते हैं।', // review: new
-  'domains.addressesUsed': '{max} में से {used} पते इस्तेमाल में हैं, आपके पते मिलाकर।', // review: new
+  'domains.membersIntro': '{domain} पर एक पता किसी और को पेश करें जिसका यहां खाता है। जब वे अपनी सेटिंग में न्योता स्वीकार करते हैं, तब पता उनका हो जाता है: फिर उस पर आने वाले मेल उनके मेलबॉक्स में जाते हैं, आपके में नहीं, और वे उससे भेज भी सकते हैं। डोमेन सिर्फ़ आप बदल सकते हैं।', // review: new
+  'domains.addressesUsed': '{max} में से {used} पते इस्तेमाल में हैं, आपके पते और जवाब के इंतज़ार वाले न्योते मिलाकर।', // review: new
   'domains.memberFor': '{account} के लिए', // review: new
   'domains.memberNamePlaceholder': 'sam', // review: new
   'domains.memberNewAddress': '{domain} पर उनका नया पता', // review: new
   'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
   'domains.memberAccountLabel': '{domain} पर वह पता जिससे वे साइन इन करते हैं', // review: new
-  'domains.giveAddress': 'पता दें', // review: new
+  'domains.invite': 'न्योता दें', // review: new
   'domains.takeBack': '{email} वापस लें', // review: new
   'domains.takeBackTitle': '{account} से {email} वापस लें?', // review: new
   'domains.takeBackBody': 'इस पर भेजे गए मेल वापस लौट जाएंगे, और यह पता फिर किसी को नहीं दिया जा सकेगा। जो मेल उन्हें पहले मिल चुके हैं, वे उनके पास रहेंगे।', // review: new
@@ -317,6 +317,16 @@ export default {
   'domains.giveUpTitle': '{email} छोड़ दें?', // review: new
   'domains.giveUpBody': 'इस पर भेजे गए मेल वापस लौट जाएंगे, और इसे वापस नहीं लाया जा सकता, न आपसे न किसी और से।', // review: new
   'domains.giveUpConfirm': 'पता छोड़ें', // review: new
+  'domains.invitedWaiting': 'न्योता भेजा गया, {date} तक जवाब का इंतज़ार', // review: new
+  'domains.withdraw': 'वापस लें', // review: new
+  'domains.withdrawLabel': '{email} का न्योता वापस लें', // review: new
+  'domains.invitesTitle': 'न्योते', // review: new
+  'domains.invitesIntro': 'एक डोमेन का मालिक आपको ये पते दे रहा है। अगर आप कोई स्वीकार करते हैं, तो उस पर आने वाले मेल यहां आएंगे, और लिखते समय आप उसे “भेजने वाला” में चुन सकेंगे। जब तक आप स्वीकार नहीं करते, कुछ नहीं बदलता।', // review: new
+  'domains.inviteAnswerBy': '{date} तक जवाब दें', // review: new
+  'domains.accept': 'स्वीकार करें', // review: new
+  'domains.decline': 'मना करें', // review: new
+  'domains.acceptLabel': '{email} स्वीकार करें', // review: new
+  'domains.declineLabel': '{email} के लिए मना करें', // review: new
   'admin.tabAudit': 'ऑडिट लॉग', // review: new
   'admin.domainMembers': { one: 'कुछ {count} दूसरे खाते के लिए', other: 'कुछ {count} दूसरे खातों के लिए' }, // review: new
   'admin.auditHelp': 'इस कंसोल में किया गया हर बदलाव: किसने किया, क्या किया, किसके या किस चीज़ के बारे में था, और वह हो पाया या नहीं। सबसे नया सबसे ऊपर। पासवर्ड और संदेशों की सामग्री कभी दर्ज नहीं की जाती।', // review: new
