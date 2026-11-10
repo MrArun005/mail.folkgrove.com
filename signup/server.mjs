@@ -360,7 +360,11 @@ export function createApp(cfg) {
     req.allowSlowBody = (ms) => { clearTimeout(timer); timer = limit(ms); };
     res.once('close', () => clearTimeout(timer));
     try {
+      // Route only on the path as sent. Caddy's /f/* matches "//f/api/events", which new URL() reads as host "f" and
+      // path /api/events; "/f/..\\internal/…" and "/f/%2e%2e/…" are cleaned to "/internal/…" the same way. Either way
+      // the internal-only routes (events, MTA hook) would be reachable from outside.
       const url = new URL(req.url, 'http://x');
+      if (!/^\/(?!\/)/.test(req.url) || url.pathname !== req.url.split('?')[0]) return fail(res, 400, 'bad_request', 'Bad request.');
       if (url.pathname.startsWith('/api/aliases') && await aliases(req, res, url)) return;
       if (url.pathname === '/api/account' && await account(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;
