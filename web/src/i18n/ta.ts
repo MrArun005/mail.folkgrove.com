@@ -1753,4 +1753,23 @@ export default {
   'smarts.careful': 'இந்தச் செய்தியில் கவனமாக இருங்கள்.',
   'smarts.carefulBody': 'அனுப்புநரின் பெயர் {brand} என்கிறது, ஆனால் இது அவர்களிடமிருந்தே வந்தது என்று சரிபார்க்க முடியவில்லை (இது {email} இலிருந்து வந்தது). இதன் இணைப்புகளைக் கிளிக் செய்யாதீர்கள்; கடவுச்சொல் அல்லது பணம் செலுத்தும் விவரங்களைப் பகிராதீர்கள்.',
   'admin.roleHelpdesk': 'உதவி மையம்', // review: new
+  'admin.importTitle': 'CSV கோப்பிலிருந்து கணக்குகளைச் சேர்', // review: new
+  'admin.importHelp': 'ஒரு வரிக்கு ஒரு கணக்கு: பயனர்பெயர், காட்சிப் பெயர், கடவுச்சொல், GB-யில் சேமிப்பு வரம்பு. பயனர்பெயர் மட்டுமே தேவை: வெற்றுக் கடவுச்சொல் தானாக உருவாக்கப்படும், வெற்று வரம்புக்குச் சர்வரின் இயல்புநிலை பயன்படும். ஒரே நேரத்தில் அதிகபட்சம் 1,000 வரிகள்.', // review: new
+  'admin.importPaste': 'பட்டியலை ஒட்டவும்', // review: new
+  'admin.importFile': 'அல்லது கோப்பைத் தேர்ந்தெடு', // review: new
+  'admin.importCheck': 'பட்டியலைச் சரிபார்', // review: new
+  'admin.importAdd': { one: '{count} கணக்கைச் சேர்', other: '{count} கணக்குகளைச் சேர்' }, // review: new
+  'admin.importGenerated': 'தானாக உருவாகும்', // review: new
+  'admin.importDefault': 'சர்வர் இயல்புநிலை', // review: new
+  'admin.importNoLimit': 'வரம்பு இல்லை', // review: new
+  'admin.importReady': 'தயார்', // review: new
+  'admin.importCreated': 'உருவாக்கப்பட்டது', // review: new
+  'admin.importDone': '{created} உருவாக்கப்பட்டன, {failed} உருவாக்கப்படவில்லை.', // review: new
+  'admin.importPasswordsOnce': 'உருவாக்கிய கடவுச்சொற்கள் இப்போது மட்டுமே காட்டப்படும். அவற்றைச் சேமித்து, ஒவ்வொருவருக்கும் அவரவருடையதை நம்பகமான வழியில் கொடுங்கள்.', // review: new
+  'admin.importDownload': 'கடவுச்சொற்களைப் பதிவிறக்கு (CSV)', // review: new
+  'admin.colPassword': 'கடவுச்சொல்', // review: new
+  'admin.colDisplayName': 'காட்சிப் பெயர்', // review: new
+  'admin.auditUserImport': 'CSV-யிலிருந்து கணக்குகள் சேர்க்கப்பட்டன', // review: new
+  'admin.auditCreated': { other: '{count} உருவாக்கப்பட்டன' }, // review: new
+  'admin.auditFailed': { other: '{count} உருவாக்கப்படவில்லை' }, // review: new
 } satisfies Catalog;

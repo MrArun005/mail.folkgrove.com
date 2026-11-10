@@ -1754,4 +1754,23 @@ export default {
   'smarts.careful': 'ಈ ಸಂದೇಶದ ಬಗ್ಗೆ ಎಚ್ಚರಿಕೆ ವಹಿಸಿ.',
   'smarts.carefulBody': 'ಕಳುಹಿಸುವವರ ಹೆಸರು {brand} ಎಂದು ಹೇಳುತ್ತದೆ, ಆದರೆ ಇದು ಅವರಿಂದಲೇ ಬಂದಿದೆ ಎಂದು ಪರಿಶೀಲಿಸಲು ಆಗಲಿಲ್ಲ (ಇದು {email} ಇಂದ ಬಂದಿದೆ). ಇದರ ಲಿಂಕ್‌ಗಳನ್ನು ಕ್ಲಿಕ್ ಮಾಡಬೇಡಿ, ಪಾಸ್‌ವರ್ಡ್ ಅಥವಾ ಪಾವತಿ ವಿವರಗಳನ್ನು ನೀಡಬೇಡಿ.',
   'admin.roleHelpdesk': 'ಸಹಾಯ ಕೇಂದ್ರ', // review: new
+  'admin.importTitle': 'CSV ಫೈಲ್‌ನಿಂದ ಖಾತೆಗಳನ್ನು ಸೇರಿಸಿ', // review: new
+  'admin.importHelp': 'ಪ್ರತಿ ಸಾಲಿಗೆ ಒಂದು ಖಾತೆ: ಬಳಕೆದಾರ ಹೆಸರು, ಪ್ರದರ್ಶನ ಹೆಸರು, ಪಾಸ್‌ವರ್ಡ್, GB ಯಲ್ಲಿ ಸಂಗ್ರಹ ಮಿತಿ. ಬಳಕೆದಾರ ಹೆಸರು ಮಾತ್ರ ಅಗತ್ಯ: ಖಾಲಿ ಪಾಸ್‌ವರ್ಡ್ ತಾನಾಗಿ ರಚನೆಯಾಗುತ್ತದೆ, ಖಾಲಿ ಮಿತಿಗೆ ಸರ್ವರ್‌ನ ಡೀಫಾಲ್ಟ್ ಬಳಸಲಾಗುತ್ತದೆ. ಒಮ್ಮೆಗೆ ಗರಿಷ್ಠ 1,000 ಸಾಲುಗಳು.', // review: new
+  'admin.importPaste': 'ಪಟ್ಟಿಯನ್ನು ಅಂಟಿಸಿ', // review: new
+  'admin.importFile': 'ಅಥವಾ ಫೈಲ್ ಆಯ್ಕೆಮಾಡಿ', // review: new
+  'admin.importCheck': 'ಪಟ್ಟಿಯನ್ನು ಪರಿಶೀಲಿಸಿ', // review: new
+  'admin.importAdd': { one: '{count} ಖಾತೆ ಸೇರಿಸಿ', other: '{count} ಖಾತೆಗಳನ್ನು ಸೇರಿಸಿ' }, // review: new
+  'admin.importGenerated': 'ತಾನಾಗಿ ರಚನೆ', // review: new
+  'admin.importDefault': 'ಸರ್ವರ್ ಡೀಫಾಲ್ಟ್', // review: new
+  'admin.importNoLimit': 'ಮಿತಿ ಇಲ್ಲ', // review: new
+  'admin.importReady': 'ಸಿದ್ಧ', // review: new
+  'admin.importCreated': 'ರಚಿಸಲಾಗಿದೆ', // review: new
+  'admin.importDone': '{created} ರಚಿಸಲಾಗಿದೆ, {failed} ರಚಿಸಲಾಗಿಲ್ಲ.', // review: new
+  'admin.importPasswordsOnce': 'ರಚಿಸಿದ ಪಾಸ್‌ವರ್ಡ್‌ಗಳನ್ನು ಈಗ ಮಾತ್ರ ತೋರಿಸಲಾಗುತ್ತದೆ. ಅವುಗಳನ್ನು ಉಳಿಸಿ ಮತ್ತು ಪ್ರತಿಯೊಬ್ಬರಿಗೂ ಅವರದನ್ನು ನಂಬಿಕೆಯ ಮಾರ್ಗದಲ್ಲಿ ನೀಡಿ.', // review: new
+  'admin.importDownload': 'ಪಾಸ್‌ವರ್ಡ್‌ಗಳನ್ನು ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ (CSV)', // review: new
+  'admin.colPassword': 'ಪಾಸ್‌ವರ್ಡ್', // review: new
+  'admin.colDisplayName': 'ಪ್ರದರ್ಶನ ಹೆಸರು', // review: new
+  'admin.auditUserImport': 'CSV ಯಿಂದ ಖಾತೆಗಳನ್ನು ಸೇರಿಸಲಾಗಿದೆ', // review: new
+  'admin.auditCreated': { other: '{count} ರಚಿಸಲಾಗಿದೆ' }, // review: new
+  'admin.auditFailed': { other: '{count} ರಚಿಸಲಾಗಿಲ್ಲ' }, // review: new
 } satisfies Catalog;

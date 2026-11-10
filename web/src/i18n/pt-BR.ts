@@ -1756,4 +1756,23 @@ export default {
   'smarts.careful': 'Cuidado com esta mensagem.',
   'smarts.carefulBody': 'O nome do remetente diz {brand}, mas não foi possível confirmar que ela vem deles (ela vem de {email}). Não clique nos links nem informe senhas ou dados de pagamento.',
   'admin.roleHelpdesk': 'suporte', // review: new
+  'admin.importTitle': 'Adicionar contas de um arquivo CSV', // review: new
+  'admin.importHelp': 'Uma conta por linha: nome de usuário, nome de exibição, senha, limite de armazenamento em GB. Só o nome de usuário é obrigatório: uma senha vazia é gerada, um limite vazio usa o padrão do servidor. No máximo 1.000 linhas por vez.', // review: new
+  'admin.importPaste': 'Cole a lista', // review: new
+  'admin.importFile': 'Ou escolha um arquivo', // review: new
+  'admin.importCheck': 'Verificar a lista', // review: new
+  'admin.importAdd': { one: 'Adicionar {count} conta', other: 'Adicionar {count} contas' }, // review: new
+  'admin.importGenerated': 'gerada', // review: new
+  'admin.importDefault': 'padrão do servidor', // review: new
+  'admin.importNoLimit': 'sem limite', // review: new
+  'admin.importReady': 'Pronta', // review: new
+  'admin.importCreated': 'Criada', // review: new
+  'admin.importDone': '{created} criadas, {failed} não criadas.', // review: new
+  'admin.importPasswordsOnce': 'As senhas geradas só aparecem agora. Salve-as e passe a cada pessoa a sua por um canal confiável.', // review: new
+  'admin.importDownload': 'Baixar senhas (CSV)', // review: new
+  'admin.colPassword': 'Senha', // review: new
+  'admin.colDisplayName': 'Nome de exibição', // review: new
+  'admin.auditUserImport': 'Adicionou contas de um CSV', // review: new
+  'admin.auditCreated': { one: '{count} criada', other: '{count} criadas' }, // review: new
+  'admin.auditFailed': { one: '{count} não criada', other: '{count} não criadas' }, // review: new
 } satisfies Catalog;

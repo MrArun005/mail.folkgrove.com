@@ -143,7 +143,7 @@ A brand-new domain and IP have no sending reputation. Big providers may send you
 
 ## 5. Administration
 
-OpenMail's own admin console is at `https://mx.example.com/admin`: users (create, disable, reset password, storage limits), blocked IP addresses, new-account sending limits, the outgoing queue and users' own domains. Set `ADMINS=you` (usernames, comma-separated) for the account service, then sign in to the web app as one of them.
+OpenMail's own admin console is at `https://mx.example.com/admin`: users (create, disable, reset password, storage limits), blocked IP addresses, new-account sending limits, the outgoing queue and users' own domains. Set `ADMINS=you` (usernames, comma-separated) for the account service, then sign in to the web app as one of them. Many accounts at once: **Users → Add accounts from a CSV file** (username, display name, password, storage in GB; empty passwords are generated and offered as a file to save, once).
 
 Support staff who shouldn't have full control go in `HELPDESK=sam,raj` (`install.sh --helpdesk sam,raj`): they see users, reset passwords, switch sign-in on or off, lift sending suspensions, release or delete held mail and read the audit log, and nothing else (no creating or deleting accounts, storage limits, team mailboxes, blocked IPs, retention or new-account limits), and never on an admin's or another helpdesk account. The audit log notes which role made each change.
 

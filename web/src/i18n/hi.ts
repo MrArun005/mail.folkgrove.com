@@ -1753,4 +1753,23 @@ export default {
   'smarts.careful': 'इस संदेश से सावधान रहें।',
   'smarts.carefulBody': 'भेजने वाले का नाम {brand} बताता है, लेकिन यह पुष्टि नहीं हो सकी कि यह उन्हीं की ओर से है (यह {email} से आया है)। इसके लिंक पर क्लिक न करें और पासवर्ड या भुगतान की जानकारी न दें।',
   'admin.roleHelpdesk': 'हेल्पडेस्क', // review: new
+  'admin.importTitle': 'CSV फ़ाइल से खाते जोड़ें', // review: new
+  'admin.importHelp': 'हर पंक्ति में एक खाता: यूज़रनेम, दिखने वाला नाम, पासवर्ड, GB में स्टोरेज सीमा। सिर्फ़ यूज़रनेम ज़रूरी है: खाली पासवर्ड अपने आप बनता है, खाली सीमा पर सर्वर की डिफ़ॉल्ट सीमा लगती है। एक बार में अधिकतम 1,000 पंक्तियाँ।', // review: new
+  'admin.importPaste': 'सूची चिपकाएँ', // review: new
+  'admin.importFile': 'या फ़ाइल चुनें', // review: new
+  'admin.importCheck': 'सूची जाँचें', // review: new
+  'admin.importAdd': { one: '{count} खाता जोड़ें', other: '{count} खाते जोड़ें' }, // review: new
+  'admin.importGenerated': 'अपने आप बनेगा', // review: new
+  'admin.importDefault': 'सर्वर डिफ़ॉल्ट', // review: new
+  'admin.importNoLimit': 'कोई सीमा नहीं', // review: new
+  'admin.importReady': 'तैयार', // review: new
+  'admin.importCreated': 'बन गया', // review: new
+  'admin.importDone': '{created} बने, {failed} नहीं बने।', // review: new
+  'admin.importPasswordsOnce': 'बने हुए पासवर्ड सिर्फ़ अभी दिखाए जा रहे हैं। इन्हें सेव करें और हर व्यक्ति को उसका पासवर्ड किसी भरोसेमंद तरीके से दें।', // review: new
+  'admin.importDownload': 'पासवर्ड डाउनलोड करें (CSV)', // review: new
+  'admin.colPassword': 'पासवर्ड', // review: new
+  'admin.colDisplayName': 'दिखने वाला नाम', // review: new
+  'admin.auditUserImport': 'CSV से खाते जोड़े', // review: new
+  'admin.auditCreated': { other: '{count} बने' }, // review: new
+  'admin.auditFailed': { other: '{count} नहीं बने' }, // review: new
 } satisfies Catalog;

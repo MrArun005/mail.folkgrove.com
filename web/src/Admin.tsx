@@ -3,6 +3,8 @@ import { Button } from './Button';
 import { confirmIt, notify, promptIt } from './Dialog';
 import type { Jmap } from './jmap';
 import { RetentionAdmin } from './Retention';
+import { save } from './Export';
+import { importRows, parseCsv, toCsv, type ImportRow } from './csv';
 import { locale, t } from './i18n';
 
 /**
@@ -29,7 +31,7 @@ const REASONS = { authFailure: 'admin.reasonAuthFailure', rcptToFailure: 'admin.
 const DOMAIN_STATE = { active: 'admin.stateWorking', missing: 'admin.stateMissing', paused: 'admin.statePaused' } as const;
 // The audit log's codes (signup/admin.mjs AUDITED, and what its handlers note) in words.
 const AUDIT_ACTION = {
-  'user.create': 'admin.auditUserCreate', 'user.update': 'admin.auditUserUpdate', 'user.delete': 'admin.auditUserDelete',
+  'user.create': 'admin.auditUserCreate', 'user.import': 'admin.auditUserImport', 'user.update': 'admin.auditUserUpdate', 'user.delete': 'admin.auditUserDelete',
   'team.create': 'admin.auditTeamCreate', 'team.members': 'admin.auditTeamMembers', 'team.delete': 'admin.auditTeamDelete',
   'ip.unblock': 'admin.auditIpUnblock', 'limits.add': 'admin.auditLimitsAdd', 'limits.lift': 'admin.auditLimitsLift',
   'queue.retry': 'admin.auditQueueRetry', 'queue.cancel': 'admin.auditQueueCancel', 'held.release': 'admin.auditHeldRelease', 'held.delete': 'admin.auditHeldDelete',
@@ -146,6 +148,7 @@ function Users({ client, desk }: { client: Jmap; desk: boolean }) {
         <label className="narrow">{t('admin.storageGb')}<input className="input" inputMode="decimal" value={gb} onChange={(e) => setGb(e.target.value)} /></label>
         <Button type="submit" variant="primary">{t('admin.createAccount')}</Button>
       </form>}
+      {!desk && <CsvImport client={client} done={reload} />}
       {msg && <p className="error" role="alert">{msg}</p>}
       {error && <p className="error" role="alert">{error}</p>}
       {data && (data.users.length === 0 ? <p className="empty">{t('admin.noUsersMatch', { query: search })}</p> : <>
@@ -210,6 +213,82 @@ function Users({ client, desk }: { client: Jmap; desk: boolean }) {
         </table>
       </>)}
     </section>
+  );
+}
+
+interface ImportResult { name: string; email?: string; password?: string; error?: string; message?: string }
+
+/** Add accounts from a CSV (csv.ts): parsed here, checked by the server (its rules decide), then created in one
+ *  request. Generated passwords are shown once, with a file to save them. */
+function CsvImport({ client, done }: { client: Jmap; done: () => void }) {
+  const [text, setText] = useState('');
+  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [checks, setChecks] = useState<ImportResult[] | null>(null);
+  const [results, setResults] = useState<ImportResult[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ready = rows.filter((_, i) => checks && !checks[i]?.error);
+  const run = async (fn: () => Promise<unknown>) => { setBusy(true); await act(fn); setBusy(false); };
+  const check = () => run(async () => {
+    const r = importRows(parseCsv(text));
+    setResults(null); setChecks(null);
+    setChecks((await client.admin<{ results: ImportResult[] }>('users/check', 'POST', { rows: r })).results);
+    setRows(r);
+  });
+  const add = () => run(async () => {
+    const r = await client.admin<{ results: ImportResult[] }>('users/import', 'POST', { rows: ready });
+    setResults(r.results); setChecks(null); setRows([]); setText('');
+    done();
+  });
+  const passwords = results?.filter((r) => r.password) ?? [];
+  const status = (r: ImportResult, ok: string) => r.error ? <span className="error">{r.message ?? r.error}</span> : <span className="pill on">{ok}</span>;
+  return (
+    <details>
+      <summary>{t('admin.importTitle')}</summary>
+      <p className="fine">{t('admin.importHelp')}</p>
+      <div className="admin-bar">
+        <label>{t('admin.importPaste')}<textarea className="input" rows={5} placeholder="username,display name,password,quota&#10;sam,Sam Lee,,5" value={text} onChange={(e) => { setText(e.target.value); setChecks(null); }} /></label>
+      </div>
+      <div className="admin-bar">
+        <label>{t('admin.importFile')}<input className="input" type="file" accept=".csv,text/csv,text/plain" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { setText(await f.text()); setChecks(null); } e.target.value = ''; }} /></label>
+        <Button disabled={!text.trim() || busy} onClick={check}>{t('admin.importCheck')}</Button>
+      </div>
+      {checks && <>
+        <table className="admin-table">
+          <thead><tr><th>{t('admin.colAccount')}</th><th>{t('admin.colDisplayName')}</th><th>{t('admin.colPassword')}</th><th className="n">{t('admin.colStorage')}</th><th>{t('admin.colStatus')}</th></tr></thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td data-label={t('admin.colAccount')}><b>{r.name}</b></td>
+                <td data-label={t('admin.colDisplayName')}>{r.description}</td>
+                <td data-label={t('admin.colPassword')}>{r.password ? '••••••' : <span className="fine">{t('admin.importGenerated')}</span>}</td>
+                <td data-label={t('admin.colStorage')} className="n">{typeof r.quotaBytes === 'number' ? (r.quotaBytes ? size(r.quotaBytes) : t('admin.importNoLimit')) : r.quotaBytes ?? <span className="fine">{t('admin.importDefault')}</span>}</td>
+                <td data-label={t('admin.colStatus')}>{status(checks[i] ?? { name: r.name }, t('admin.importReady'))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="admin-bar"><Button variant="primary" disabled={!ready.length || busy} onClick={add}>{t('admin.importAdd', { count: ready.length })}</Button></div>
+      </>}
+      {results && <>
+        <p role="status">{t('admin.importDone', { created: results.filter((r) => r.email).length, failed: results.filter((r) => r.error).length })}</p>
+        {passwords.length > 0 && <div className="admin-bar">
+          <p className="fine grow">{t('admin.importPasswordsOnce')}</p>
+          <Button onClick={() => save(new Blob([toCsv([['username', 'email', 'password'], ...passwords.map((r) => [r.name, r.email!, r.password!])])], { type: 'text/csv' }), 'new-accounts.csv')}>{t('admin.importDownload')}</Button>
+        </div>}
+        <table className="admin-table">
+          <thead><tr><th>{t('admin.colAccount')}</th><th>{t('admin.colPassword')}</th><th>{t('admin.colStatus')}</th></tr></thead>
+          <tbody>
+            {results.map((r, i) => (
+              <tr key={i}>
+                <td data-label={t('admin.colAccount')}><b>{r.email ?? r.name}</b></td>
+                <td data-label={t('admin.colPassword')}>{r.password && <code>{r.password}</code>}</td>
+                <td data-label={t('admin.colStatus')}>{status(r, t('admin.importCreated'))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </>}
+    </details>
   );
 }
 
@@ -497,6 +576,8 @@ interface AuditEntry { at: string; admin: string; role?: 'admin' | 'helpdesk'; a
 function auditDetail(code: string) {
   const i = code.indexOf(':'), kind = i < 0 ? code : code.slice(0, i), value = i < 0 ? '' : code.slice(i + 1), n = Number(value);
   if (kind === 'quota') return value === 'none' ? t('admin.auditQuotaNone') : t('admin.auditQuota', { size: size(n) });
+  if (kind === 'created') return t('admin.auditCreated', { count: n });
+  if (kind === 'failed') return t('admin.auditFailed', { count: n });
   if (kind === 'member_add') return t('admin.auditMemberAdd', { member: value });
   if (kind === 'member_remove') return t('admin.auditMemberRemove', { member: value });
   if (kind === 'trash_days') return n > 0 ? t('admin.auditTrashDays', { count: n }) : t('admin.auditTrashNever');

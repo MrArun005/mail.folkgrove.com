@@ -10,7 +10,7 @@ const PARALLEL = 4; // downloads in flight at once
 const PART = 1024 ** 3; // without a save dialog, mail downloads in 1 GB files (the browser holds each one in memory)
 
 /** Hand the browser a file to save (the fallback when there's no save dialog, and for the small files). */
-function save(blob: Blob, name: string) {
+export function save(blob: Blob, name: string) {
   const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 60_000);

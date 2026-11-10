@@ -1754,4 +1754,23 @@ export default {
   'smarts.careful': 'Vorsicht bei dieser Nachricht.',
   'smarts.carefulBody': 'Der Absendername sagt {brand}, aber es ließ sich nicht bestätigen, dass sie von dort kommt (sie kommt von {email}). Klicke auf keine Links und gib keine Passwörter oder Zahlungsdaten ein.',
   'admin.roleHelpdesk': 'Helpdesk', // review: new
+  'admin.importTitle': 'Konten aus einer CSV-Datei hinzufügen', // review: new
+  'admin.importHelp': 'Ein Konto pro Zeile: Benutzername, Anzeigename, Passwort, Speicherlimit in GB. Nur der Benutzername ist Pflicht: Ein leeres Passwort wird erzeugt, ein leeres Limit nimmt den Standard des Servers. Höchstens 1.000 Zeilen auf einmal.', // review: new
+  'admin.importPaste': 'Liste einfügen', // review: new
+  'admin.importFile': 'Oder eine Datei wählen', // review: new
+  'admin.importCheck': 'Liste prüfen', // review: new
+  'admin.importAdd': { one: '{count} Konto hinzufügen', other: '{count} Konten hinzufügen' }, // review: new
+  'admin.importGenerated': 'wird erzeugt', // review: new
+  'admin.importDefault': 'Server-Standard', // review: new
+  'admin.importNoLimit': 'kein Limit', // review: new
+  'admin.importReady': 'Bereit', // review: new
+  'admin.importCreated': 'Erstellt', // review: new
+  'admin.importDone': '{created} erstellt, {failed} nicht erstellt.', // review: new
+  'admin.importPasswordsOnce': 'Erzeugte Passwörter werden nur jetzt angezeigt. Speichern Sie sie und geben Sie jeder Person ihres über einen vertrauenswürdigen Kanal.', // review: new
+  'admin.importDownload': 'Passwörter herunterladen (CSV)', // review: new
+  'admin.colPassword': 'Passwort', // review: new
+  'admin.colDisplayName': 'Anzeigename', // review: new
+  'admin.auditUserImport': 'Konten aus CSV hinzugefügt', // review: new
+  'admin.auditCreated': { other: '{count} erstellt' }, // review: new
+  'admin.auditFailed': { other: '{count} nicht erstellt' }, // review: new
 } satisfies Catalog;

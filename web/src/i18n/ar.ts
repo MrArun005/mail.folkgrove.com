@@ -1764,4 +1764,23 @@ export default {
   'smarts.careful': 'احذر من هذه الرسالة.',
   'smarts.carefulBody': 'يقول اسم المرسِل إنه {brand}، لكن تعذّر التحقق من أنها منه فعلًا (وصلت من {email}). لا تنقر على روابطها ولا تشارك كلمات المرور أو بيانات الدفع.',
   'admin.roleHelpdesk': 'الدعم الفني', // review: new
+  'admin.importTitle': 'إضافة حسابات من ملف CSV', // review: new
+  'admin.importHelp': 'حساب واحد في كل سطر: اسم المستخدم، الاسم المعروض، كلمة المرور، حد التخزين بالجيجابايت. اسم المستخدم وحده مطلوب: تُنشأ كلمة مرور إذا تُركت فارغة، ويُستخدم الحد الافتراضي للخادم إذا تُرك الحد فارغًا. 1000 سطر كحد أقصى في المرة.', // review: new
+  'admin.importPaste': 'الصق القائمة', // review: new
+  'admin.importFile': 'أو اختر ملفًا', // review: new
+  'admin.importCheck': 'تحقق من القائمة', // review: new
+  'admin.importAdd': { one: 'إضافة حساب واحد', other: 'إضافة {count} حسابات' }, // review: new
+  'admin.importGenerated': 'تُنشأ تلقائيًا', // review: new
+  'admin.importDefault': 'افتراضي الخادم', // review: new
+  'admin.importNoLimit': 'بلا حد', // review: new
+  'admin.importReady': 'جاهز', // review: new
+  'admin.importCreated': 'أُنشئ', // review: new
+  'admin.importDone': 'أُنشئ {created}، ولم يُنشأ {failed}.', // review: new
+  'admin.importPasswordsOnce': 'تظهر كلمات المرور المُنشأة الآن فقط. احفظها وأعطِ كل شخص كلمته عبر وسيلة تثق بها.', // review: new
+  'admin.importDownload': 'تنزيل كلمات المرور (CSV)', // review: new
+  'admin.colPassword': 'كلمة المرور', // review: new
+  'admin.colDisplayName': 'الاسم المعروض', // review: new
+  'admin.auditUserImport': 'أضاف حسابات من ملف CSV', // review: new
+  'admin.auditCreated': { other: 'أُنشئ {count}' }, // review: new
+  'admin.auditFailed': { other: 'لم يُنشأ {count}' }, // review: new
 } satisfies Catalog;

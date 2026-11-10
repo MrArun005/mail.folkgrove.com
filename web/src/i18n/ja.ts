@@ -1750,4 +1750,23 @@ export default {
   'smarts.careful': 'このメッセージにご注意ください。',
   'smarts.carefulBody': '送信者名は {brand} となっていますが、本当にその会社からのものか確認できませんでした (送信元は {email})。リンクをクリックしたり、パスワードや支払い情報を入力したりしないでください。',
   'admin.roleHelpdesk': 'ヘルプデスク', // review: new
+  'admin.importTitle': 'CSV ファイルからアカウントを追加', // review: new
+  'admin.importHelp': '1 行に 1 アカウント: ユーザー名、表示名、パスワード、容量制限 (GB)。必須はユーザー名だけです。パスワードが空なら自動生成され、制限が空ならサーバーの既定値になります。一度に 1,000 行まで。', // review: new
+  'admin.importPaste': 'リストを貼り付け', // review: new
+  'admin.importFile': 'またはファイルを選択', // review: new
+  'admin.importCheck': 'リストを確認', // review: new
+  'admin.importAdd': { other: '{count} 件のアカウントを追加' }, // review: new
+  'admin.importGenerated': '自動生成', // review: new
+  'admin.importDefault': 'サーバー既定', // review: new
+  'admin.importNoLimit': '制限なし', // review: new
+  'admin.importReady': '準備完了', // review: new
+  'admin.importCreated': '作成済み', // review: new
+  'admin.importDone': '{created} 件作成、{failed} 件は作成されませんでした。', // review: new
+  'admin.importPasswordsOnce': '生成されたパスワードは今だけ表示されます。保存して、信頼できる方法で各自に渡してください。', // review: new
+  'admin.importDownload': 'パスワードをダウンロード (CSV)', // review: new
+  'admin.colPassword': 'パスワード', // review: new
+  'admin.colDisplayName': '表示名', // review: new
+  'admin.auditUserImport': 'CSV からアカウントを追加', // review: new
+  'admin.auditCreated': { other: '{count} 件作成' }, // review: new
+  'admin.auditFailed': { other: '{count} 件は作成されず' }, // review: new
 } satisfies Catalog;
