@@ -175,7 +175,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       const r = await query('x:Account', { filter: { '@type': 'User', ...(q && { text: q }) }, sort: [{ property: 'name' }], limit: 200, calculateTotal: true });
       const [list, tier] = await Promise.all([get('x:Account', r.ids, USER_PROPS), newTier()]);
       const keys = new Set(tier.map((k) => k.key.toLowerCase()));
-      return { users: list.map((a) => ({ ...userView(a, keys), helpdesk: helpdesk.has(String(a.name).toLowerCase()) })), total: r.total };
+      return { users: list.map((a) => ({ ...userView(a, keys), admin: isAdmin(a), helpdesk: helpdesk.has(String(a.name).toLowerCase()) })), total: r.total };
     },
 
     'POST users': async (req, _url, _id, _who, note) => {
