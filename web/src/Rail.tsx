@@ -7,11 +7,33 @@ import { Icon, roleIcon } from './icons';
 import { Menu } from './Menu';
 import { SCREENER } from './rules';
 import { SharedRail, type useShared } from './Sharing';
-import type { SharedAccount } from './jmap';
+import type { Mailbox, SharedAccount } from './jmap';
 import { boxName, t } from './i18n';
 
 /** Always in the rail (Gmail's set); everything else folds under More. */
 const MAIN = ['inbox', 'starred', 'snoozed', 'sent', 'drafts'];
+
+// Virtual folders: views that aren't mailboxes on the server.
+export const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks', NOTES = 'notes', FEED = 'feed';
+export const VIRTUAL = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS, NOTES, FEED];
+
+/** What the rail lists: the account's folders with the virtual ones in their places (`opened`: someone else's mailbox). */
+export function railItems(boxes: Mailbox[], opened: boolean): RailItem[] {
+  return [
+    ...boxes.slice(0, 1),
+    { id: STARRED, name: STARRED, role: STARRED, unreadEmails: 0, sortOrder: 0 },
+    ...boxes.slice(1).flatMap((b) => (b.role === 'drafts' && !opened ? [b, { id: SCHEDULED, name: SCHEDULED, role: SCHEDULED, unreadEmails: 0, sortOrder: 0 }] : [b])),
+    // Someone else's mailbox shows its mail only; your contacts, calendar, tasks and notes stay in yours.
+    ...(opened ? [] : [
+      { id: FEED, name: FEED, role: FEED, unreadEmails: 0, sortOrder: 0 },
+      { id: SUBSCRIPTIONS, name: SUBSCRIPTIONS, role: SUBSCRIPTIONS, unreadEmails: 0, sortOrder: 0 },
+      { id: CONTACTS, name: CONTACTS, role: CONTACTS, unreadEmails: 0, sortOrder: 0 },
+      { id: CALENDAR, name: CALENDAR, role: CALENDAR, unreadEmails: 0, sortOrder: 0 },
+      { id: TASKS, name: TASKS, role: TASKS, unreadEmails: 0, sortOrder: 0 },
+      { id: NOTES, name: NOTES, role: NOTES, unreadEmails: 0, sortOrder: 0 },
+    ]),
+  ];
+}
 
 /** A folder's name on screen: boxName, plus the Screener (a folder we make, found by its name). */
 export const shown = (b: { role?: string | null; name: string }) => (!b.role && b.name === SCREENER ? t('folder.screener') : boxName(b));

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { row, SEEDED, signIn, tempFolder } from './helpers';
+import { account, jmap, row, SEEDED, signIn, tempFolder } from './helpers';
 
 test('Back closes a conversation, and a conversation has a link', async ({ page }) => {
   await signIn(page);
@@ -136,4 +136,68 @@ test('a reply does not offer to add the quoted message\'s date to the calendar',
   await expect(page.locator('.thread .subject')).toBeVisible();
   await expect(page.locator('.thread .message').last()).toBeVisible();
   await expect(page.getByText('This message mentions')).toHaveCount(0);
+});
+
+/** Put the seeded conversation back as the tests expect it, whatever a failed test left: read and unstarred (every
+ * message in it: stars and read marks apply to the whole conversation), and the message itself in the Inbox. */
+async function tidySeeded() {
+  const accountId = await account();
+  const [[, boxes]] = await jmap([['Mailbox/get', { accountId, properties: ['role'] }, 'm']]);
+  const [, [, got]] = await jmap([['Email/query', { accountId, filter: { subject: SEEDED } }, 'q'],
+    ['Email/get', { accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: ['subject', 'threadId'] }, 'g']]);
+  const seeded = got.list.filter((e: any) => e.subject === SEEDED);
+  if (!seeded.length) return;
+  const [[, threads]] = await jmap([['Thread/get', { accountId, ids: seeded.map((e: any) => e.threadId) }, 't']]);
+  const role = (r: string) => boxes.list.find((b: any) => b.role === r).id;
+  const update: Record<string, object> = {};
+  for (const t of threads.list) for (const id of t.emailIds) update[id] = { 'keywords/$seen': true, 'keywords/$flagged': null };
+  for (const e of seeded) update[e.id] = { ...update[e.id], [`mailboxIds/${role('inbox')}`]: true, [`mailboxIds/${role('archive')}`]: null };
+  await jmap([['Email/set', { accountId, update }, 's']]);
+}
+
+test('star, unstar and mark unread from the keyboard; opening it reads it again', async ({ page }) => {
+  try {
+    await signIn(page);
+    await row(page, SEEDED).locator('.open').click();
+    await expect(page.locator('.thread .subject')).toHaveText(SEEDED);
+    const reader = page.locator('.reader');
+    await expect(reader.getByRole('button', { name: 'Star', exact: true })).toBeVisible(); // the conversation has loaded
+    await page.keyboard.press('s');
+    await expect(reader.getByRole('button', { name: 'Unstar' })).toBeVisible();
+    await page.keyboard.press('s');
+    await expect(reader.getByRole('button', { name: 'Star', exact: true })).toBeVisible();
+    await page.keyboard.press('u');
+    await expect(page.locator('.toast')).toContainText('Marked as unread');
+    await expect(page.locator('.thread')).toHaveCount(0); // marking the open conversation unread closes it
+    await expect(row(page, SEEDED)).toHaveClass(/unread/);
+    await row(page, SEEDED).locator('.open').click();
+    await expect(page.locator('.thread .subject')).toHaveText(SEEDED);
+    await page.keyboard.press('Escape');
+    await expect(row(page, SEEDED)).not.toHaveClass(/unread/);
+  } finally { await tidySeeded(); }
+});
+
+test('archiving the open conversation opens the next one, and z puts it back', async ({ page }) => {
+  try {
+    await signIn(page);
+    const rows = page.locator('.rows .row');
+    await row(page, SEEDED).locator('.open').click();
+    await expect(page.locator('.thread .subject')).toHaveText(SEEDED);
+    const opened = page.url();
+    const subjects = await rows.locator('.subject').allTextContents(); // the list as it is now (it can reorder as it loads)
+    const at = subjects.findIndex((s) => s.includes(SEEDED)); // a row's subject also holds its folder labels
+    const next = at < subjects.length - 1 ? at + 1 : at - 1; // the one below, or above at the end of the list
+    await page.keyboard.press('e');
+    await expect(page.locator('.toast')).toContainText('Conversation archived');
+    await expect(page).not.toHaveURL(opened);
+    await expect(page).toHaveURL(/#\/t\/.+/);
+    const advanced = page.url();
+    await page.keyboard.press('z');
+    await expect(page.locator('.toast')).toContainText('Undone');
+    await page.keyboard.press('Escape');
+    await expect(row(page, SEEDED)).toHaveCount(1);
+    expect(await rows.locator('.subject').allTextContents()).toEqual(subjects);
+    await rows.nth(next).locator('.open').click(); // the conversation it advanced to was that neighbour
+    await expect(page).toHaveURL(advanced);
+  } finally { await tidySeeded(); }
 });

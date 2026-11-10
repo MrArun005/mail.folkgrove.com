@@ -1,57 +1,51 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SendingBlocked } from './Sending';
-import { confirmIt, promptIt } from './Dialog';
+import { confirmIt } from './Dialog';
 import { Button } from './Button';
-import type { ComposeApi } from './Compose';
 import { ComposeDock, useComposeWindows } from './ComposeDock';
 import { messageActions } from './messageActions';
 import { SearchChips } from './SearchChips';
-import { Icon, roleIcon } from './icons';
-import { Jmap, UNDO_SECONDS, type SharedAccount, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
-import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, fileSize, htmlToText, textToHtml, type ReplyMode, type Signature } from './mailutil';
+import { Icon } from './icons';
+import type { Jmap, SharedAccount, Contact, Subscription, Address, EmailFull, EmailSummary, Filter, Identity, Mailbox, Scheduled } from './jmap';
+import { displayName, draftFromEmail, type Signature } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
-import { Palette, type Command } from './Palette';
+import { Palette } from './Palette';
 import { canAsk } from './ai';
 import { SubscriptionsList } from './Subscriptions';
 import { ContactList, ContactPanel, fullName, groupAddresses } from './Contacts';
 import { CalendarView } from './CalendarView';
 import { FeedView } from './FeedView';
-import { Reader, type Action } from './Reader';
+import { Reader } from './Reader';
 import { TaskList } from './Tasks';
 import { NotesView } from './Notes';
-import { addRule, loadScript, saveScript } from './Filters';
+import { loadScript, saveScript } from './Filters';
 import { DEFAULT_TABS, SCREENER, TAB_LABEL, tabKeyword, TABS, type Rule, type ScriptData, type Tab } from './rules';
 import { enablePush, notifyOn, showMail } from './notify';
-import { setBadge, takeLaunch } from './launch';
-import { offlineStore } from './offline';
+import { setBadge } from './launch';
 import { parseSearch } from './search';
-import { applyTheme, Settings } from './Settings';
+import { Settings } from './Settings';
 import { cache } from './store';
 import { describe } from './when';
 import { TeamComments, useShared } from './Sharing';
 import { t } from './i18n';
 import { clearRoute, readRoute, writeRoute, type Route } from './route';
 import { ConversationRows, InboxZero, type RowHandlers } from './Rows';
-import { Rail, ShortcutsHelp, shown } from './Rail';
+import { CALENDAR, CONTACTS, FEED, NOTES, Rail, railItems, SCHEDULED, ShortcutsHelp, shown, STARRED, SUBSCRIPTIONS, TASKS, VIRTUAL } from './Rail';
 import { PrivacyReport } from './PrivacyReport';
 import { readTally, week } from './privacy';
+import { useListActions } from './useListActions';
+import { EMPTY_DRAFT, useSending } from './useSending';
+import { paletteCommands, useShortcuts } from './shortcuts';
 
 const PAGE = 50;
 const EMPTY_LIST: EmailSummary[] = []; // one array, so an empty list is the same list on every render
-const UNDO_MS = 7000; // how long "Archived · Undo" stays
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
-const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
-// Virtual folders: views that aren't mailboxes on the server.
-const STARRED = 'starred', SCHEDULED = 'scheduled', SUBSCRIPTIONS = 'subscriptions', CONTACTS = 'contacts', CALENDAR = 'calendar', TASKS = 'tasks', NOTES = 'notes', FEED = 'feed';
-const VIRTUAL = [STARRED, SCHEDULED, SUBSCRIPTIONS, CONTACTS, CALENDAR, TASKS, NOTES, FEED];
-
 
 type Toast = { text: string; undo?: () => void } | null;
 
 /** A message with {name} placeholders shown as keycaps: t() leaves unfilled placeholders as they are. */
 const withKeys = (text: string, keys: Record<string, string>) =>
   text.split(/\{(\w+)\}/).map((part, i) => (i % 2 ? <kbd key={i}>{keys[part] ?? part}</kbd> : part));
-type BulkAction = Action | 'read' | { snooze: Date } | { moveTo: string | null; label: boolean };
 
 class ErrorBoundary extends Component<{ children: ReactNode; resetKey: unknown }, { failed: boolean }> {
   state = { failed: false };
@@ -113,34 +107,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const [ownBoxes, setOwnBoxes] = useState<Mailbox[] | null>(null);
   useEffect(() => { if (opened && overlay === 'settings') own.mailboxes().then(setOwnBoxes, fail); }, [opened, overlay]);
   const toastTimer = useRef<number>(0);
-  const lastClicked = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const goPending = useRef(false);
-  // Offline: a banner, and an outbox that empties itself when the connection comes back.
-  const [online, setOnline] = useState(() => navigator.onLine);
-  const [outbox, setOutbox] = useState(0);
-  useEffect(() => {
-    if (!client.offline) return;
-    const key = `${client.username}:outbox`;
-    const flush = async () => {
-      const box = (await offlineStore.get<{ d: Draft; sendAt?: string }[]>(key)) ?? [];
-      setOutbox(box.length);
-      if (!box.length || !navigator.onLine) return;
-      let sent = 0;
-      const b = await client.mailboxes().catch(() => boxes);
-      for (const item of box) {
-        try { await client.send(item.d, b, item.sendAt ? new Date(item.sendAt) : undefined); sent++; }
-        catch { break; } // still failing: keep the rest for next time
-      }
-      const rest = box.slice(sent);
-      await offlineStore.set(key, rest); setOutbox(rest.length);
-      if (sent) { say({ text: t('mail.outboxSent', { count: sent }) }); refresh(); }
-    };
-    const on = () => { setOnline(true); flush(); }, off = () => setOnline(false);
-    window.addEventListener('online', on); window.addEventListener('offline', off);
-    flush();
-    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
-  }, [client]);
   // Rail: the main places always show; the rest fold under "More" (remembered per device).
   const [railOpen, setRailOpen] = useState(() => { try { return localStorage.getItem('om:rail') === 'open'; } catch { return false; } });
   const toggleRail = (open: boolean) => { setRailOpen(open); try { localStorage.setItem('om:rail', open ? 'open' : 'closed'); } catch { /* fine */ } };
@@ -156,9 +123,6 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     else if (wasOpen.current && document.activeElement?.closest('.rail, body') && !document.activeElement.closest('.list, .reader, .overlay, .compose')) menuButton.current?.focus();
     wasOpen.current = navOpen;
   }, [navOpen]);
-  // Drag conversations onto a folder in the rail (pointer devices): what is being dragged, and the folder under it.
-  const [dragging, setDragging] = useState<string[] | null>(null);
-  const [dropOn, setDropOn] = useState<string | null>(null);
 
   const inbox = boxes.find((b) => b.role === 'inbox')?.id ?? null;
   // The address bar follows the screen, and Back / Forward (or an edited link) move the screen.
@@ -377,79 +341,10 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     } catch (e) { fail(e); }
   }
 
-  // ── Actions (one conversation or a selection) ──────────
-
-  const targets = () => (selected.size ? [...selected] : threadId ? [threadId] : []);
-
-  async function act(a: BulkAction, tids = targets()) {
-    if (!tids.length || !source) return;
-    const n = tids.length;
-    if (a === 'trash' && role === 'trash' && !(await confirmIt({ title: t('mail.deleteForeverTitle', { count: n }), body: t('mail.cantBeUndone'), confirm: t('mail.deleteForever'), danger: true }))) return;
-    const inList = (id: string) => list?.find((x) => x.threadId === id);
-
-    if (a === 'star') {
-      const on = !tids.every((id) => (id === threadId ? messages?.some((m) => m.keywords.$flagged) : inList(id)?.keywords.$flagged));
-      const flag = (k: Record<string, boolean>) => ({ ...k, $flagged: on });
-      setList((l) => (role === STARRED && !on ? l?.filter((x) => !tids.includes(x.threadId)) : l?.map((x) => (tids.includes(x.threadId) ? { ...x, keywords: flag(x.keywords) } : x))) ?? l);
-      if (threadId && tids.includes(threadId)) setMessages((ms) => ms?.map((m) => ({ ...m, keywords: flag(m.keywords) })) ?? ms);
-      try { await Promise.all(tids.map((t) => client.setStarred(t, on))); } catch (e) { fail(e); refresh(); }
-      return;
-    }
-    if (a === 'unread' || a === 'read') {
-      const seen = a === 'read';
-      setList((l) => l?.map((x) => (tids.includes(x.threadId) ? { ...x, keywords: { ...x.keywords, $seen: seen } } : x)) ?? l);
-      if (!seen && threadId && tids.includes(threadId)) setThreadId(null);
-      setSelected(new Set());
-      try { await Promise.all(tids.map((t) => client.setSeen(t, seen))); say({ text: t(seen ? 'mail.markedRead' : 'mail.markedUnread') }); } catch (e) { fail(e); }
-      return refresh();
-    }
-
-    let target: string | null = null, label = false;
-    if (typeof a === 'object' && 'moveTo' in a) {
-      label = a.label;
-      target = a.moveTo;
-      if (!target) {
-        const name = await promptIt({ title: t('mail.newFolder'), label: t('mail.folderName'), placeholder: t('mail.folderNameExample'), confirm: t('mail.createFolder') });
-        if (!name) return;
-        try { target = await client.createMailbox(name); } catch (e) { return fail(e); }
-      }
-    }
-
-    // Everything else removes the conversations from this view (a label keeps them).
-    if (!label) {
-      const idx = list?.findIndex((x) => x.threadId === threadId) ?? -1;
-      const rest = list?.filter((x) => !tids.includes(x.threadId)) ?? [];
-      setList(rest);
-      // Keep the reading flow going: open the next conversation, like Gmail's auto-advance.
-      if (threadId && tids.includes(threadId)) setThreadId(rest[Math.min(idx, rest.length - 1)]?.threadId ?? null);
-    }
-    setSelected(new Set());
-
-    try {
-      const each = (f: (t: string) => Promise<unknown>) => Promise.all(tids.map(f));
-      const box = (r: string) => { const id = boxes.find((b) => b.role === r)?.id; if (!id) throw new Error(t('mail.noFolderForThat')); return id; };
-      // Undo (the toast's link, or z): put them back where they were.
-      // ponytail: moves the whole conversation's copies in `to` back, including a message that was already there.
-      const back = (to: string, kw: Record<string, true | null> = {}) => async () => {
-        say({ text: t('mail.undoing') }, 0);
-        try { await each((t) => client.move(t, to, source, kw)); say({ text: t('mail.undone') }); } catch (e) { fail(e); }
-        refresh();
-      };
-      if (typeof a === 'object' && 'snooze' in a) { await each((t) => client.snooze(t, source, a.snooze, boxes)); say({ text: t('mail.snoozedUntil', { count: n, time: describe(a.snooze) }) }); }
-      else if (typeof a === 'object') {
-        const b = boxes.find((x) => x.id === target), name = b ? shown(b) : t('mail.theNewFolder');
-        await each((t) => (label ? client.addToMailbox(t, target!) : client.move(t, source, target!)));
-        say(label ? { text: t('mail.labelled', { name }) } : { text: t('mail.movedTo', { count: n, name }), undo: back(target!) }, UNDO_MS);
-      }
-      else if (a === 'mute') { await each((t) => client.mute(t, source, boxes)); say({ text: t('mail.muted', { count: n }) }); }
-      else if (a === 'archive') { const to = await client.mailboxFor('archive', 'Archive', boxes); await each((t) => client.move(t, source, to)); say({ text: t('mail.archived', { count: n }), undo: back(to) }, UNDO_MS); }
-      else if (a === 'trash' && role === 'trash') { await each((t) => client.destroyThread(t, source)); say({ text: t('mail.deletedForever') }); }
-      else if (a === 'trash') { const to = box('trash'); await each((t) => client.move(t, source, to)); say({ text: t('mail.movedToTrash'), undo: back(to) }, UNDO_MS); }
-      else if (a === 'junk' && role === 'junk') { await each((t) => client.move(t, source, inbox!, { $junk: null, $notjunk: true })); say({ text: t('mail.notSpam') }); }
-      else if (a === 'junk') { const to = box('junk'); await each((t) => client.move(t, source, to, { $junk: true, $notjunk: null })); say({ text: t('mail.reportedSpam'), undo: back(to, { $junk: null }) }, UNDO_MS); }
-    } catch (e) { fail(e); }
-    refresh();
-  }
+  // ── Actions (one conversation or a selection; drag to a folder; the Screener): useListActions.ts ──
+  const { toggleSelect, allSelected, act, screen, setDragging, dropOn, setDropOn, canDrag, takesDrop, drop } = useListActions({
+    client, boxes, list, setList, selected, setSelected, threadId, setThreadId, messages, setMessages, current, role, source, inbox, say, fail, refresh,
+  });
 
   // What you can do with one message or sender (unsubscribe, block, print, RSVP, receipts, reactions…): messageActions.ts.
   const { unsubscribe, deleteAllFrom, saveSearch, removeSearch, more, rsvp, receipt, react } = messageActions({
@@ -458,234 +353,28 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     search: (q) => { setQuery(q); setThreadId(null); }, filterLike: (from) => { setRulePrefill({ from }); setOverlay('settings'); },
   });
 
-  const escape = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  // ── Writing and sending: useSending.ts ────────────────
 
-  // ── Writing ────────────────────────────────────────────
-
-  const withSignature = (d: Draft, kind: 'new' | 'reply' = 'new'): Draft =>
-    ({ ...d, html: addSignature(d.html, chooseSignature(signatures, kind === 'new' ? sigData.sigNew : sigData.sigReply)) });
   const windows = useComposeWindows(client, { send: (d, at) => send(d, at), blocked: () => say({ text: t('mail.popupBlocked') }) });
   const setCompose = windows.open;
   const compose = windows.expanded;
+  const { online, outbox, withSignature, reply, quickReply, composeApi, closeCompose, send, editScheduled } = useSending({
+    client, boxes, opened, identities: identities.map((i) => i.email), signatures, sigData, setCompose, say, fail, refresh, loadContacts, setThreadVersion,
+  });
   const newMessage = () => setCompose(withSignature(EMPTY_DRAFT));
-  function reply(mode: ReplyMode, e: EmailFull, text?: string) {
-    const d = draftFor(mode, e, client.username, identities.map((i) => i.email));
-    // A picked suggestion goes on the first line; the user edits it like anything they typed.
-    // The signature is added before the words, so it lands under them rather than above (it goes after the first
-    // blank line, and the words then take that line).
-    const signed = withSignature(d, 'reply');
-    if (text) signed.html = signed.html.replace('<div><br></div>', `${text.trim().split('\n').map((l) => `<div>${escape(l) || '<br>'}</div>`).join('')}<div><br></div>`);
-    setCompose(signed);
-  }
 
-  /** A short reply typed under the conversation: built like any reply (quote, signature) and sent at once, with Undo. */
-  function quickReply(e: EmailFull, text: string, all: boolean) {
-    const d = draftFor(all ? 'replyAll' : 'reply', e, client.username, identities.map((i) => i.email));
-    const lines = text.trim().split('\n').map((l) => `<div>${escape(l) || '<br>'}</div>`).join('');
-    // Signature first (it goes under the blank first line), then the words onto that line: text, signature, quote.
-    const signed = withSignature(d, 'reply');
-    const html = signed.html.replace('<div><br></div>', `${lines}<div><br></div>`);
-    send({ ...signed, html, text: htmlToText(html) });
-  }
-
-  const composeApi: ComposeApi = {
-    upload: (f) => client.upload(f),
-    save: (d) => client.saveDraft(d, boxes),
-    discard: (id) => client.deleteDraft(id),
-    download: (a) => client.download(a),
-    templates: () => client.templates(),
-    saveTemplate: (d) => client.saveTemplate(d),
-    deleteTemplate: (id) => client.deleteTemplate(id),
-    share: (f, days) => client.shareFile(f, days),
-    maxUpload: client.maxUpload,
-    events: opened ? undefined : (from, to) => client.events(from, to),
-    activity: (email) => client.threads({ from: email }, 30).then((l) => l.map((e) => e.receivedAt)),
-  };
-  // Opened from outside: the Compose shortcut, an email link or "Share to OpenMail" (launch.ts).
-  useEffect(() => {
-    takeLaunch().then(async (l) => {
-      if (!l) return;
-      // Shared files come from outside (any site can post to /share): attach them only when the person says so.
-      // Names are the sender's text: control/direction characters stripped, shortened, shown after the warning.
-      const label = (f: File) => `${f.name.replace(/[\p{Cc}\p{Cf}]/gu, '').slice(0, 60) || t('mail.untitledFile')} (${fileSize(f.size)})`;
-      if (l.files.length && !(await confirmIt({ title: t('mail.attachSharedTitle', { count: l.files.length }), danger: true,
-        body: t('mail.attachSharedBody', { files: `${l.files.slice(0, 5).map(label).join(' · ')}${l.files.length > 5 ? ' …' : ''}` }), confirm: t('mail.attach') }))) l.files = [];
-      const attachments = await Promise.all(l.files.map((f) => client.upload(f))).catch((e) => { fail(e); return []; });
-      setCompose(withSignature({ ...EMPTY_DRAFT, to: l.to, cc: l.cc, bcc: l.bcc, subject: l.subject, html: l.body ? textToHtml(l.body) : '', text: l.body, attachments }));
-    });
-  }, [client]);
   // Unread Inbox mail on the app icon.
   // ponytail: the active account's Inbox only; other signed-in accounts don't add to it.
   useEffect(() => setBadge(boxes.find((b) => b.role === 'inbox')?.unreadEmails ?? 0), [boxes]);
   useEffect(() => () => setBadge(0), []); // signed out
-  function closeCompose(outcome: 'saved' | 'discarded' | 'closed') {
-    if (outcome === 'saved') say({ text: t('mail.draftSaved') });
-    if (outcome === 'discarded') say({ text: t('mail.draftDiscarded') });
-    refresh();
-  }
-
-  /** Screener: people you write to are people you want to hear from. */
-  async function approveRecipients(d: Draft) {
-    try {
-      const { data } = await loadScript(client);
-      const to = [...d.to, ...d.cc, ...(d.bcc ?? [])].map((a) => a.email.toLowerCase());
-      if (!data.screener?.on || to.every((a) => data.screener!.allow.includes(a))) return; // nothing new: skip the write
-      await saveScript(client, boxes, (s) => (s.screener?.on ? { ...s, screener: { on: true, allow: [...new Set([...s.screener.allow, ...to])] } } : s));
-    } catch { /* the message went out; approving can happen from the Screener */ }
-  }
-
-  /** Screener decision for one sender: yes → Inbox from now on (and what's waiting moves there); no → blocked. */
-  async function screen(sender: string, yes: boolean) {
-    const s = sender.toLowerCase();
-    try {
-      const screenerBox = boxes.find((b) => !b.role && b.name === SCREENER)?.id;
-      if (yes) {
-        await saveScript(client, boxes, (d) => ({ ...d, screener: { on: d.screener?.on ?? true, allow: [...new Set([...(d.screener?.allow ?? []), s])] } }));
-      } else await addRule(client, boxes, { id: crypto.randomUUID(), from: s, fromExact: true, action: 'block' });
-      const waiting = (list ?? []).filter((e) => e.from?.some((a) => a.email.toLowerCase() === s));
-      setList((l) => l?.filter((e) => !waiting.includes(e)) ?? l);
-      if (screenerBox) await Promise.all(waiting.map((e) => client.move(e.threadId, screenerBox, yes ? inbox! : boxes.find((b) => b.role === 'junk')!.id, yes ? {} : { $junk: true })));
-      say({ text: t(yes ? 'mail.screenAllowed' : 'mail.screenBlocked', { address: sender }) });
-    } catch (e) { fail(e); }
-    refresh();
-  }
-
-  async function send(d: Draft, sendAt?: Date) {
-    if (!navigator.onLine && client.offline) {
-      // Offline: keep it in the outbox; it goes when the connection is back (see the 'online' effect).
-      const box = (await offlineStore.get<{ d: Draft; sendAt?: string }[]>(`${client.username}:outbox`)) ?? [];
-      await offlineStore.set(`${client.username}:outbox`, [...box, { d, sendAt: sendAt?.toISOString() }]);
-      setOutbox(box.length + 1);
-      return say({ text: t('mail.offlineQueued') }, 6000);
-    }
-    const pending = client.send(d, boxes, sendAt);
-    let undone = false;
-    const undo = async () => {
-      undone = true;
-      say({ text: t(sendAt ? 'mail.cancelling' : 'mail.undoing') }, 0);
-      try {
-        const { submissionId, emailId } = await pending;
-        await client.undoSend(submissionId, emailId, boxes);
-        say({ text: t(sendAt ? 'mail.scheduleCancelled' : 'mail.sendUndone') });
-        setCompose({ ...d, id: emailId }); // it's a draft again
-      } catch { say({ text: t('mail.tooLate') }); }
-      refresh();
-    };
-    say({ text: sendAt ? t('mail.scheduledFor', { time: describe(sendAt) }) : t('mail.sending'), undo }, sendAt ? 8000 : UNDO_SECONDS * 1000);
-    try { await pending; loadContacts(); approveRecipients(d); } catch (e) {
-      say({ text: t('mail.notSent', { error: (e as Error).message }) }, 8000);
-      setCompose(d); // never lose what someone wrote
-      return;
-    }
-    if (sendAt) return refresh();
-    // After the undo window, ask the server how delivery went: a refused recipient is reported, not hidden.
-    setTimeout(async () => {
-      if (undone) return;
-      const { submissionId } = await pending;
-      const problems = await client.deliveryProblems(submissionId).catch(() => []);
-      say(problems.length
-        ? { text: t('mail.notDelivered', { addresses: problems.map((p) => p.email).join(', '), reason: problems[0].reason }) }
-        : { text: t('mail.sent') }, problems.length ? 10000 : 4000);
-      refresh(); setThreadVersion((v) => v + 1);
-    }, UNDO_SECONDS * 1000 + 1500);
-  }
-
-  async function editScheduled(s: Scheduled) {
-    if (!(await confirmIt({ title: t('mail.editScheduledTitle'), body: t('mail.editScheduledBody', { subject: s.email.subject || t('mail.noSubject'), time: describe(new Date(s.sendAt)) }), confirm: t('mail.editMessage') }))) return;
-    try {
-      await client.undoSend(s.submissionId, s.email.id, boxes);
-      const draft = (await client.thread(s.email.threadId)).find((m) => m.id === s.email.id);
-      if (draft) setCompose(draftFromEmail(draft));
-      refresh();
-    } catch (e) { fail(e); }
-  }
-
-  // ── Selection ──────────────────────────────────────────
-
-  function toggleSelect(tid: string, range: boolean) {
-    setSelected((s) => {
-      const next = new Set(s);
-      const ids = list?.map((x) => x.threadId) ?? [];
-      if (range && lastClicked.current) {
-        const [a, b] = [ids.indexOf(lastClicked.current), ids.indexOf(tid)].sort((x, y) => x - y);
-        ids.slice(a, b + 1).forEach((id) => next.add(id));
-      } else if (next.has(tid)) next.delete(tid); else next.add(tid);
-      return next;
-    });
-    lastClicked.current = tid;
-  }
-  const allSelected = !!list?.length && list.every((x) => selected.has(x.threadId));
 
   // ── Keyboard + command palette ─────────────────────────
 
   const last = messages?.[messages.length - 1];
-  const navItems = [
-    ...boxes.slice(0, 1),
-    { id: STARRED, name: STARRED, role: STARRED, unreadEmails: 0, sortOrder: 0 },
-    ...boxes.slice(1).flatMap((b) => (b.role === 'drafts' && !opened ? [b, { id: SCHEDULED, name: SCHEDULED, role: SCHEDULED, unreadEmails: 0, sortOrder: 0 }] : [b])),
-    // Someone else's mailbox shows its mail only; your contacts, calendar, tasks and notes stay in yours.
-    ...(opened ? [] : [
-      { id: FEED, name: FEED, role: FEED, unreadEmails: 0, sortOrder: 0 },
-      { id: SUBSCRIPTIONS, name: SUBSCRIPTIONS, role: SUBSCRIPTIONS, unreadEmails: 0, sortOrder: 0 },
-      { id: CONTACTS, name: CONTACTS, role: CONTACTS, unreadEmails: 0, sortOrder: 0 },
-      { id: CALENDAR, name: CALENDAR, role: CALENDAR, unreadEmails: 0, sortOrder: 0 },
-      { id: TASKS, name: TASKS, role: TASKS, unreadEmails: 0, sortOrder: 0 },
-      { id: NOTES, name: NOTES, role: NOTES, unreadEmails: 0, sortOrder: 0 },
-    ]),
-  ];
+  const navItems = railItems(boxes, !!opened);
 
-  const commands: Command[] = [
-    { id: 'compose', label: t('mail.cmdCompose'), icon: 'compose', hint: 'c', run: newMessage },
-    { id: 'search', label: t('mail.cmdSearch'), icon: 'search', hint: '/', run: () => searchRef.current?.focus() },
-    ...navItems.map((b) => ({ id: 'go-' + b.id, label: t('mail.goTo', { folder: shown(b) }), icon: roleIcon(b.role), run: () => openFolder(b.id) })),
-    ...(last ? [
-      { id: 'reply', label: t('mail.cmdReply'), icon: 'reply' as const, hint: 'r', run: () => reply('reply', last) },
-      { id: 'replyall', label: t('mail.cmdReplyAll'), icon: 'replyAll' as const, hint: 'a', run: () => reply('replyAll', last) },
-      { id: 'forward', label: t('mail.cmdForward'), icon: 'forward' as const, hint: 'f', run: () => reply('forward', last) },
-      { id: 'archive', label: t('mail.cmdArchive'), icon: 'archive' as const, hint: 'e', run: () => act('archive') },
-      { id: 'snooze', label: t('mail.cmdSnooze'), icon: 'clock' as const, run: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); act({ snooze: d }); } },
-    ] : []),
-    { id: 'settings', label: t('mail.cmdSettings'), icon: 'settings', run: () => setOverlay('settings') },
-    { id: 'privacy', label: t('privacy.title'), icon: 'shield', run: () => setOverlay('privacy') },
-    { id: 'theme-dark', label: t('mail.cmdThemeDark'), icon: 'settings', run: () => applyTheme('dark') },
-    { id: 'theme-light', label: t('mail.cmdThemeLight'), icon: 'settings', run: () => applyTheme('light') },
-    { id: 'theme-system', label: t('mail.cmdThemeSystem'), icon: 'settings', run: () => applyTheme('system') },
-    { id: 'help', label: t('mail.shortcuts'), icon: 'keyboard', hint: '?', run: () => setOverlay('help') },
-    { id: 'logout', label: t('mail.cmdSignOut'), icon: 'back', run: onLogout },
-  ];
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !compose) { e.preventDefault(); setOverlay((o) => (o === 'palette' ? null : 'palette')); return; }
-      const t = e.target as HTMLElement;
-      if (compose || overlay || e.metaKey || e.ctrlKey || e.altKey || t.closest('input, textarea, [contenteditable], [role=menu]')) return;
-      const ids = list?.map((x) => x.threadId) ?? [];
-      const i = threadId ? ids.indexOf(threadId) : -1;
-      // Gmail-style "g then a letter" to jump between places.
-      if (goPending.current) {
-        goPending.current = false;
-        const role = { i: 'inbox', t: 'sent', d: 'drafts' }[e.key];
-        const to = role ? boxes.find((b) => b.role === role)?.id : { s: STARRED, c: CONTACTS, k: CALENDAR }[e.key];
-        if (to) { e.preventDefault(); openFolder(to); }
-        return;
-      }
-      if (e.key === 'g') { goPending.current = true; setTimeout(() => { goPending.current = false; }, 1500); return; }
-      const keys: Record<string, () => void> = {
-        j: () => ids.length && openThread(ids[Math.min(i + 1, ids.length - 1)]),
-        k: () => ids.length && openThread(ids[Math.max(i - 1, 0)]),
-        x: () => threadId && toggleSelect(threadId, false),
-        m: () => act('mute'), e: () => act('archive'), ']': () => act('archive'), z: () => toast?.undo?.(), '#': () => act('trash'), '!': () => act('junk'), u: () => act('unread'), s: () => act('star'),
-        I: () => act('read'), U: () => act('unread'),
-        r: () => last && reply('reply', last), a: () => last && reply('replyAll', last), f: () => last && reply('forward', last),
-        c: newMessage, '/': () => searchRef.current?.focus(), '?': () => setOverlay('help'),
-        Escape: () => { if (selected.size) setSelected(new Set()); else setThreadId(null); },
-      };
-      const run = keys[e.key];
-      if (run) { e.preventDefault(); run(); }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
+  const commands = paletteCommands({ navItems, last, openFolder, act, reply, newMessage, searchRef, setOverlay, onLogout });
+  useShortcuts({ compose, overlay, setOverlay, list, boxes, threadId, setThreadId, selected, setSelected, last, toast, openFolder, openThread, toggleSelect, act, reply, newMessage, searchRef });
 
   // The rows are memoised (Rows.tsx), so they get one handler object for the life of the screen. Each handler reads
   // the newest functions through this ref, which is refreshed on every render: never a stale list or selection.
@@ -699,23 +388,6 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     onDragStart: (tid) => setDragging(rowLive.current.selected.has(tid) ? [...rowLive.current.selected] : [tid]),
     onDragEnd: () => { setDragging(null); setDropOn(null); },
   }), []);
-
-  // ── Drag to a folder ───────────────────────────────────
-
-  const canDrag = !['drafts', 'trash', SCHEDULED].includes(role ?? '');
-  /** Folders that take a drop: yours, plus Inbox, Archive, Deleted Items and Junk; never the one you're in. */
-  const takesDrop = (b: { id: string; role?: string | null }) =>
-    !!dragging && b.id !== current && !VIRTUAL.includes(b.id) && (!b.role || ['inbox', 'archive', 'trash', 'junk'].includes(b.role));
-  function drop(b: { id: string; role?: string | null }) {
-    const ids = dragging ?? [];
-    setDragging(null); setDropOn(null);
-    if (!ids.length) return;
-    // Deleted Items and Junk mean more than a move (confirmations, spam training), so they go the usual way.
-    if (b.role === 'trash') act('trash', ids);
-    else if (b.role === 'junk' || (role === 'junk' && b.role === 'inbox')) act('junk', ids);
-    else if (b.role === 'archive') act('archive', ids);
-    else act({ moveTo: b.id, label: false }, ids);
-  }
 
   // ── View ───────────────────────────────────────────────
 
