@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { buildSrcdoc, cleanLink } from './safeHtml';
 
 it('strips tracking parameters but keeps the rest of the link', () => {
@@ -39,4 +39,36 @@ it('keeps only web, mail and phone links', () => {
   expect(srcdoc).not.toMatch(/javascript:|data:text/);
   expect(srcdoc).toContain('href="mailto:a@b.c"');
   expect(srcdoc).toContain('href="https://ok.example/"');
+});
+
+it('cleans every link: <area>, SVG xlink:href, and no target or opener', () => {
+  const { srcdoc } = buildSrcdoc('<map><area href="javascript:alert(1)"><area href="https://ok.example/?utm_source=x" target="_top"></map>'
+    + '<svg><a xlink:href="javascript:alert(2)"><text>x</text></a><a href="data:text/html,x"><text>y</text></a></svg>'
+    + '<a href="https://w.example/" target="foo" rel="opener">w</a>', false);
+  expect(srcdoc).not.toMatch(/javascript:|data:text|utm_source|target="(foo|_top)"|opener"/);
+  const doc = new DOMParser().parseFromString(srcdoc, 'text/html');
+  expect([...doc.querySelectorAll('area, a')].map((a) => [a.getAttribute('href') ?? a.getAttribute('xlink:href'), a.getAttribute('target'), a.getAttribute('rel')])).toEqual([
+    [null, null, 'noopener noreferrer'], ['https://ok.example/', null, 'noopener noreferrer'], [null, null, 'noopener noreferrer'],
+    [null, null, 'noopener noreferrer'], ['https://w.example/', null, 'noopener noreferrer']]);
+  expect(srcdoc).toContain('<base target="_blank">'); // ours stays: links still open in a new tab
+});
+
+it('falls back to plain text if the result would re-parse into something we removed (mutation XSS)', () => {
+  // happy-dom's parser doesn't reproduce the browser's <form><math><mtext></form><form><mglyph><style></math>… mutation,
+  // so the re-parse is made to bring back a <meta refresh> the way a browser's would.
+  const real = DOMParser.prototype.parseFromString;
+  let calls = 0;
+  const spy = vi.spyOn(DOMParser.prototype, 'parseFromString').mockImplementation(function (this: DOMParser, s: string, type: DOMParserSupportedType) {
+    return real.call(this, ++calls === 1 ? s : s + '<meta http-equiv="refresh" content="0;url=https://evil.example">', type);
+  });
+  try {
+    const r = buildSrcdoc('<p>Hello <b>&lt;there&gt;</b></p><style>p{color:red}</style><img src="https://cdn.example/x.png">', false);
+    expect(calls).toBe(2);
+    expect(r.blockedImages).toBe(0);
+    expect(r.srcdoc).not.toMatch(/evil|<p>|<b>|<img|color:red/);
+    expect(r.srcdoc).toContain('Hello &lt;there&gt;</pre>');
+    expect(r.srcdoc).toContain("default-src 'none'"); // same CSP
+  } finally { spy.mockRestore(); }
+  // Without a mutation the HTML is kept.
+  expect(buildSrcdoc('<p>Hello</p>', false).srcdoc).toContain('<p>Hello</p>');
 });

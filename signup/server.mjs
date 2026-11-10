@@ -86,6 +86,9 @@ export function configFromEnv(env = process.env) {
     maxDomains: Number(env.MAX_DOMAINS || 3),
     maxDomainAddresses: Number(env.MAX_DOMAIN_ADDRESSES || 10),
     pendingDomainsFile: env.PENDING_DOMAINS_FILE || null, // domains waiting for their TXT record
+    // An address offered to another account waits this many days for an answer; one account can have this many waiting.
+    domainInviteDays: Number(env.DOMAIN_INVITE_DAYS || 14),
+    maxDomainInvites: Number(env.MAX_DOMAIN_INVITES || 5),
     reservedDomains: (env.RESERVED_DOMAINS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
     dnsServers: (env.DNS_SERVERS || '').split(',').map((s) => s.trim()).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
@@ -357,7 +360,11 @@ export function createApp(cfg) {
     req.allowSlowBody = (ms) => { clearTimeout(timer); timer = limit(ms); };
     res.once('close', () => clearTimeout(timer));
     try {
+      // Route only on the path as sent. Caddy's /f/* matches "//f/api/events", which new URL() reads as host "f" and
+      // path /api/events; "/f/..\\internal/…" and "/f/%2e%2e/…" are cleaned to "/internal/…" the same way. Either way
+      // the internal-only routes (events, MTA hook) would be reachable from outside.
       const url = new URL(req.url, 'http://x');
+      if (!/^\/(?!\/)/.test(req.url) || url.pathname !== req.url.split('?')[0]) return fail(res, 400, 'bad_request', 'Bad request.');
       if (url.pathname.startsWith('/api/aliases') && await aliases(req, res, url)) return;
       if (url.pathname === '/api/account' && await account(req, res, url)) return;
       if (url.pathname.startsWith('/api/session/') && await session(req, res, url)) return;

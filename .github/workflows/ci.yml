@@ -32,10 +32,13 @@ jobs:
         working-directory: web
         run: npm run build
 
-      # Back, links, the phone drawer, swipe, drag to a folder, Undo: in a real browser against the same mail server.
+      # Back, links, the phone drawer, swipe, drag to a folder, Undo: in real browsers against the same mail server.
+      # All three engines (E2E_ALL): Chromium, Firefox, and WebKit (Safari and every iPhone browser), desktop and phone.
       - name: Web client — browser tests
         working-directory: web
-        run: npx playwright install --with-deps chromium && npm run e2e
+        env:
+          E2E_ALL: '1'
+        run: npx playwright install --with-deps chromium firefox webkit && npm run e2e
 
       - name: Signup service — tests
         working-directory: signup
@@ -63,7 +66,9 @@ jobs:
         run: npm ci && npm run build
       - name: Install (local test mode, as root like a real server)
         working-directory: deploy/production
-        run: sudo ./install.sh --local-test --yes --domain example.test --hostname mx.example.test --user owner --web-dist ../../web/dist
+        shell: bash   # with pipefail: a failing install.sh fails the step despite tee
+        # install.log keeps the generated password for owner (printed once) for the backup drill below.
+        run: sudo ./install.sh --local-test --yes --domain example.test --hostname mx.example.test --user owner --web-dist ../../web/dist | tee install.log
       - name: Every service is up and stays up
         run: |
           for i in $(seq 1 40); do
@@ -80,6 +85,50 @@ jobs:
           # Sign-up is off on a self-hosted install, so the account service answers "not found" in its own JSON
           # ({"ok":false,...}); anything else means Caddy isn't routing /api to it.
           curl -sSk --resolve mx.example.test:10443:127.0.0.1 'https://mx.example.test:10443/api/username-available?name=owner' | grep -q '"ok"'
+      - name: Security headers on the app, and the account service's data private
+        working-directory: deploy/production
+        run: |
+          h=$(curl -fsSkI --resolve mx.example.test:10443:127.0.0.1 https://mx.example.test:10443/)
+          echo "$h"
+          for want in 'strict-transport-security: max-age=' 'x-content-type-options: nosniff' 'referrer-policy: same-origin' "content-security-policy: frame-ancestors 'none'"; do
+            echo "$h" | grep -qi "^$want" || { echo "missing: $want"; exit 1; }
+          done
+          # Stalwart's answers get HTTPS-only too, and only once.
+          [ "$(curl -sSkI --resolve mx.example.test:10443:127.0.0.1 https://mx.example.test:10443/.well-known/jmap | grep -ci '^strict-transport-security')" = 1 ]
+          [ "$(sudo stat -c %a signup-data)" = 700 ]
+      - name: Backup, lose the server, restore as docs/self-hosting.md says, mail is still there
+        working-directory: deploy/production
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq age
+          pass=$(sed -n 's/.*with password: \([^ ]*\) .*/\1/p' install.log)
+          mail() { # deliver to owner on the inbound port, as another server would
+            printf 'From: a@outside.test\r\nTo: owner@example.test\r\nSubject: %s\r\nMessage-ID: <%s@outside.test>\r\n\r\nA normal message.\r\n' "$1" "$RANDOM$RANDOM" \
+              | curl -sS smtp://127.0.0.1:10025/outside.test --mail-from a@outside.test --mail-rcpt owner@example.test -T -
+          }
+          found() { # is a message with this subject in owner's mailbox? (JMAP as owner, up to a minute)
+            local acct; acct=$(curl -sS -u "owner@example.test:$pass" http://127.0.0.1:18080/jmap/session \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["primaryAccounts"]["urn:ietf:params:jmap:mail"])')
+            for _ in $(seq 1 30); do
+              curl -sS -u "owner@example.test:$pass" -H 'Content-Type: application/json' http://127.0.0.1:18080/jmap/ \
+                -d '{"using":["urn:ietf:params:jmap:core","urn:ietf:params:jmap:mail"],"methodCalls":[["Email/query",{"accountId":"'"$acct"'","filter":{"subject":"'"$1"'"}},"q"]]}' \
+                | grep -q '"ids":\["' && return; sleep 2
+            done; echo "not found: $1"; return 1
+          }
+          mail "Before the backup"; found "Before the backup"
+          age-keygen -o "$RUNNER_TEMP/backup.key" 2>/dev/null
+          sudo ./backup.sh --recipient "$(age-keygen -y "$RUNNER_TEMP/backup.key")"
+          sudo ./backup.sh
+          sudo cp backups/*.age "$RUNNER_TEMP/"
+          # The server is lost: its volumes and every generated file next to install.sh.
+          sudo docker compose down -v
+          sudo rm -rf .env .admin-credentials .hold.env .system-mail.env webmail.caddy dns-records.tsv signup-data backups backup-recipient.txt
+          echo yes | sudo ./backup.sh --restore "$(ls "$RUNNER_TEMP"/openmail-*.age)" --identity "$RUNNER_TEMP/backup.key"
+          sudo ./install.sh --yes
+          found "Before the backup"   # the old mail and the owner's password are back
+          mail "After the restore"; found "After the restore"
+          for i in $(seq 1 40); do docker ps --format '{{.Names}} {{.Status}}' | grep openmail-test-signup | grep -q '(healthy)' && break; sleep 3; done
+          docker ps --format '{{.Names}} {{.Status}}' | grep openmail-test-signup | grep -q '(healthy)'
+          ! docker ps -a --format '{{.Names}} {{.Status}}' | grep openmail-test | grep -qiE 'restarting|exited'
       - name: Logs on failure
         if: failure()
         run: |

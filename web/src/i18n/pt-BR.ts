@@ -299,14 +299,14 @@ export default {
   'privacy.weekBadge': { one: '{count} rastreador removido nesta semana', other: '{count} rastreadores removidos nesta semana' }, // review: new
   'display.grove': 'Grove', // review: new
   'domains.membersTitle': 'Endereços para outras pessoas', // review: new
-  'domains.membersIntro': 'Dê um endereço em {domain} a outra pessoa que tenha conta aqui. Os e-mails para ele vão para a caixa de correio dela, não para a sua, e ela pode enviar a partir dele. Só você pode alterar o domínio.', // review: new
-  'domains.addressesUsed': '{used} de {max} endereços em uso, incluindo os seus.', // review: new
+  'domains.membersIntro': 'Ofereça um endereço em {domain} a outra pessoa que tenha conta aqui. Ele passa a ser dela quando ela aceitar o convite nas próprias configurações: a partir daí os e-mails para ele vão para a caixa de correio dela, não para a sua, e ela pode enviar a partir dele. Só você pode alterar o domínio.', // review: new
+  'domains.addressesUsed': '{used} de {max} endereços em uso, incluindo os seus e os convites pendentes.', // review: new
   'domains.memberFor': 'para {account}', // review: new
   'domains.memberNamePlaceholder': 'sam', // review: new
   'domains.memberNewAddress': 'O novo endereço da pessoa em {domain}', // review: new
   'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
   'domains.memberAccountLabel': 'O endereço com que a pessoa faz login, em {domain}', // review: new
-  'domains.giveAddress': 'Dar endereço', // review: new
+  'domains.invite': 'Convidar', // review: new
   'domains.takeBack': 'Pegar {email} de volta', // review: new
   'domains.takeBackTitle': 'Pegar {email} de volta de {account}?', // review: new
   'domains.takeBackBody': 'Os e-mails enviados para ele serão devolvidos, e ele não poderá ser dado a mais ninguém. Os e-mails que a pessoa já recebeu continuam com ela.', // review: new
@@ -318,6 +318,16 @@ export default {
   'domains.giveUpTitle': 'Abrir mão de {email}?', // review: new
   'domains.giveUpBody': 'Os e-mails enviados para ele serão devolvidos, e não será possível recuperá-lo, nem por você nem por ninguém.', // review: new
   'domains.giveUpConfirm': 'Abrir mão do endereço', // review: new
+  'domains.invitedWaiting': 'Convite enviado, aguardando resposta até {date}', // review: new
+  'domains.withdraw': 'Retirar', // review: new
+  'domains.withdrawLabel': 'Retirar o convite para {email}', // review: new
+  'domains.invitesTitle': 'Convites', // review: new
+  'domains.invitesIntro': 'O proprietário de um domínio oferece estes endereços a você. Se você aceitar um, os e-mails para ele chegam aqui, e você pode escolhê-lo em De ao escrever. Nada muda até você aceitar.', // review: new
+  'domains.inviteAnswerBy': 'responda até {date}', // review: new
+  'domains.accept': 'Aceitar', // review: new
+  'domains.decline': 'Recusar', // review: new
+  'domains.acceptLabel': 'Aceitar {email}', // review: new
+  'domains.declineLabel': 'Recusar {email}', // review: new
   'admin.tabAudit': 'Registro de auditoria', // review: new
   'admin.domainMembers': { one: 'alguns para {count} outra conta', other: 'alguns para {count} outras contas' }, // review: new
   'admin.auditHelp': 'Todas as alterações feitas neste console: quem fez, o que foi, sobre quem ou o quê, e se deu certo. As mais recentes primeiro. Senhas e o conteúdo das mensagens nunca são registrados.', // review: new

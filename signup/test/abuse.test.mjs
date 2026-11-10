@@ -87,6 +87,21 @@ test('events: only bounces of mail the account sent count', async () => {
   assert.match(app.state.suspensions['eve@x.test'][0].reason, /bounced/);
 });
 
+test('events: mail sent over JMAP (span 0) is blamed on its sender, not on whoever signed in last', async () => {
+  const { acct, app } = fakeServer();
+  // Mallory's sign-in over the web shares span 0 with every JMAP request; eve's sends must not be put on him...
+  app.onEvent({ type: 'auth.success', data: { spanId: '0', accountName: 'mallory@x.test' } });
+  app.onEvent({ type: 'auth.success', data: { accountName: 'mallory@x.test' } });
+  for (let i = 0; i < 3; i++) {
+    app.onEvent({ type: 'queue.authenticated-message-queued', data: { queueId: `j${i}`, spanId: '0', from: 'eve@x.test' } });
+    app.onEvent({ type: 'delivery.dsn-perm-fail', data: { queueId: `j${i}` } });
+  }
+  await settle();
+  // ...and they count against eve (the only account the fake server knows).
+  assert.ok(acct.permissions.disabledPermissions?.emailSend);
+  assert.equal(app.state.suspensions['mallory@x.test'], undefined);
+});
+
 const STALWART = process.env.STALWART_URL || 'http://localhost:8080';
 const ADMIN_FILE = process.env.ADMIN_FILE || fileURLToPath(new URL('../../deploy/.dev-admin.json', import.meta.url));
 const reachable = await fetch(`${STALWART}/.well-known/jmap`, { redirect: 'manual', signal: AbortSignal.timeout(2000) }).then(() => true, () => false);

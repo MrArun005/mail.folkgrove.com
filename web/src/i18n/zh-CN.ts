@@ -298,14 +298,14 @@ export default {
   'privacy.weekBadge': { other: '本周已移除 {count} 个跟踪器' }, // review: new
   'display.grove': 'Grove', // review: new
   'domains.membersTitle': '给其他人的地址', // review: new
-  'domains.membersIntro': '把 {domain} 下的一个地址分给在这里有帐号的其他人。发往该地址的邮件会进入对方的邮箱，而不是您的，对方也可以用它发信。只有您可以更改域名。', // review: new
-  'domains.addressesUsed': '已使用 {used} 个地址，共 {max} 个（包括您自己的）。', // review: new
+  'domains.membersIntro': '把 {domain} 下的一个地址提供给在这里有帐号的其他人。对方在自己的设置中接受邀请后，地址才归对方：此后发往该地址的邮件会进入对方的邮箱，而不是您的，对方也可以用它发信。只有您可以更改域名。', // review: new
+  'domains.addressesUsed': '已使用 {used} 个地址，共 {max} 个（包括您自己的和尚未答复的邀请）。', // review: new
   'domains.memberFor': '分给 {account}', // review: new
   'domains.memberNamePlaceholder': 'sam', // review: new
   'domains.memberNewAddress': '对方在 {domain} 下的新地址', // review: new
   'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
   'domains.memberAccountLabel': '对方用来登录的地址（{domain}）', // review: new
-  'domains.giveAddress': '分配地址', // review: new
+  'domains.invite': '邀请', // review: new
   'domains.takeBack': '收回 {email}', // review: new
   'domains.takeBackTitle': '要从 {account} 收回 {email} 吗？', // review: new
   'domains.takeBackBody': '发送到此地址的邮件将被退回，且此地址无法再分给任何人。对方已收到的邮件仍归对方所有。', // review: new
@@ -317,6 +317,16 @@ export default {
   'domains.giveUpTitle': '要放弃 {email} 吗？', // review: new
   'domains.giveUpBody': '发送到此地址的邮件将被退回，且您或任何人都无法恢复此地址。', // review: new
   'domains.giveUpConfirm': '放弃地址', // review: new
+  'domains.invitedWaiting': '已邀请，等待答复至 {date}', // review: new
+  'domains.withdraw': '撤回', // review: new
+  'domains.withdrawLabel': '撤回对 {email} 的邀请', // review: new
+  'domains.invitesTitle': '邀请', // review: new
+  'domains.invitesIntro': '某个域名的所有者想把这些地址分给您。接受后，发往该地址的邮件会送到这里，写邮件时可以在“发件人”中选择它。在您接受之前，什么都不会改变。', // review: new
+  'domains.inviteAnswerBy': '请在 {date} 前答复', // review: new
+  'domains.accept': '接受', // review: new
+  'domains.decline': '拒绝', // review: new
+  'domains.acceptLabel': '接受 {email}', // review: new
+  'domains.declineLabel': '拒绝 {email}', // review: new
   'admin.tabAudit': '审计日志', // review: new
   'admin.domainMembers': { other: '其中一些分给了另外 {count} 个帐号' }, // review: new
   'admin.auditHelp': '在此控制台中所做的每一项更改：谁做的、做了什么、涉及谁或什么，以及是否成功。最新的排在最前。密码和邮件内容绝不会被记录。', // review: new

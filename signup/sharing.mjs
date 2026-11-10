@@ -33,18 +33,19 @@ export function sharingRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter 
       const boxes = (await jmap([['Mailbox/get', { accountId: who.id, properties: ['shareWith'] }, 'm']], ['urn:ietf:params:jmap:mail'])).list ?? [];
       const ids = [...new Set(boxes.flatMap((b) => Object.keys(b.shareWith ?? {})))].filter((id) => known.has(id)).slice(0, 200);
       const domainId = await getDomainId();
-      const list = (ids.length ? (await jmap([['x:Account/get', { ids, properties: ['emailAddress', 'description', '@type', 'domainId'] }, 'g']])).list ?? [] : [])
+      const list = (ids.length ? (await jmap([['x:Account/get', { ids, properties: ['emailAddress', '@type', 'domainId'] }, 'g']])).list ?? [] : [])
         .filter((a) => a['@type'] === 'User' && a.domainId === domainId);
-      return send(res, 200, { ok: true, people: list.map((a) => ({ id: a.id, name: a.description || a.emailAddress, email: a.emailAddress })) }), true;
+      // Never the description: for a self-signed-up account it holds the invite code and the recovery address.
+      return send(res, 200, { ok: true, people: list.map((a) => ({ id: a.id, name: a.emailAddress, email: a.emailAddress })) }), true;
     }
     const [local, domain, extra] = String(url.searchParams.get('email') ?? '').trim().toLowerCase().split('@');
     const missing = () => fail(res, 404, 'not_found', `No one on this server has that address. Check it, or share with someone @${cfg.domain}.`);
     // ponytail: main addresses only (not aliases), users only (not groups).
     if (!local || domain !== cfg.domain || extra !== undefined || local.length > 64) return missing(), true;
     const { ids } = await jmap([['x:Account/query', { filter: { '@type': 'User', name: local, domainId: await getDomainId() } }, 'q']]);
-    const a = ids.length === 1 ? (await jmap([['x:Account/get', { ids, properties: ['name', 'emailAddress', 'description'] }, 'g']])).list?.[0] : null;
+    const a = ids.length === 1 ? (await jmap([['x:Account/get', { ids, properties: ['name', 'emailAddress'] }, 'g']])).list?.[0] : null;
     if (!a || a.name !== local) return missing(), true;
     remember(who.id, a.id);
-    return send(res, 200, { ok: true, principal: { id: a.id, name: a.description || a.emailAddress, email: a.emailAddress } }), true;
+    return send(res, 200, { ok: true, principal: { id: a.id, name: a.emailAddress, email: a.emailAddress } }), true;
   };
 }

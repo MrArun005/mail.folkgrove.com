@@ -136,6 +136,16 @@ test('HTTP: mail server down gives a generic message, leaks nothing, refunds the
   assert.equal((await avail('fine')).error?.code, 'rate_limited', 'availability checks are rate limited too');
 });
 
+test('HTTP: only a plain path is routed (Caddy matches //f/healthz and /f/..\\healthz as /f/*; Node would read /healthz)', async (t) => {
+  const { base } = await start(t);
+  const { port } = new URL(base);
+  const { request } = await import('node:http');
+  const raw = (path) => new Promise((ok, no) => request({ host: '127.0.0.1', port, path }, (r) => { r.resume(); ok(r.statusCode); }).on('error', no).end());
+  assert.equal(await raw('/healthz'), 200);
+  assert.equal(await raw('/healthz?x=//y'), 200);
+  for (const path of ['//f/healthz', '//f/internal/outbound-hook', '///healthz', 'http://x/healthz', '/f/..\\healthz', '/f/%2e%2e/healthz', '/f/../healthz']) assert.equal(await raw(path), 400, path);
+});
+
 test('HTTP: Turnstile token required when a secret is configured', async (t) => {
   const { post } = await start(t, { turnstileSecret: 'x', inviteRequired: false });
   assert.deepEqual(await codeOf(await post({ username: 'bob', password: 'long-enough-pass' })), [400, 'captcha_failed']);

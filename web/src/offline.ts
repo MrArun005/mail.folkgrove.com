@@ -32,4 +32,7 @@ export const offlineStore = {
 };
 
 /** A request failed because there's no connection (not because the server said no). */
-export const isOffline = (e: unknown) => !navigator.onLine || (e instanceof TypeError && /fetch|network|load failed/i.test(e.message));
+// `navigator` is asked only where there is one: the JMAP client also runs under Node (the integration tests), and
+// Node before 21 has no navigator at all.
+export const isOffline = (e: unknown) => (typeof navigator !== 'undefined' && navigator.onLine === false)
+  || (e instanceof TypeError && /fetch|network|load failed/i.test(e.message));

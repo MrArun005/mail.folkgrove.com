@@ -3,9 +3,8 @@
 dns-records.tsv
 backups/
 backup-recipient.txt
-.env.before-restore
-.admin-credentials.before-restore
+*.before-restore
 .backup.*/
 .restore.*/
-.system-mail.env.before-restore
 webmail.caddy
+openmail-backup.key

@@ -4,7 +4,7 @@
 // new addresses show up in Compose's From menu by themselves.
 //
 // State lives in Stalwart, not here: a claimed domain is an x:Domain whose description is TAG + JSON
-// { owner, token, added, checked, missing, paused, members }. A domain still waiting for its TXT record is only in
+// { owner, token, added, checked, missing, paused, members, invites }. A domain still waiting for its TXT record is only in
 // PENDING_DOMAINS_FILE ({ <account id>: { <domain>: token } }), so it is still listed after a restart; its token is an
 // HMAC of (account, domain), so the same person always sees the same record to add.
 //
@@ -18,8 +18,23 @@
 // own admin) is retired the next time the list is written, so it still can't be handed to someone else.
 // What a member can do: use the address, see who gave it to them, and give it up. Nothing else: the domain, its
 // records and its other addresses are the owner's.
-// ponytail: one owner per domain, and no invitation step: the owner adds an address to an account and it is there
-// (the member can remove it). Co-owners and "accept first" would be more fields in the claim.
+//
+// Nobody gets an address they didn't agree to: "give address" only makes an invitation, and nothing changes on the
+// other account until that person accepts. Invitations live in the claim too:
+// invites = { <local part>: { to: <account id>, made: <that account's createdAt>, by: <owner id>, at: <ISO time> } }.
+// Why the claim and not a file like PENDING_DOMAINS_FILE: an invitation belongs to one verified domain, and the claim
+// is what every path that ends or pauses a domain already rewrites or destroys, under the domain's lock. Removing or
+// releasing the domain destroys its invitations with it, without a second store that could disagree with the first.
+// (A pending *domain* has no x:Domain yet, which is why those are in a file.) It is in Stalwart, so it survives a
+// restart and needs no new file to back up. It stays small: an invitation holds its address and a place under the
+// domain's cap (maxAddresses), so a claim never has more than maxAddresses addresses and invitations together.
+// `made` pins the invitation to the account it was made for: Stalwart may hand a deleted account's id to a new
+// account, and that newcomer must not see or accept it. `by` is the owner who offered it; accepting re-checks it.
+// An invitation that isn't answered within INVITE_DAYS no longer counts (liveInvites) and is dropped the next time
+// the claim is written. Declined, withdrawn and expired invitations all just disappear from the owner's list: the
+// owner is told nothing more than "it is no longer waiting".
+// ponytail: one owner per domain (co-owners would be more fields in the claim); the invited person is not emailed,
+// they find the invitation in Settings → Your domain.
 import { createHmac } from 'node:crypto';
 import { Resolver } from 'node:dns/promises';
 import { randomBytes } from 'node:crypto';
@@ -32,6 +47,7 @@ import { sendMail } from './mailer.mjs';
 const TAG = 'openmail-custom-domain ';
 export const GRACE_DAYS = 7; // TXT record gone this long: addresses on the domain are paused
 export const RELEASE_DAYS = 30; // paused (or its account deleted) this much longer: the domain is released for others
+export const INVITE_DAYS = 14; // an invitation to an address not answered this long expires (DOMAIN_INVITE_DAYS)
 const DOMAIN_RE = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/;
 const LOCAL_RE = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 
@@ -59,6 +75,13 @@ export const readMeta = (description) => {
   try { return JSON.parse(description.slice(TAG.length)); } catch { return null; }
 };
 export const writeMeta = (meta) => TAG + JSON.stringify(meta);
+
+/** The invitations in a claim that haven't expired: { <local part>: { to, made, by, at } }. */
+export const liveInvites = (cfg, meta, now = Date.now()) => Object.fromEntries(Object.entries(meta?.invites ?? {})
+  .filter(([, v]) => now - Date.parse(v.at) < (cfg.domainInviteDays ?? INVITE_DAYS) * 86400e3));
+/** The claim with these invitations (no `invites` field at all when there are none). */
+const withInvites = ({ invites: _old, ...meta }, invites) => (Object.keys(invites).length ? { ...meta, invites } : meta);
+const without = (invites, pick) => Object.fromEntries(Object.entries(invites).filter(([name, v]) => !pick(v, name)));
 
 /** Stalwart's zone text (dnsZoneFile) as rows; multi-part TXT values joined, as install.sh does. */
 export function parseZone(text = '') {
@@ -183,9 +206,11 @@ export const removeAddresses = ({ cfg, jmap }, accountId, d, names) => serial(ac
 /**
  * Under the domain's lock, before the member list is rewritten: the claim as it is now and the members' addresses
  * that really exist. Listed ones that are no longer on their account are retired here (see the top of this file).
+ * Invitations that have expired are already left out of the claim it returns.
  */
 async function membersNow({ cfg, jmap }, d) {
-  const meta = await claimOf(jmap, d);
+  const cur = await claimOf(jmap, d);
+  const meta = withInvites(cur, liveInvites(cfg, cur)); // expired invitations go with the next write
   const real = await memberAddresses(jmap, d, meta);
   retireNew(cfg, Object.entries(meta.members ?? {}).flatMap(([id, names]) => names.filter((name) => !real.some((x) => sameAddress(x, { id, name }))).map((name) => `${name}@${d.name}`)));
   return { meta, real };
@@ -230,6 +255,11 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
   const claims = new RateLimiter(cfg.domainsPerDay ?? 3, 86400e3);
   const addrLimit = new RateLimiter(cfg.aliasesPerHour ?? 30, 3600e3);
   const maxDomains = cfg.maxDomains ?? 3, maxAddresses = cfg.maxDomainAddresses ?? 10;
+  // Invitations can't be used to pester someone: one owner may invite the same account a few times a day (so
+  // invite, withdraw, invite again runs out), and one account has at most maxInvites waiting, from everyone together.
+  // On a domain, invitations and addresses share maxAddresses.
+  const inviteLimit = new RateLimiter(cfg.domainInvitesPerDay ?? 3, 86400e3);
+  const maxInvites = cfg.maxDomainInvites ?? 5;
 
   // Our main domain's zone gives the mail host (its MX). Read once.
   let mailHost = null;
@@ -240,10 +270,8 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
   const ctx = { cfg, jmap };
   // The account's creation time is part of the token: Stalwart may hand a deleted account's id to a new account, and
   // an old record left in DNS must never verify the newcomer's claim.
-  const tokenOf = async (who, name) => {
-    const at = (await jmap([['x:Account/get', { ids: [who.id], properties: ['createdAt'] }, 'c']])).list[0]?.createdAt ?? '';
-    return tokenFor(secret, `${who.id}/${at}`, name);
-  };
+  const createdAt = async (id) => (await jmap([['x:Account/get', { ids: [id], properties: ['createdAt'] }, 'c']])).list[0]?.createdAt ?? '';
+  const tokenOf = async (who, name) => tokenFor(secret, `${who.id}/${await createdAt(who.id)}`, name);
   // Domains added but not verified yet. An entry whose token no longer matches (the account id was reused) is ignored.
   // ponytail: whole file rewritten on every change; at most maxDomains entries per account.
   const pendingFile = cfg.pendingDomainsFile;
@@ -299,7 +327,8 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
         await tell(m.owner, d.name).catch((e) => console.error('domains: couldn’t email the owner:', e.message));
       }
     }
-    return updateClaim(jmap, d, { checked: m.checked, missing: m.missing, paused: m.paused });
+    // A paused domain has no invitations: what they offer doesn't work, and accepting is refused anyway.
+    return updateClaim(jmap, d, (cur) => withInvites({ ...cur, checked: m.checked, missing: m.missing, paused: m.paused }, m.paused ? {} : liveInvites(cfg, cur, now)));
   }
   async function tell(owner, name) {
     if (!cfg.systemMail) return; // without system mail, Settings → Your domain shows it
@@ -324,51 +353,114 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
       .map((a) => ({ name: a.name, email: `${a.name}@${d.name}`, enabled: a.enable !== false, main: a.name === who.name })) : [];
     // Addresses given to other accounts. maxAddresses is for the domain: the owner's and the members' together.
     const members = d.id ? (await memberAddresses(jmap, d)).map((x) => ({ account: x.account, name: x.name, email: `${x.name}@${d.name}`, enabled: x.enabled })) : [];
+    // Offered, not answered yet. They hold a place under maxAddresses too. One whose account is gone isn't shown.
+    const offered = Object.entries(d.id ? liveInvites(cfg, d.meta) : {});
+    const invitees = new Map(offered.length ? (await jmap([['x:Account/get', { ids: [...new Set(offered.map(([, v]) => v.to))], properties: ['emailAddress', 'createdAt'] }, 'i']])).list.map((a) => [a.id, a]) : []);
+    const stale = offered.filter(([, v]) => invitees.get(v.to)?.createdAt !== v.made);
+    // The invited account is gone (deleted in Stalwart's own admin, behind this service): the owner couldn't see
+    // the invitation to withdraw it, so it is dropped here instead of holding its address until it expires.
+    if (stale.length) await updateClaim(jmap, d, (cur) => withInvites(cur, without(cur.invites ?? {}, (v, n) => stale.some(([sn, sv]) => sn === n && sv.at === v.at))));
+    const invitations = offered.filter((o) => !stale.includes(o))
+      .map(([name, v]) => ({ account: invitees.get(v.to).emailAddress, name, email: `${name}@${d.name}`, invited: v.at, expires: expiry(v) }));
     return { name: d.name, status: !d.id ? 'pending' : d.meta.paused ? 'paused' : d.meta.missing ? 'missing' : 'active',
       missingSince: d.meta?.missing ?? null, pausesAt: d.meta?.missing && !d.meta.paused ? new Date(Date.parse(d.meta.missing) + GRACE_DAYS * 86400e3).toISOString() : null,
-      dkimPending: !!d.id && !records.some((r) => r.kind === 'dkim'), records, addresses, members, maxAddresses };
+      dkimPending: !!d.id && !records.some((r) => r.kind === 'dkim'), records, addresses, members, invitations, maxAddresses };
   }
+  const expiry = (v) => new Date(Date.parse(v.at) + (cfg.domainInviteDays ?? INVITE_DAYS) * 86400e3).toISOString();
 
   /**
-   * Add name@domain as an alias of `to`: the owner's own account, or a member's (then the claim lists it first, so
-   * an address can never exist that the claim doesn't know about). One cap for the whole domain, and no name twice.
+   * Why name@domain can't be made now: 'retired', 'exists' (the owner's or a member's), 'invited' (offered to
+   * someone who hasn't answered; `except` is the invitation being accepted) or 'too_many' (one cap for the domain:
+   * the owner's addresses, the members' and the waiting invitations together). null when it can.
    */
-  const addAddress = (who, d, name, to = who.id) => {
-    const email = `${name}@${d.name}`;
-    return lockDomain(d, async () => {
-      const { meta, real: members } = await membersNow(ctx, d);
-      if ((cfg.extraReserved ?? []).includes(email)) return [409, 'retired', `${email} was used before and can’t be used again.`];
-      const own = Object.values(await aliasesOf(jmap, who.id)).filter((a) => a.domainId === d.id);
-      if (own.some((a) => a.name === name)) return [409, 'exists', `You already have ${email}.`];
-      if (members.some((x) => x.name === name)) return [409, 'exists', `${email} already belongs to ${members.find((x) => x.name === name).account}.`];
-      if (own.length + members.length >= maxAddresses) return [409, 'too_many', `You can have up to ${maxAddresses} addresses on ${d.name}.`];
-      const listed = asList(members);
-      if (to !== who.id) await putClaim(jmap, d, { ...meta, members: asList([...members, { id: to, name }]) });
-      let no;
-      try {
-        no = await serial(to, async () => {
-          const current = await aliasesOf(jmap, to);
-          if (Object.keys(current).length >= (cfg.maxAliasesTotal ?? 1000)) return [409, 'too_many_total', `${to === who.id ? 'This' : 'That'} account has used all of its addresses. Contact support to raise the limit.`];
-          await setAccount(jmap, to, { [`aliases/${Object.keys(current).length + 1000}`]: { name, domainId: d.id, enable: !meta.paused, description: `domain: ${d.name}` } });
-          return null;
-        });
-      } catch (e) { no = e; }
-      if (no && to !== who.id) await putClaim(jmap, d, { ...meta, members: listed }).catch(() => {}); // not given after all
-      if (no instanceof Error) throw no;
-      return no;
-    });
-  };
+  async function refusal(d, meta, members, name, except = null) {
+    if ((cfg.extraReserved ?? []).includes(`${name}@${d.name}`)) return 'retired';
+    const own = meta.owner ? Object.values(await aliasesOf(jmap, meta.owner)).filter((a) => a.domainId === d.id) : [];
+    if (own.some((a) => a.name === name) || members.some((x) => x.name === name)) return 'exists';
+    const waiting = Object.keys(meta.invites ?? {}).filter((n) => n !== except);
+    if (waiting.includes(name)) return 'invited';
+    return own.length + members.length + waiting.length >= maxAddresses ? 'too_many' : null;
+  }
+  const refused = (d, name, why) => ({
+    retired: [409, 'retired', `${name}@${d.name} was used before and can’t be used again.`],
+    exists: [409, 'exists', `${name}@${d.name} is already in use.`],
+    invited: [409, 'invited', `${name}@${d.name} is offered to someone who hasn’t answered yet. Withdraw that invitation first.`],
+    too_many: [409, 'too_many', `You can have up to ${maxAddresses} addresses on ${d.name}, invitations included.`],
+  })[why];
 
-  /** The account on our own domain with exactly this address, for the owner to give an address to. */
+  /** Put name@domain on an account as an alias. Resolves to null, or the reason it can't have another one. */
+  const putAlias = (id, d, name, enable) => serial(id, async () => {
+    const current = await aliasesOf(jmap, id);
+    if (Object.keys(current).length >= (cfg.maxAliasesTotal ?? 1000)) return [409, 'too_many_total', 'This account has used all of its addresses. Contact support to raise the limit.'];
+    await setAccount(jmap, id, { [`aliases/${Object.keys(current).length + 1000}`]: { name, domainId: d.id, enable, description: `domain: ${d.name}` } });
+    return null;
+  });
+
+  /** One more address on the domain for its owner. */
+  const addAddress = (who, d, name) => lockDomain(d, async () => {
+    const { meta, real } = await membersNow(ctx, d);
+    const why = await refusal(d, meta, real, name);
+    return why ? refused(d, name, why) : putAlias(who.id, d, name, !meta.paused);
+  });
+
+  /**
+   * The owner offers name@domain to another account. Only the claim changes: the address exists once that person
+   * accepts. Checked now as it will be again then, so nothing is offered that couldn't be accepted.
+   */
+  const invite = (who, d, name, to) => lockDomain(d, async () => {
+    const { meta, real } = await membersNow(ctx, d);
+    if (meta.paused) return [409, 'paused', `Addresses at ${d.name} are paused. Put its DNS record back first.`];
+    const why = await refusal(d, meta, real, name);
+    if (why) return refused(d, name, why);
+    const wait = inviteLimit.take(`${who.id}>${to.id}`);
+    if (wait) return [429, 'rate_limited', 'You’ve invited that account several times today. Try again tomorrow.', { retryAfter: wait }];
+    await putClaim(jmap, d, withInvites(meta, { ...meta.invites, [name]: { to: to.id, made: to.made, by: who.id, at: new Date().toISOString() } }));
+    return null;
+  });
+
+  /**
+   * The invited person accepts: everything is checked again as it is now (the domain still verified and still its
+   * inviter's, the address free and not retired, room under the cap), then the address becomes an alias of their
+   * account. The claim lists it first, so an address can never exist that the claim doesn't know about.
+   */
+  const accept = (who, d, name) => lockDomain(d, async () => {
+    const { meta, real } = await membersNow(ctx, d);
+    const inv = meta.invites?.[name];
+    if (!inv || inv.to !== who.id || inv.made !== await createdAt(who.id)) return [404, 'not_found', 'That invitation is no longer there.'];
+    const rest = without(meta.invites, (_v, n) => n === name), email = `${name}@${d.name}`;
+    // What can't come true any more is dropped, so it isn't offered again; "no room" may change, so that one stays.
+    const drop = async (code, message) => { await putClaim(jmap, d, withInvites(meta, rest)); return [409, code, message]; };
+    if (!meta.owner || meta.owner !== inv.by || meta.paused) return drop('unavailable', `Addresses at ${d.name} can’t be used right now.`);
+    const why = await refusal(d, meta, real, name, name);
+    if (why === 'retired' || why === 'exists') return drop('gone', `${email} is no longer available.`);
+    if (why) return [409, 'too_many', `${d.name} has no room for another address right now. Ask the person who invited you.`];
+    await putClaim(jmap, d, withInvites({ ...meta, members: asList([...real, { id: who.id, name }]) }, rest));
+    let no;
+    try { no = await putAlias(who.id, d, name, true); } catch (e) { no = e; }
+    if (no) await putClaim(jmap, d, { ...meta, members: asList(real) }).catch(() => {}); // not theirs after all: still invited
+    if (no instanceof Error) throw no;
+    return no;
+  });
+
+  /** An invitation ends without an address: the owner withdraws it, or the invited person declines. */
+  const uninvite = (who, d, name) => lockDomain(d, async () => {
+    const { meta } = await membersNow(ctx, d);
+    const inv = meta.invites?.[name];
+    if (!inv || !(meta.owner === who.id || (inv.to === who.id && inv.made === await createdAt(who.id)))) return false;
+    await putClaim(jmap, d, withInvites(meta, without(meta.invites, (_v, n) => n === name)));
+    return true;
+  });
+
+  /** The account on our own domain with exactly this address, for the owner to offer an address to: { id, made }. */
   async function memberAccount(address) {
     const [local, domain, extra] = address.split('@');
     if (!local || domain !== cfg.domain || extra !== undefined || local.length > 64) return [400, 'bad_account', `Enter their full address here, like sam@${cfg.domain}.`];
     const { ids } = await jmap([['x:Account/query', { filter: { '@type': 'User', name: local, domainId: await getDomainId() } }, 'q']]);
-    const [a] = ids.length === 1 ? (await jmap([['x:Account/get', { ids, properties: ['name', 'roles'] }, 'g']])).list : [];
+    const [a] = ids.length === 1 ? (await jmap([['x:Account/get', { ids, properties: ['name', 'roles', 'createdAt'] }, 'g']])).list : [];
     if (!a || String(a.name).toLowerCase() !== local) return [404, 'no_such_account', `There’s no account ${address} on this server.`];
     // Server administrators (a Stalwart role other than User) are managed in Stalwart's own admin, as in admin.mjs.
     if (a.roles?.['@type'] !== 'User') return [403, 'protected', 'That account can’t be given addresses here.'];
-    return a.id;
+    return { id: a.id, made: a.createdAt ?? '' };
   }
 
   /** Its DKIM keys first (Stalwart refuses to destroy a domain they still point at), then the domain. */
@@ -390,8 +482,14 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
       const owners = new Map(given.length ? (await jmap([['x:Account/get', { ids: [...new Set(given.map((d) => d.meta.owner).filter(Boolean))], properties: ['emailAddress'] }, 'o']])).list.map((a) => [a.id, a.emailAddress]) : []);
       const memberOf = given.flatMap((d) => Object.values(theirs).filter((a) => a.domainId === d.id && d.meta.members[who.id].includes(a.name))
         .map((a) => ({ domain: d.name, name: a.name, email: `${a.name}@${d.name}`, enabled: a.enable !== false, owner: owners.get(d.meta.owner) ?? null })));
+      // Addresses the caller is offered and hasn't answered: the address and who offers it.
+      const offers = all.flatMap((d) => (d.meta.owner && !d.meta.paused ? Object.entries(liveInvites(cfg, d.meta)) : []).filter(([, v]) => v.to === who.id).map(([name, v]) => ({ d, name, v })));
+      const made = offers.length ? await createdAt(who.id) : '';
+      const inviters = new Map(offers.length ? (await jmap([['x:Account/get', { ids: [...new Set(offers.map((o) => o.d.meta.owner))], properties: ['emailAddress'] }, 'o']])).list.map((a) => [a.id, a.emailAddress]) : []);
+      const invitations = offers.filter((o) => o.v.made === made && o.v.by === o.d.meta.owner)
+        .map(({ d, name, v }) => ({ domain: d.name, name, email: `${name}@${d.name}`, owner: inviters.get(d.meta.owner) ?? null, invited: v.at, expires: expiry(v) }));
       const waiting = (await pendingOf(who)).filter((name) => !mine.some((d) => d.name === name));
-      return { domains: await Promise.all([...mine.map((d) => view(d, who)), ...waiting.map((name) => view({ name }, who))]), maxDomains, memberOf };
+      return { domains: await Promise.all([...mine.map((d) => view(d, who)), ...waiting.map((name) => view({ name }, who))]), maxDomains, memberOf, invitations };
     },
     // Add a domain, or "Check again" while it waits for its TXT record. Claimed the moment the record is seen.
     'POST ': async (who, req) => {
@@ -442,7 +540,8 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
       if (!(await removeAddresses(ctx, who.id, d, [name]))) return [404, 'not_found', 'That address no longer exists.'];
       return { domain: await view(d, who) };
     },
-    // Give an address on the domain to another account on this server: { account: "sam@DOMAIN", name: "sam" }.
+    // Offer an address on the domain to another account on this server: { account: "sam@DOMAIN", name: "sam" }.
+    // This only invites. The address is theirs once they accept (POST invitations/<name>).
     'POST members': async (who, req, d) => {
       const body = await readJson(req).catch(() => ({}));
       const name = typeof body.name === 'string' ? body.name.trim().toLowerCase().replace(/@.*$/, '') : '';
@@ -453,10 +552,29 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
       if (wait) return [429, 'rate_limited', 'You’ve made a lot of addresses recently. Try again in a little while.', { retryAfter: wait }];
       const to = await memberAccount(typeof body.account === 'string' ? body.account.trim().toLowerCase() : '');
       if (Array.isArray(to)) return to;
-      if (to === who.id) return [400, 'self', 'That’s your own account. Add the address for yourself instead.'];
-      const no = await addAddress(who, d, name, to);
-      if (!no) console.log(`domains: ${who.name} gave ${name}@${d.name} to account ${to}`);
+      if (to.id === who.id) return [400, 'self', 'That’s your own account. Add the address for yourself instead.'];
+      // ponytail: counted outside the domains' locks, so two owners inviting at the same moment can go one over.
+      const waiting = (await customDomains(jmap)).flatMap((x) => Object.values(liveInvites(cfg, x.meta))).filter((v) => v.to === to.id && v.made === to.made).length;
+      if (waiting >= maxInvites) return [409, 'too_many_invites', 'That account already has several invitations waiting. Ask them to answer those first.'];
+      const no = await invite(who, d, name, to);
+      if (!no) console.log(`domains: ${who.name} offered ${name}@${d.name} to account ${to.id}`);
       return no ?? { domain: await view(d, who) };
+    },
+    // The invited person accepts: now the address is put on their account.
+    'POST invitations': async (who, _req, d, name) => {
+      const wait = addrLimit.take(who.id);
+      if (wait) return [429, 'rate_limited', 'You’ve made a lot of addresses recently. Try again in a little while.', { retryAfter: wait }];
+      const no = await accept(who, d, name);
+      if (!no) console.log(`domains: ${who.name} accepted ${name}@${d.name}`);
+      return no ?? {};
+    },
+    // The owner withdraws an invitation, or the invited person declines it. Either way it is simply gone: nothing
+    // was made, so nothing is retired, and the owner is not told which of the two (or expiry) ended it.
+    'DELETE invitations': async (who, _req, d, name) => {
+      const owner = d.meta.owner === who.id;
+      if (!(await uninvite(who, d, name))) return [404, 'not_found', 'That invitation is no longer there.'];
+      console.log(`domains: ${who.name} ${owner ? 'withdrew the invitation to' : 'declined'} ${name}@${d.name}`);
+      return owner ? { domain: await view(d, who) } : {};
     },
     // The owner takes a member's address back, or a member gives up their own. Retired either way.
     'DELETE members': async (who, _req, d, name) => {
@@ -474,7 +592,7 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
   };
 
   const handle = async function handle(req, res, url) {
-    const m = url.pathname.match(/^\/api\/domains(?:\/([a-z0-9.-]{1,253})(?:\/(addresses|members)(?:\/([a-z0-9._-]{1,64}))?)?)?$/);
+    const m = url.pathname.match(/^\/api\/domains(?:\/([a-z0-9.-]{1,253})(?:\/(addresses|members|invitations)(?:\/([a-z0-9._-]{1,64}))?)?)?$/);
     if (!m) return false;
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);
     if (blocked) return fail(res, 429, 'rate_limited', 'Too many failed sign-ins from your network. Try again later.', { retryAfter: blocked }), true;
@@ -486,15 +604,18 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     const sub = !m[1] ? '' : m[2] ?? 'domain';
     const key = `${req.method} ${sub}`;
     const fn = handlers[key];
-    if (!fn || (m[2] && (req.method === 'DELETE') !== !!m[3])) return fail(res, 405, 'method_not_allowed', 'Not allowed.'), true;
+    // addresses and members: POST to the list, DELETE one by name. invitations: always one by name (accept, or end it).
+    if (!fn || (m[2] && (m[2] === 'invitations' ? !m[3] : (req.method === 'DELETE') !== !!m[3]))) return fail(res, 405, 'method_not_allowed', 'Not allowed.'), true;
     if (!sub || key === 'POST ') {
       const wait = lookups.take(who.id);
       if (wait) return fail(res, 429, 'rate_limited', 'That’s a lot of checks. DNS changes take a while to show up anyway: try again in a few minutes.', { retryAfter: wait }), true;
     }
     let d;
     if (sub) {
-      // The owner manages the domain. A member gets one thing: giving up their own address (DELETE members).
-      d = (await customDomains(jmap)).find((x) => x.name === m[1] && (x.meta.owner === who.id || (key === 'DELETE members' && x.meta.members?.[who.id])));
+      // The owner manages the domain. A member gets one thing: giving up their own address (DELETE members). Someone
+      // invited gets one more: answering their own invitation. (The owner can withdraw one, never accept it.)
+      const invited = (x) => sub === 'invitations' && Object.values(liveInvites(cfg, x.meta)).some((v) => v.to === who.id);
+      d = (await customDomains(jmap)).find((x) => x.name === m[1] && ((x.meta.owner === who.id && key !== 'POST invitations') || (key === 'DELETE members' && x.meta.members?.[who.id]) || invited(x)));
       if (!d && key === 'DELETE domain' && pending[who.id]?.[m[1]]) return setPending(who, m[1], null), send(res, 200, { ok: true }), true;
       if (!d) return fail(res, 404, 'not_found', 'That domain isn’t on your account.'), true;
     }
@@ -515,13 +636,17 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
  * left dangling. Its own domains lose their owner (paused, released after RELEASE_DAYS) and every member's address
  * on them is retired and taken off the member's account now: nobody is left to manage them. Where it was a member,
  * its addresses are retired and it leaves the claim: account ids can come back, and a later account with the same
- * id must never be taken for a member.
+ * id must never be taken for a member. Invitations go the same way: those on its own domains (nobody is left to
+ * offer them) and those made to it anywhere.
  */
 export async function domainsOfDeleted({ cfg, jmap }, id, now = new Date().toISOString()) {
   for (const d of await customDomains(jmap)) {
     if (d.meta.owner === id) {
       await removeMembers({ cfg, jmap }, d);
-      await updateClaim(jmap, d, (m) => ({ ...m, owner: null, orphaned: now, paused: true, members: {} }));
-    } else if (d.meta.members?.[id]) await removeMembers({ cfg, jmap }, d, (x) => x.id === id);
+      await updateClaim(jmap, d, (m) => withInvites({ ...m, owner: null, orphaned: now, paused: true, members: {} }, {}));
+    } else {
+      if (d.meta.members?.[id]) await removeMembers({ cfg, jmap }, d, (x) => x.id === id);
+      if (Object.values(d.meta.invites ?? {}).some((v) => v.to === id)) await updateClaim(jmap, d, (m) => withInvites(m, without(m.invites ?? {}, (v) => v.to === id)));
+    }
   }
 }

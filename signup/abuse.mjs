@@ -189,19 +189,20 @@ export function abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, i
   const spans = bounded(50_000); // SMTP session → signed-in account
   const queued = bounded(200_000); // queued message → sender; ponytail: a bounce later than ~200k messages is missed
   const hookKey = randomBytes(32).toString('base64url');
+  const session = (d) => !!d.spanId && d.spanId !== '0'; // an SMTP session's id; 0 (or none) over JMAP
   function onEvent(e) {
     const d = e.data ?? {};
     if (e.type === 'auth.success' && d.accountName) {
       const who = addr(d.accountName);
-      spans.set(d.spanId, who);
+      if (session(d)) spans.set(d.spanId, who); // not span 0 (JMAP/HTTP): that'd name whoever signed in last
       // To the hour is plenty (and keeps the file quiet).
       if (!(Date.now() - (state.seen[who] ?? 0) < 3600e3)) { state.seen[who] = Date.now(); state.save(); }
     // Who to blame: the signed-in account of the SMTP session when we saw it sign in. Otherwise (JMAP, spanId 0) the
     // envelope sender, which Stalwart only accepts when it belongs to the signed-in account (JMAP: forbiddenFrom;
     // SMTP: must-match-sender), so one account can't put another's address there to get it suspended.
-    } else if (e.type === 'queue.authenticated-message-queued' && d.from) queued.set(d.queueId, spans.get(d.spanId) ?? addr(d.from));
+    } else if (e.type === 'queue.authenticated-message-queued' && d.from) queued.set(d.queueId, (session(d) && spans.get(d.spanId)) || addr(d.from));
     else if (e.type === 'smtp.rate-limit-exceeded' && d.from) {
-      const who = d.spanId === '0' ? addr(d.from) : spans.get(d.spanId);
+      const who = session(d) ? spans.get(d.spanId) : addr(d.from);
       if (who?.endsWith(`@${cfg.domain}`) && hits.take(who)) autoSuspend(who, `The sending limit refused more than ${hits.limit} messages in an hour.`);
     } else if (e.type === 'delivery.dsn-perm-fail') {
       const who = queued.get(d.queueId);
@@ -262,7 +263,14 @@ export function abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, i
 
   // Jobs. unref: they never keep the process alive.
   if (cfg.eventsUrl) {
-    const hook = () => ensureHook().catch((e) => console.error('abuse: registering the webhook failed (retrying hourly):', e.message));
+    // The signing key is new in every process, so until this succeeds Stalwart's events fail the signature check.
+    // Stalwart often starts together with this service and can take a minute (longer on PostgreSQL, install.sh
+    // --hosted): try every 10 seconds for the first 10 minutes, then hourly.
+    let early = 60;
+    const hook = () => ensureHook().catch((e) => {
+      console.error(`abuse: registering the webhook failed (retrying ${early > 0 ? 'in 10 s' : 'hourly'}):`, e.message);
+      if (early-- > 0) setTimeout(hook, 10_000).unref();
+    });
     setTimeout(hook, 3000).unref(); setInterval(hook, 3600e3).unref();
   }
   if (months && !cfg.eventsUrl) console.warn('inactive: INACTIVE_MONTHS needs EVENTS_URL (sign-ins come from Stalwart events); reminders are off');

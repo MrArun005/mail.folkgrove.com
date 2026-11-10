@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { confirmIt } from './Dialog';
 import { Button } from './Button';
-import type { CustomDomain, DnsRecord, GivenAddress, Jmap } from './jmap';
+import type { CustomDomain, DnsRecord, DomainInvitation, GivenAddress, Jmap } from './jmap';
 import { locale, t, type Key } from './i18n';
 
 /**
  * Settings → Your domain: use an address at a domain you own (signup/domains.mjs). Add the domain, put a TXT record
  * at your DNS host to prove it's yours, then add the mail records shown. Addresses on it appear in Compose's From.
- * The owner can also give addresses on the domain to other people with an account here (an organisation's domain);
- * those people see what they were given below their own domains and can give it up, nothing more.
+ * The owner can also offer addresses on the domain to other people with an account here (an organisation's domain).
+ * That is an invitation: the other person sees it below their own domains and accepts or declines; only an accepted
+ * address is put on their account. What they accepted is listed below that, and they can give it up, nothing more.
  * Lives inside the Settings <form>, so no nested form (Enter is handled by hand, as in Addresses.tsx).
  * ponytail: a domain still waiting for its TXT record lives only in this component; after a reload, add it again
  * (the record to add stays the same).
@@ -21,6 +22,7 @@ export function DomainsSection({ client, onChanged }: { client: Jmap; onChanged:
   const [list, setList] = useState<CustomDomain[] | null | 'off'>(null);
   const [max, setMax] = useState(0);
   const [given, setGiven] = useState<GivenAddress[]>([]);
+  const [invites, setInvites] = useState<DomainInvitation[]>([]);
   const [domain, setDomain] = useState('');
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
@@ -29,6 +31,7 @@ export function DomainsSection({ client, onChanged }: { client: Jmap; onChanged:
     if (!r) return setList('off');
     setMax(r.maxDomains);
     setGiven(r.memberOf ?? []);
+    setInvites(r.invitations ?? []);
     setList(r.domains);
   }, (e) => { setList((l) => (Array.isArray(l) ? l : [])); setMsg(e.message); });
   useEffect(() => { load(); }, [client]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -48,6 +51,13 @@ export function DomainsSection({ client, onChanged }: { client: Jmap; onChanged:
       && run(`rm:${d.name}`, async () => { await client.customDomains(`/${d.name}`, 'DELETE'); setList((l) => (Array.isArray(l) ? l.filter((x) => x.name !== d.name) : l)); onChanged(); }));
   const giveUp = async (g: GivenAddress) => await confirmIt({ title: t('domains.giveUpTitle', { email: g.email }), body: t('domains.giveUpBody'), confirm: t('domains.giveUpConfirm'), danger: true })
     && run(`given:${g.email}`, async () => { await client.customDomains(`/${g.domain}/members/${g.name}`, 'DELETE'); setGiven((l) => l.filter((x) => x.email !== g.email)); onChanged(); });
+  // Accepting puts the address on this account (reload: it moves to "Addresses you were given" and into From).
+  // Declining only removes the invitation, so it asks nothing. If either fails (withdrawn or expired meanwhile),
+  // the list is read again so it shows what is still there.
+  const answer = (i: DomainInvitation, accept: boolean) => run(`invite:${i.email}`, async () => {
+    try { await client.customDomains(`/${i.domain}/invitations/${i.name}`, accept ? 'POST' : 'DELETE'); } finally { await load(); }
+    if (accept) onChanged();
+  });
 
   if (list === 'off') return null; // this server doesn't offer custom domains
   return (
@@ -61,6 +71,19 @@ export function DomainsSection({ client, onChanged }: { client: Jmap; onChanged:
           <Button disabled={!!busy || !domain.trim()} onClick={() => add(domain.trim())}>{t('domains.add')}</Button>
         </div>
       )}
+      {invites.length > 0 && <>
+        <p><strong>{t('domains.invitesTitle')}</strong></p>
+        <p className="fine">{t('domains.invitesIntro')}</p>
+        <ul className="rule-list alias-list">
+          {invites.map((i) => (
+            <li key={i.email}>
+              <span className="grow"><code className="key">{i.email}</code>{i.owner && <span className="fine"> · {t('domains.givenBy', { owner: i.owner })}</span>}<span className="fine"> · {t('domains.inviteAnswerBy', { date: day(i.expires) })}</span></span>
+              <Button size="sm" title={t('domains.acceptLabel', { email: i.email })} disabled={!!busy} onClick={() => answer(i, true)}>{t('domains.accept')}</Button>
+              <Button size="sm" title={t('domains.declineLabel', { email: i.email })} disabled={!!busy} onClick={() => answer(i, false)}>{t('domains.decline')}</Button>
+            </li>
+          ))}
+        </ul>
+      </>}
       {given.length > 0 && <>
         <p><strong>{t('domains.givenTitle')}</strong></p>
         <p className="fine">{t('domains.givenIntro')}</p>
@@ -87,8 +110,9 @@ function DomainCard({ d, client, busy, run, put, onChanged, recheck, remove }: {
   const [memberName, setMemberName] = useState('');
   const [account, setAccount] = useState('');
   const [copied, setCopied] = useState('');
-  const members = d.members ?? [];
-  const room = d.addresses.length + members.length < d.maxAddresses; // one limit for the domain: yours and other people's
+  const members = d.members ?? [], invited = d.invitations ?? [];
+  const used = d.addresses.length + members.length + invited.length; // one limit for the domain: yours, other people's, and invitations not answered yet
+  const room = used < d.maxAddresses;
   const home = client.username.split('@')[1] ?? ''; // members are accounts on this server's own domain
   const [label, cls] = STATUS[d.status];
   const missing = d.records.filter((r) => r.ok !== true);
@@ -103,6 +127,7 @@ function DomainCard({ d, client, busy, run, put, onChanged, recheck, remove }: {
   const addMember = () => run(`member:${d.name}`, async () => {
     put((await client.customDomains(`/${d.name}/members`, 'POST', { account: account.trim(), name: memberName.trim() })).domain); setMemberName(''); setAccount('');
   });
+  const withdraw = (n: string) => run(`member:${d.name}`, async () => { put((await client.customDomains(`/${d.name}/invitations/${n}`, 'DELETE')).domain); });
   const dropMember = async (email: string, n: string, who: string) => await confirmIt({ title: t('domains.takeBackTitle', { email, account: who }), body: t('domains.takeBackBody'), confirm: t('domains.takeBackConfirm'), danger: true })
     && run(`member:${d.name}`, async () => { put((await client.customDomains(`/${d.name}/members/${n}`, 'DELETE')).domain); });
   // DNS panels want the name without the domain ("@" for the domain itself).
@@ -159,13 +184,19 @@ function DomainCard({ d, client, busy, run, put, onChanged, recheck, remove }: {
         )}
 
         <p><strong>{t('domains.membersTitle')}</strong></p>
-        <p className="fine">{t('domains.membersIntro', { domain: d.name })} {t('domains.addressesUsed', { used: d.addresses.length + members.length, max: d.maxAddresses })}</p>
-        {members.length > 0 && (
+        <p className="fine">{t('domains.membersIntro', { domain: d.name })} {t('domains.addressesUsed', { used, max: d.maxAddresses })}</p>
+        {members.length + invited.length > 0 && (
           <ul className="rule-list alias-list">
             {members.map((m) => (
               <li key={m.email} className={m.enabled ? '' : 'off'}>
                 <span className="grow"><code className="key">{m.email}</code><span className="fine"> · {t('domains.memberFor', { account: m.account })}</span></span>
                 <Button variant="quiet" size="sm" icon="trash" label={t('domains.takeBack', { email: m.email })} disabled={!!busy} onClick={() => dropMember(m.email, m.name, m.account)} />
+              </li>
+            ))}
+            {invited.map((i) => (
+              <li key={i.email}>
+                <span className="grow"><code className="key">{i.email}</code><span className="fine"> · {t('domains.memberFor', { account: i.account })} · {t('domains.invitedWaiting', { date: day(i.expires) })}</span></span>
+                <Button size="sm" title={t('domains.withdrawLabel', { email: i.email })} disabled={!!busy} onClick={() => withdraw(i.name)}>{t('domains.withdraw')}</Button>
               </li>
             ))}
           </ul>
@@ -175,7 +206,7 @@ function DomainCard({ d, client, busy, run, put, onChanged, recheck, remove }: {
             <input className="input" placeholder={t('domains.memberNamePlaceholder')} aria-label={t('domains.memberNewAddress', { domain: d.name })} autoCapitalize="off" spellCheck={false} value={memberName} onChange={(e) => setMemberName(e.target.value)} />
             <span className="fine domain-at">@{d.name}</span>
             <input className="input" type="email" placeholder={t('domains.memberAccountPlaceholder', { domain: home })} aria-label={t('domains.memberAccountLabel', { domain: home })} autoCapitalize="off" spellCheck={false} value={account} onChange={(e) => setAccount(e.target.value)} />
-            <Button disabled={!!busy || !memberName.trim() || !account.trim()} onClick={addMember}>{t('domains.giveAddress')}</Button>
+            <Button disabled={!!busy || !memberName.trim() || !account.trim()} onClick={addMember}>{t('domains.invite')}</Button>
           </div>
         )}
       </>}

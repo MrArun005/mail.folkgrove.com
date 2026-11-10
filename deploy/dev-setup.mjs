@@ -73,7 +73,9 @@ const admin = JSON.parse(readFileSync(SECRET_FILE, 'utf8'));
   const existing = cl.list.find((c) => c.clientId === 'openmail-web');
   // The apps (apps/) load the server's own web app, so they sign in with its address too: localhost for the desktop
   // app and the iOS Simulator, 10.0.2.2 for the Android emulator (its name for this computer; run Vite with --host).
-  const fields = { redirectUris: { 'http://localhost:5173/': true, 'http://10.0.2.2:5173/': true }, scopes: { mail: true, contacts: true, calendars: true, security: true, settings: true }, description: 'OpenMail web (dev)' };
+  // 5174-5179 as well: a second checkout (a git worktree, another branch) can run its own dev server and browser
+  // tests beside the first (E2E_PORT in web/playwright.config.ts).
+  const fields = { redirectUris: { 'http://localhost:5173/': true, 'http://10.0.2.2:5173/': true, ...Object.fromEntries([5174, 5175, 5176, 5177, 5178, 5179].map((p) => [`http://localhost:${p}/`, true])) }, scopes: { mail: true, contacts: true, calendars: true, security: true, settings: true }, description: 'OpenMail web (dev)' };
   await jmap(admin, [['x:OAuthClient/set', existing
     ? { update: { [existing.id]: fields } }
     : { create: { c: { clientId: 'openmail-web', ...fields } } }, 'c']]);

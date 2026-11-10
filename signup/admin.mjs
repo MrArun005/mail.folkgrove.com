@@ -86,7 +86,10 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   // Admin rights go by name, so admin (and helpdesk) names can never be signed up for, and the console can't touch admin accounts.
   cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins, ...helpdesk];
   const reloadLookups = () => jmap([['x:Action/set', { create: { r: { '@type': 'ReloadLookupStores' } } }, 'r']]);
-  const isAdmin = (a) => a.roles?.['@type'] !== 'User' || admins.has(String(a.name).toLowerCase());
+  // The system sender (noreply@, SYSTEM_SMTP_USER) counts too: whoever resets its password can send as the server.
+  const system = String(cfg.systemMail?.user ?? '').trim().toLowerCase();
+  const isSystem = (a) => !!system && [String(a.name).toLowerCase(), `${String(a.name).toLowerCase()}@${cfg.domain}`, String(a.emailAddress ?? '').toLowerCase()].includes(system);
+  const isAdmin = (a) => a.roles?.['@type'] !== 'User' || admins.has(String(a.name).toLowerCase()) || isSystem(a);
   const caller = callerOf({ cfg, jmap, getDomainId });
   const badAuth = new RateLimiter(20, 15 * 60e3); // failed sign-ins per network, as for /api/aliases
   // Changes per helpdesk account an hour: every one is an audit line, and a bounded log must not be flushable by

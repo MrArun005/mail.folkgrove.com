@@ -299,14 +299,14 @@ export default {
   'privacy.weekBadge': { one: 'இந்த வாரம் {count} கண்காணிப்பி நீக்கப்பட்டது', other: 'இந்த வாரம் {count} கண்காணிப்பிகள் நீக்கப்பட்டன' }, // review: new
   'display.grove': 'Grove', // review: new
   'domains.membersTitle': 'மற்றவர்களுக்கான முகவரிகள்', // review: new
-  'domains.membersIntro': 'இங்கே கணக்கு வைத்திருக்கும் வேறொருவருக்கு {domain} இல் ஒரு முகவரியைக் கொடுங்கள். அதற்கு வரும் மின்னஞ்சல்கள் உங்களுடையதற்கு அல்ல, அவருடைய அஞ்சல்பெட்டிக்குச் செல்லும்; அவர் அதிலிருந்து அனுப்பவும் முடியும். டொமைனை நீங்கள் மட்டுமே மாற்ற முடியும்.', // review: new
-  'domains.addressesUsed': '{max} இல் {used} முகவரிகள் பயன்பாட்டில் உள்ளன, உங்களுடையவை உட்பட.', // review: new
+  'domains.membersIntro': 'இங்கே கணக்கு வைத்திருக்கும் வேறொருவருக்கு {domain} இல் ஒரு முகவரியை வழங்க முன்வாருங்கள். அவர் தம் அமைப்புகளில் அழைப்பை ஏற்றுக்கொண்டதும் அது அவருடையதாகும்: அதன்பின் அதற்கு வரும் மின்னஞ்சல்கள் உங்களுடையதற்கு அல்ல, அவருடைய அஞ்சல்பெட்டிக்குச் செல்லும்; அவர் அதிலிருந்து அனுப்பவும் முடியும். டொமைனை நீங்கள் மட்டுமே மாற்ற முடியும்.', // review: new
+  'domains.addressesUsed': '{max} இல் {used} முகவரிகள் பயன்பாட்டில் உள்ளன, உங்களுடையவையும் பதிலுக்காகக் காத்திருக்கும் அழைப்புகளும் உட்பட.', // review: new
   'domains.memberFor': '{account} க்காக', // review: new
   'domains.memberNamePlaceholder': 'sam', // review: new
   'domains.memberNewAddress': '{domain} இல் அவருடைய புதிய முகவரி', // review: new
   'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
   'domains.memberAccountLabel': '{domain} இல் அவர் உள்நுழையப் பயன்படுத்தும் முகவரி', // review: new
-  'domains.giveAddress': 'முகவரியைக் கொடு', // review: new
+  'domains.invite': 'அழை', // review: new
   'domains.takeBack': '{email} ஐத் திரும்பப் பெறு', // review: new
   'domains.takeBackTitle': '{account} இடமிருந்து {email} ஐத் திரும்பப் பெறவா?', // review: new
   'domains.takeBackBody': 'அதற்கு அனுப்பப்படும் மின்னஞ்சல்கள் திரும்பிவிடும், அதை மீண்டும் யாருக்கும் கொடுக்க முடியாது. அவர் ஏற்கெனவே பெற்ற மின்னஞ்சல்கள் அவரிடமே இருக்கும்.', // review: new
@@ -318,6 +318,16 @@ export default {
   'domains.giveUpTitle': '{email} ஐ விட்டுக்கொடுக்கவா?', // review: new
   'domains.giveUpBody': 'அதற்கு அனுப்பப்படும் மின்னஞ்சல்கள் திரும்பிவிடும், அதை உங்களாலோ வேறு யாராலோ திரும்பப் பெற முடியாது.', // review: new
   'domains.giveUpConfirm': 'முகவரியை விட்டுக்கொடு', // review: new
+  'domains.invitedWaiting': 'அழைக்கப்பட்டது, {date} வரை பதிலுக்காகக் காத்திருக்கிறது', // review: new
+  'domains.withdraw': 'திரும்பப் பெறு', // review: new
+  'domains.withdrawLabel': '{email} க்கான அழைப்பைத் திரும்பப் பெறு', // review: new
+  'domains.invitesTitle': 'அழைப்புகள்', // review: new
+  'domains.invitesIntro': 'ஒரு டொமைனின் உரிமையாளர் இந்த முகவரிகளை உங்களுக்கு வழங்க முன்வந்துள்ளார். ஒன்றை ஏற்றுக்கொண்டால், அதற்கான மின்னஞ்சல்கள் இங்கே வரும், எழுதும்போது “அனுப்புநர்” பகுதியில் அதைத் தேர்ந்தெடுக்கலாம். நீங்கள் ஏற்கும் வரை எதுவும் மாறாது.', // review: new
+  'domains.inviteAnswerBy': '{date} க்குள் பதிலளிக்கவும்', // review: new
+  'domains.accept': 'ஏற்றுக்கொள்', // review: new
+  'domains.decline': 'மறு', // review: new
+  'domains.acceptLabel': '{email} ஐ ஏற்றுக்கொள்', // review: new
+  'domains.declineLabel': '{email} ஐ மறு', // review: new
   'admin.tabAudit': 'தணிக்கைப் பதிவு', // review: new
   'admin.domainMembers': { one: 'சில வேறு {count} கணக்குக்கு', other: 'சில வேறு {count} கணக்குகளுக்கு' }, // review: new
   'admin.auditHelp': 'இந்தக் கன்சோலில் செய்யப்பட்ட ஒவ்வொரு மாற்றமும்: யார் செய்தார், என்ன செய்தார், யாரை அல்லது எதைப் பற்றியது, அது நடந்ததா இல்லையா. புதியவை முதலில். கடவுச்சொற்களும் செய்திகளின் உள்ளடக்கமும் ஒருபோதும் பதிவு செய்யப்படாது.', // review: new

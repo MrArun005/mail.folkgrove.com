@@ -147,7 +147,7 @@ OpenMail's own admin console is at `https://mx.example.com/admin`: users (create
 
 Support staff who shouldn't have full control go in `HELPDESK=sam,raj` (`install.sh --helpdesk sam,raj`): they see users, reset passwords, switch sign-in on or off, lift sending suspensions, release or delete held mail and read the audit log, and nothing else (no creating or deleting accounts, storage limits, team mailboxes, blocked IPs, retention or new-account limits), and never on an admin's or another helpdesk account. The audit log notes which role made each change.
 
-**Users' own domains.** Anyone with an account can add a domain they own in Settings → Your domain: they prove it with a TXT record, then add MX, SPF (`include:` your main domain), DKIM and DMARC records, which the page lists and checks live. The account service creates the domain in Stalwart (with its DKIM keys) and the user's address on it. Defaults: 3 domains per account (`MAX_DOMAINS`), 10 addresses per domain (`MAX_DOMAIN_ADDRESSES`); `CUSTOM_DOMAINS=off` turns it off; `RESERVED_DOMAINS` refuses more domains besides your own. The admin console's Domains tab lists them with owner and status. The checks use the server's DNS resolver (`DNS_SERVERS=1.1.1.1` to pick one); if a domain's TXT record is gone for 7 days, its addresses pause until it's back. For your *own* extra domains, use Stalwart's admin as before.
+**Users' own domains.** Anyone with an account can add a domain they own in Settings → Your domain: they prove it with a TXT record, then add MX, SPF (`include:` your main domain), DKIM and DMARC records, which the page lists and checks live. The account service creates the domain in Stalwart (with its DKIM keys) and the user's address on it. The owner can offer addresses on it to other accounts on the server; each becomes theirs only when they accept the invitation (it waits `DOMAIN_INVITE_DAYS`, 14 by default). Defaults: 3 domains per account (`MAX_DOMAINS`), 10 addresses per domain (`MAX_DOMAIN_ADDRESSES`); `CUSTOM_DOMAINS=off` turns it off; `RESERVED_DOMAINS` refuses more domains besides your own. The admin console's Domains tab lists them with owner and status. The checks use the server's DNS resolver (`DNS_SERVERS=1.1.1.1` to pick one); if a domain's TXT record is gone for 7 days, its addresses pause until it's back. For your *own* extra domains, use Stalwart's admin as before.
 
 **Outgoing spam is held for review.** Every message your users send passes a spam check first (Stalwart's spam filter, called by the account service). Likely spam isn't sent: the sender sees "This message looks like spam, so it is held for review", and it waits under **Held mail** in the console, where you send it on or delete it. When one person has 3 messages waiting, their sending is paused (they can still read mail) until you click **Let them send** on the Users tab. `install.sh` sets this up (an MTA hook to the account service, secret in `.hold.env`, held mail in `signup-data/held/`, included in backups). While the account service is down, sending waits and mail apps retry. Tuning (`HOLD_SCORE`, `HOLD_SUSPEND_AFTER`) and how it works: [signup/README.md](../signup/README.md#outgoing-spam-held-for-review).
 
@@ -223,7 +223,7 @@ This rebuilds the web client and re-registers the webmail's sign-in permissions 
 
 ## 7. Backups
 
-`backup.sh` makes an encrypted copy of everything needed to rebuild the server: all mail, accounts and settings, the DKIM keys, `.env` and the admin login.
+`backup.sh` makes an encrypted copy of everything needed to rebuild the server: all mail, contacts, calendars, filters, accounts and settings, the DKIM keys, the account service's data (`signup-data/`: held mail, retention rules, audit log, file links) and the files `install.sh` generated next to it (`.env`, the admin login in `.admin-credentials`, `.system-mail.env`, `.hold.env`, `webmail.caddy`, `.metrics-password`).
 
 Backups are encrypted with [age](https://age-encryption.org) to a key that lives on your own computer, not on the server. A stolen server or backup bucket can't read them.
 
@@ -263,18 +263,20 @@ rsync -av root@mx.example.com:openmail/deploy/production/backups/ ~/mail-backups
 rclone copy backups/ remote:mail-backups/
 ```
 
-**Restoring,** on the same server or a new one:
+**Restoring,** on the same server or a new one (install Docker and `age` first on a new one: `sudo apt install age`):
 
 ```sh
 git clone https://github.com/<you>/openmail.git && cd openmail/deploy/production
 # copy the backup file and your openmail-backup.key to the server, then:
-sudo ./backup.sh --restore openmail-20260101-033000.tar.gz.age --identity openmail-backup.key
+sudo ./backup.sh --restore openmail-20260101-033000.tar.gz.age --identity openmail-backup.key   # asks you to type yes
 sudo ./install.sh --yes --ip <this server's IP>     # builds webmail, starts everything, re-checks settings
 ```
 
-On a new server, also update the `A` record, the reverse DNS, and the IP in SPF if you added one. Then delete the key file from the server.
+The restore replaces whatever is on the server (an install you made there first included); the files it overwrites are kept as `*.before-restore`. A clone in a different directory than the old server's is fine: `install.sh` then builds the web client in the new checkout. A test install (`--local-test`) is remembered as one in `.env`, so the second command needs no extra flag there either.
 
-The restore procedure was tested by wiping a test install (all its Docker volumes, `.env` and `.admin-credentials`) and restoring it from a backup. The mailbox, its messages, the admin login and the DKIM keys all came back, and re-running `install.sh` worked afterwards.
+On a new server, also update the `A` record, the reverse DNS, and the IP in SPF if you added one. Then delete the key file from the server. Passwords, the webmail sign-in, app passwords and DKIM keys are the same as before, so mail apps and DNS (apart from the IP) need no changes.
+
+**Tested:** a test install (`install.sh --local-test`) got messages in two folders, a contact, a calendar event, a filter, a masked address and mail sent over SMTP; then `backup.sh`, `docker compose down -v`, every generated file and `signup-data/` deleted, and the two commands above. Every message (with its body), the folder, contact, event, filter, masked address and the owner's password came back, the account service stayed healthy, and new mail was delivered both ways. A backup takes a few seconds for a small server (Stalwart is stopped for about two of them); restore plus `install.sh` took 15 seconds. CI repeats this drill on every push (`.github/workflows/ci.yml`, job `installer`).
 
 ## 8. Monitoring (optional)
 
@@ -323,7 +325,7 @@ The same stack, but Stalwart keeps its data in PostgreSQL, message bodies and at
 
 - **Decide at the first install.** There is no way to move an existing RocksDB server to PostgreSQL, and `--hosted` refuses to run on one. Self-hosters don't need it: leave it off.
 - **Passwords** for PostgreSQL and S3 are generated into `.env` (readable by root only). The admin login is in `.admin-credentials` as usual (user `admin@example.com`).
-- **Backups:** the same `backup.sh` commands. In hosted mode a backup holds a `pg_dump` of the database and a copy of the S3 bucket, taken while mail keeps flowing (no pause). Restore works the same way. Tested: a hosted test install with a delivered message was backed up, all its Docker volumes and secret files deleted, and restored; the message, with its body, came back, and new mail arrived afterwards.
+- **Backups:** the same `backup.sh` commands. In hosted mode a backup holds a `pg_dump` of the database and a copy of the S3 bucket, taken while mail keeps flowing (no pause). Restore works the same way (it waits for PostgreSQL and the S3 store to start, so it takes a minute). Tested: a hosted test install (`install.sh --local-test --hosted`) got the same data as the simple-mode drill above plus a 200 KB attachment (stored in the bucket, with only metadata in PostgreSQL and nothing in RocksDB); it was backed up, all its Docker volumes, generated files and `signup-data/` deleted, and restored with the two commands above. Everything came back (attachment byte for byte, same DKIM keys, same passwords), and new mail went both ways afterwards.
 - **Not done yet:** nightly dumps lose up to a day of mail if the disk dies. Before real users, add PostgreSQL WAL archiving (pgBackRest or WAL-G to off-site object storage) for point-in-time recovery, and move PostgreSQL, S3 and Valkey to replicated or managed services when adding servers.
 
 ## 10. Troubleshooting
@@ -376,5 +378,8 @@ sudo netfilter-persistent save
 **Start over completely** (this deletes all mail):
 
 ```sh
-sudo docker compose down -v && rm .env .admin-credentials
+sudo docker compose down -v
+sudo rm -rf .env .admin-credentials .system-mail.env .hold.env .metrics-password webmail.caddy dns-records.tsv signup-data
 ```
+
+Remove all of them: with a leftover `.system-mail.env`, the next install skips creating the `noreply@` system sender on the new, empty Stalwart, and sign-up codes can't be sent.

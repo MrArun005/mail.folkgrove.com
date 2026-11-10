@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Encrypted backup and restore of the whole mail server: Stalwart's two volumes (all mail, accounts,
-# settings, DKIM keys, certificate copy) plus .env, .admin-credentials and signup-data/ (retired usernames,
-# file links, pending custom domains, audit log and the account service's other /data files).
+# settings, DKIM keys, certificate copy) plus .env, .admin-credentials, the other generated files next to them
+# (.system-mail.env, .hold.env, .metrics-password, webmail.caddy) and signup-data/ (retired usernames, file links,
+# pending custom domains, held mail, audit log and the account service's other /data files).
 #
 #   ./backup.sh --recipient age1...      first time: save the public key backups are encrypted to
 #   ./backup.sh                          make backups/openmail-<date>.tar.gz.age (keeps the newest 14)
@@ -32,14 +33,19 @@ in_volumes() { dc run --rm --no-deps -T -u 0 --entrypoint sh stalwart -c "$1"; }
 # shellcheck disable=SC1091
 hosted=$( [ -f .env ] && . ./.env; echo "${HOSTED:-0}")
 psql_() { dc exec -T postgres "$@"; }
+# The files install.sh generates next to this script (.env and .admin-credentials always exist after an install).
+# .hold.env must match the secret Stalwart's hook sends, or outgoing mail waits until install.sh runs again.
+FILES=".env .admin-credentials .system-mail.env .hold.env .metrics-password webmail.caddy"
 
 case ${1:-} in
   --recipient)
     [[ ${2:-} == age1* ]] || die "Give the public key from age-keygen (starts with age1)"
     echo "$2" > backup-recipient.txt
     echo "Saved. Backups will be encrypted to $2"
-    # Nightly at 03:30, unless a schedule already exists.
-    if [ -w /etc/cron.d ] && [ ! -f /etc/cron.d/openmail-backup ]; then
+    # Nightly at 03:30, unless a schedule already exists (or this is an install.sh --local-test stack).
+    # shellcheck disable=SC1091
+    local_test=$( [ -f .env ] && . ./.env; echo "${LOCAL_TEST:-0}")
+    if [ -w /etc/cron.d ] && [ ! -f /etc/cron.d/openmail-backup ] && [ "$local_test" != 1 ]; then
       echo "30 3 * * * root $PWD/backup.sh >> /var/log/openmail-backup.log 2>&1" > /etc/cron.d/openmail-backup
       echo "Nightly backup scheduled (03:30, /etc/cron.d/openmail-backup). Copy backups/ off this server too."
     fi ;;
@@ -52,10 +58,14 @@ case ${1:-} in
     tmp=$(mktemp -d "$PWD/.restore.XXXXXX"); trap 'rm -rf "$tmp"' EXIT
     age -d -i "$key" "$file" | tar -xf - -C "$tmp"
     [ -f "$tmp/volumes.tar.gz" ] || [ -f "$tmp/stalwart.pgdump" ] || die "Not a openmail backup"
-    for f in .env .admin-credentials .system-mail.env; do
+    for f in $FILES; do
       [ -f "$tmp/$f" ] || continue
       [ -f "$f" ] && cp -p "$f" "$f.before-restore"; cp -p "$tmp/$f" "$f"
     done
+    # Compose mounts webmail.caddy into Caddy: if it's missing (a backup from before it was included), Docker creates
+    # an empty directory there, Caddy can't start and install.sh can't rewrite it. Empty = no extra webmail address.
+    [ -d webmail.caddy ] && rmdir webmail.caddy
+    [ -f webmail.caddy ] || : > webmail.caddy
     [ -d "$tmp/signup-data" ] && mkdir -p signup-data && cp -Rp "$tmp/signup-data/." signup-data/
     dc stop stalwart 2>/dev/null || true
     if [ -f "$tmp/stalwart.pgdump" ]; then
@@ -101,11 +111,10 @@ case ${1:-} in
       dc start stalwart
       data=volumes.tar.gz
     fi
-    cp -p .env .admin-credentials "$tmp/"
     mkdir -p signup-data && cp -Rp signup-data "$tmp/" && data="$data signup-data"
-    [ -f .system-mail.env ] && cp -p .system-mail.env "$tmp/" && data="$data .system-mail.env"
+    for f in $FILES; do if [ -f "$f" ]; then cp -p "$f" "$tmp/"; data="$data $f"; fi; done
     # shellcheck disable=SC2086
-    tar -cf - -C "$tmp" $data .env .admin-credentials | age -R backup-recipient.txt > "$out.part"
+    tar -cf - -C "$tmp" $data | age -R backup-recipient.txt > "$out.part"
     mv "$out.part" "$out"
     # ponytail: local rotation only; copy backups/ off this server (see docs/self-hosting.md).
     find backups -name 'openmail-*.tar.gz.age' | sort -r | tail -n +$((KEEP + 1)) | xargs rm -f

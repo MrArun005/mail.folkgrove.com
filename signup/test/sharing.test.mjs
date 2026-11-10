@@ -20,9 +20,10 @@ test('principal lookup and team mailboxes', { skip }, async (t) => {
   const domainId = (await jmap([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).list.find((d) => d.name === 'openmail.test').id;
   const tag = `t-sharing-${Math.random().toString(36).slice(2, 7)}`;
   const pass = `throwaway pass ${tag} river`;
-  const mk = async (name) => (await jmap([['x:Account/set', { create: { n: { '@type': 'User', name, domainId, credentials: { 0: { '@type': 'Password', secret: pass } } } } }, 'c']])).created.n.id;
+  const mk = async (name, description) => (await jmap([['x:Account/set', { create: { n: { '@type': 'User', name, domainId, ...(description && { description }), credentials: { 0: { '@type': 'Password', secret: pass } } } } }, 'c']])).created.n.id;
   const boss = `${tag}-admin`, ann = `${tag}-ann`, ben = `${tag}-ben`;
-  const made = [await mk(boss), await mk(ann), await mk(ben)];
+  // Ben signed himself up: his description holds the invite code and outside address, which no one else may read.
+  const made = [await mk(boss), await mk(ann), await mk(ben, 'Self sign-up 2026-01-01 (invite SECRETCODE) · verified ben@outside.example')];
 
   const app = createApp({ stalwartUrl: STALWART, admin, domain: 'openmail.test', inviteRequired: false, invites: new Invites({ text: '' }), turnstileSecret: null,
     quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], allowBasicAuth: true, admins: [boss] });
@@ -47,7 +48,7 @@ test('principal lookup and team mailboxes', { skip }, async (t) => {
   assert.deepEqual((await call('/principal?shared=1', 'GET', undefined, as(ann))).people, []);
   const inbox = (await mail([['Mailbox/get', { accountId: acc, properties: ['role'] }, 'm']])).list.find((b) => b.role === 'inbox').id;
   await mail([['Mailbox/set', { accountId: acc, update: { [inbox]: { [`shareWith/${made[2]}`]: { mayReadItems: true } } } }, 's']]);
-  assert.deepEqual((await call('/principal?shared=1', 'GET', undefined, as(ann))).people.map((p) => p.email), [`${ben}@openmail.test`]);
+  assert.deepEqual((await call('/principal?shared=1', 'GET', undefined, as(ann))).people, [{ id: made[2], name: `${ben}@openmail.test`, email: `${ben}@openmail.test` }]);
 
   // Team mailboxes: only admins; create, add members (they get the account), remove, delete.
   assert.equal((await call('/admin/groups', 'GET', undefined, as(ann))).status, 403);

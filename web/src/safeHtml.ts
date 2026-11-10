@@ -1,7 +1,8 @@
 // Email HTML is hostile. Defence in depth, using browser features instead of a sanitizer library:
 //  1. It renders in <iframe sandbox> without allow-scripts (no JS). allow-same-origin only so the reader can size it and check links; with no scripts the message can't use that access.
 //  2. A CSP <meta> blocks scripts, network requests and (by default) remote images, which defeats tracking pixels.
-//  3. DOMParser strips the few things CSP and sandbox don't cover: meta refresh (iframe navigation) and <base>.
+//  3. DOMParser strips the few things CSP and sandbox don't cover: meta refresh (iframe navigation) and <base>, and
+//     the result is parsed once more as the frame will, in case serialising brought any of them back.
 // Inline (cid:) images arrive as data: URLs, so the CSP never has to allow a network fetch.
 //
 // Privacy beyond the defaults: tracking pixels are removed outright, even after "Load images",
@@ -47,10 +48,19 @@ export function buildSrcdoc(html: string, allowRemoteImages: boolean, inline: Re
     try { trackers.add(new URL(img.getAttribute('src')!, 'https://x').hostname); } catch { /* malformed src: still removed */ }
     img.remove();
   });
-  doc.querySelectorAll('a[href]').forEach((a) => {
-    const href = a.getAttribute('href')!.trim();
-    // Only web, mail and phone links: javascript:, data:, file: and the like never reach a click.
-    if (/^(https?:|mailto:|tel:)/i.test(href)) a.setAttribute('href', cleanLink(href)); else a.removeAttribute('href');
+  // Every link: <a>, <area>, SVG <a xlink:href> (any element carrying an href, in any namespace).
+  doc.querySelectorAll('*').forEach((el) => {
+    const links = [...el.attributes].filter((at) => at.localName === 'href');
+    if (!links.length) return;
+    for (const at of links) {
+      const href = at.value.trim();
+      // Only web, mail and phone links: javascript:, data:, file: and the like never reach a click.
+      if (/^(https?:|mailto:|tel:)/i.test(href)) at.value = cleanLink(href); else el.removeAttributeNode(at);
+    }
+    // Our <base target="_blank"> opens links in a new tab; a target of the sender's (or rel="opener") would give that
+    // tab a window.opener pointing back at the message frame.
+    el.removeAttribute('target');
+    el.setAttribute('rel', 'noopener noreferrer');
   });
 
   const blockedImages = allowRemoteImages
@@ -58,17 +68,33 @@ export function buildSrcdoc(html: string, allowRemoteImages: boolean, inline: Re
     : doc.querySelectorAll('img[src^="http" i], img[src^="//"], [background^="http" i]').length;
 
   const img = allowRemoteImages ? 'data: https:' : 'data:';
-  const csp = doc.createElement('meta');
-  csp.httpEquiv = 'Content-Security-Policy';
-  csp.content = `default-src 'none'; style-src 'unsafe-inline'; img-src ${img}; font-src data:`;
-  const noPrefetch = doc.createElement('meta');
-  noPrefetch.httpEquiv = 'x-dns-prefetch-control';
-  noPrefetch.content = 'off';
-  const base = doc.createElement('base');
-  base.target = '_blank'; // links open in a new tab, never inside the frame
-  const style = doc.createElement('style');
-  style.textContent = 'body{margin:16px;font:15px/1.5 system-ui,sans-serif;color:#111;background:#fff;word-wrap:break-word}img{max-width:100%;height:auto}';
-  doc.head.prepend(csp, noPrefetch, base, style);
+  const ours = (d: Document) => {
+    const csp = d.createElement('meta');
+    csp.httpEquiv = 'Content-Security-Policy';
+    csp.content = `default-src 'none'; style-src 'unsafe-inline'; img-src ${img}; font-src data:`;
+    const noPrefetch = d.createElement('meta');
+    noPrefetch.httpEquiv = 'x-dns-prefetch-control';
+    noPrefetch.content = 'off';
+    const base = d.createElement('base');
+    base.target = '_blank'; // links open in a new tab, never inside the frame
+    const style = d.createElement('style');
+    style.textContent = 'body{margin:16px;font:15px/1.5 system-ui,sans-serif;color:#111;background:#fff;word-wrap:break-word}img{max-width:100%;height:auto}';
+    d.head.prepend(csp, noPrefetch, base, style);
+    return '<!doctype html>' + d.documentElement.outerHTML;
+  };
+  const srcdoc = ours(doc);
 
-  return { srcdoc: '<!doctype html>' + doc.documentElement.outerHTML, blockedImages, trackers: [...trackers] };
+  // The frame parses this string again, and HTML doesn't always survive a round trip: nested <form>, <math> and
+  // <style> can serialise into markup that re-parses as a live <link> or <meta refresh> (mutation XSS). Parse it as
+  // the frame will; if anything beyond our own two <meta> and one <base> is there, show the words only.
+  const again = new DOMParser().parseFromString(srcdoc, 'text/html');
+  if (!again.querySelector('script, link') && again.querySelectorAll('meta').length === 2 && again.querySelectorAll('base').length === 1)
+    return { srcdoc, blockedImages, trackers: [...trackers] };
+  doc.body.querySelectorAll('style, title, template').forEach((el) => el.remove());
+  const plain = document.implementation.createHTMLDocument('');
+  plain.body.dir = 'auto';
+  const pre = plain.body.appendChild(plain.createElement('pre'));
+  pre.style.whiteSpace = 'pre-wrap';
+  pre.textContent = doc.body.textContent ?? ''; // serialised escaped: text only, nothing to re-parse
+  return { srcdoc: ours(plain), blockedImages: 0, trackers: [...trackers] };
 }
