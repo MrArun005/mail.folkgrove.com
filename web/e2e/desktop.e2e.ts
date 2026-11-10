@@ -10,7 +10,7 @@ test('Back closes a conversation, and a conversation has a link', async ({ page 
 
   await page.goBack();
   await expect(page.locator('.thread')).toHaveCount(0);
-  await expect(page).toHaveURL(/localhost:5173\/$/); // still in the app, on the Inbox
+  await expect(page).toHaveURL(/localhost:\d+\/$/); // still in the app, on the Inbox
 
   // The link opens the same conversation in a fresh page load.
   await page.goto(link); await page.reload();
