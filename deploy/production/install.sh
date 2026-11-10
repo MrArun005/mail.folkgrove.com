@@ -65,7 +65,7 @@ EOF
 
 # ---------------------------------------------------------------------------------------------
 # Settings: saved .env first, then flags.
-YES=0 MODE=install REBUILD_WEB=0 LOCAL_TEST=0 NO_RELAY=0 USER_NAME="" USER_PASS="" HOSTED_FLAG=0
+YES=0 MODE=install REBUILD_WEB=0 LOCAL_TEST=0 NO_RELAY=0 USER_NAME="" USER_PASS="" HOSTED_FLAG=0 WEB_DIST_FLAG=0
 if [ -f .env ]; then set -a; . ./.env; set +a; fi
 while [ $# -gt 0 ]; do
   case $1 in
@@ -83,7 +83,7 @@ while [ $# -gt 0 ]; do
     --relay-spf) RELAY_SPF=$2; shift ;;
     --no-relay) NO_RELAY=1 ;;
     --ip) SERVER_IP=$2; shift ;;
-    --web-dist) WEB_DIST=$(cd "$2" && pwd); shift ;;
+    --web-dist) WEB_DIST=$(cd "$2" && pwd); WEB_DIST_FLAG=1; shift ;;
     --rebuild-web) REBUILD_WEB=1 ;;
     --yes|-y) YES=1 ;;
     --refresh-certs) MODE=certs; YES=1 ;;
@@ -306,6 +306,12 @@ API=http://127.0.0.1:${ADMIN_PORT:-8080}
 # ---------------------------------------------------------------------------------------------
 # Web client.
 WEB_DIST=${WEB_DIST:-$REPO/web/dist}
+# The path in .env can belong to another checkout: a backup restored onto a new server, or a clone that moved.
+# Then build this checkout's web client instead of stopping.
+if [ "$WEB_DIST_FLAG" = 0 ] && [ ! -f "$WEB_DIST/index.html" ] && [ "$WEB_DIST" != "$REPO/web/dist" ]; then
+  warn "No web client at $WEB_DIST (saved in .env); using $REPO/web/dist"
+  WEB_DIST=$REPO/web/dist
+fi
 if [ "$REBUILD_WEB" = 1 ] || [ ! -f "$WEB_DIST/index.html" ]; then
   [ "$WEB_DIST" = "$REPO/web/dist" ] || die "No index.html in $WEB_DIST"
   say "Building the web client (in a Node container, nothing installed on this machine)"
@@ -358,7 +364,7 @@ fi
 say "Writing $HERE/.env"
 umask 077
 {
-  for v in COMPOSE_PROJECT_NAME MAIL_DOMAIN MAIL_HOSTNAME WEBMAIL_HOST ADMINS HELPDESK ACME_EMAIL PUBLIC_URL WEB_DIST \
+  for v in LOCAL_TEST COMPOSE_PROJECT_NAME MAIL_DOMAIN MAIL_HOSTNAME WEBMAIL_HOST ADMINS HELPDESK ACME_EMAIL PUBLIC_URL WEB_DIST \
            RELAY_HOST RELAY_PORT RELAY_USER RELAY_PASSWORD RELAY_SPF SERVER_IP CADDY_CERT_ISSUER \
            ADMIN_PORT HTTP_PORT HTTPS_PORT SMTP_PORT SUBMISSIONS_PORT SUBMISSION_PORT IMAPS_PORT \
            MONITORING ALERT_EMAIL HOSTED COMPOSE_FILE PG_PASSWORD S3_SECRET \
@@ -387,6 +393,8 @@ admin_file_for_service
 # create a missing file as an empty directory; the full stack starts once bootstrap has written it.
 # Optional easier webmail address (--webmail-host mail.example.com): Caddy redirects it to the mail host, where
 # sign-in is registered. The file always exists (empty without the option), since the Caddyfile imports it.
+# A restore that started the stack before this file existed left Docker's stand-in: an empty directory.
+[ -d webmail.caddy ] && rmdir webmail.caddy
 if [ -n "${WEBMAIL_HOST:-}" ]; then
   printf '%s {\n\tredir https://%s{uri} permanent\n}\n' "$WEBMAIL_HOST" "$MAIL_HOSTNAME" > webmail.caddy
 else : > webmail.caddy; fi
@@ -683,7 +691,7 @@ cat <<EOF
 Done.
   Webmail:   $PUBLIC_URL   (works once DNS points here and the certificate is issued)
   Admin UI:  $PUBLIC_URL/admin/  (Stalwart) login in $HERE/.admin-credentials; OpenMail console: $PUBLIC_URL/admin (set ADMINS)
-  Mail apps: IMAP $MAIL_HOSTNAME:993 (TLS), SMTP $MAIL_HOSTNAME:465 (TLS) or 587 (STARTTLS)
+  Mail apps: IMAP $MAIL_HOSTNAME:${IMAPS_PORT:-993} (TLS), SMTP $MAIL_HOSTNAME:${SUBMISSIONS_PORT:-465} (TLS) or ${SUBMISSION_PORT:-587} (STARTTLS)
   Backups:   $HERE/backup.sh   (see docs/self-hosting.md)
 EOF
 if [ "${MONITORING:-0}" = 1 ]; then

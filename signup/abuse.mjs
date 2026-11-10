@@ -263,7 +263,14 @@ export function abuseRoutes({ cfg, jmap, getDomainId, send, fail, RateLimiter, i
 
   // Jobs. unref: they never keep the process alive.
   if (cfg.eventsUrl) {
-    const hook = () => ensureHook().catch((e) => console.error('abuse: registering the webhook failed (retrying hourly):', e.message));
+    // The signing key is new in every process, so until this succeeds Stalwart's events fail the signature check.
+    // Stalwart often starts together with this service and can take a minute (longer on PostgreSQL, install.sh
+    // --hosted): try every 10 seconds for the first 10 minutes, then hourly.
+    let early = 60;
+    const hook = () => ensureHook().catch((e) => {
+      console.error(`abuse: registering the webhook failed (retrying ${early > 0 ? 'in 10 s' : 'hourly'}):`, e.message);
+      if (early-- > 0) setTimeout(hook, 10_000).unref();
+    });
     setTimeout(hook, 3000).unref(); setInterval(hook, 3600e3).unref();
   }
   if (months && !cfg.eventsUrl) console.warn('inactive: INACTIVE_MONTHS needs EVENTS_URL (sign-ins come from Stalwart events); reminders are off');
