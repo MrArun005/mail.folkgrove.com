@@ -31,12 +31,13 @@ import { describe } from './when';
 import { TeamComments, useShared } from './Sharing';
 import { t } from './i18n';
 import { clearRoute, readRoute, writeRoute, type Route } from './route';
-import { ConversationRows, InboxZero } from './Rows';
+import { ConversationRows, InboxZero, type RowHandlers } from './Rows';
 import { Rail, ShortcutsHelp, shown } from './Rail';
 import { PrivacyReport } from './PrivacyReport';
 import { readTally, week } from './privacy';
 
 const PAGE = 50;
+const EMPTY_LIST: EmailSummary[] = []; // one array, so an empty list is the same list on every render
 const UNDO_MS = 7000; // how long "Archived · Undo" stays
 const FALLBACK_POLL_MS = 5 * 60_000; // push does the real work; this only covers a silently dead stream
 const EMPTY_DRAFT: Draft = { to: [], cc: [], subject: '', html: '', text: '', attachments: [] };
@@ -205,13 +206,21 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   const limit = useRef(PAGE);
   const [hasMore, setHasMore] = useState(false);
   const loadingMore = useRef(false);
+  const housekept = useRef(0);
+  /** The query behind the list on screen, for loading its next page. */
+  const shownFilter = useRef<Filter | null>(null);
   const refresh = useCallback(async () => {
     try {
       let b = await client.mailboxes();
-      const woke = await client.wakeSnoozed(b);
-      if (woke) { b = await client.mailboxes(); say({ text: t('mail.snoozedBack', { count: woke }) }); }
-      const nudged = await client.sweep(b).catch(() => 0); // muted conversations, follow-up reminders
-      if (nudged) say({ text: t('mail.nudged', { count: nudged }) });
+      // Housekeeping (waking snoozed mail, muted conversations, follow-up reminders) costs several queries, and a
+      // refresh runs on every push, focus and folder change: at most once every ten seconds is plenty for it.
+      if (Date.now() - housekept.current > 10_000) {
+        housekept.current = Date.now();
+        const woke = await client.wakeSnoozed(b);
+        if (woke) { b = await client.mailboxes(); say({ text: t('mail.snoozedBack', { count: woke }) }); }
+        const nudged = await client.sweep(b).catch(() => 0); // muted conversations, follow-up reminders
+        if (nudged) say({ text: t('mail.nudged', { count: nudged }) });
+      }
       setBoxes(b); cache.set(key('boxes'), b);
       const box = query ? null : view ?? b.find((x) => x.role === 'inbox')?.id ?? null;
       if (box === SCHEDULED) { setScheduled(await client.scheduled()); return; }
@@ -223,6 +232,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         : isInbox && categories ? { operator: 'AND', conditions: [{ inMailbox: box },
           ...(tab === 'primary' ? tabs.map((k) => ({ notKeyword: tabKeyword(k) })) : [{ hasKeyword: tabKeyword(tab) }])] }
         : { inMailbox: box };
+      shownFilter.current = filter;
       const l = await client.threads(filter, limit.current + 1); // one extra tells us whether there's more
       setHasMore(l.length > limit.current);
       let page = l.slice(0, limit.current);
@@ -253,10 +263,19 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   // Live updates: the server pushes a note whenever anything changes; coalesce bursts.
   const refreshRef = useRef(refresh); refreshRef.current = refresh;
   useEffect(() => { client.correspondents().then((s) => { correspondents.current = s; refreshRef.current(); }, () => {}); }, [client]);
+  /** Scrolling down: fetch just the next page and add it to the end (later refreshes cover the longer list). */
   async function loadMore() {
-    if (loadingMore.current) return;
-    loadingMore.current = true; limit.current += PAGE;
-    try { await refresh(); } finally { loadingMore.current = false; }
+    const filter = shownFilter.current;
+    if (loadingMore.current || !filter) return;
+    loadingMore.current = true;
+    try {
+      const next = await client.threadsFrom(filter, limit.current, PAGE + 1); // one extra tells us whether there's more
+      if (shownFilter.current !== filter) return; // another folder or search meanwhile: not ours to add to
+      limit.current += PAGE;
+      setHasMore(next.length > PAGE);
+      // Mail arriving meanwhile shifts the list down by one, so a page can begin with a row we already have.
+      setList((l) => { const have = new Set(l?.map((x) => x.threadId)); return [...(l ?? []), ...next.slice(0, PAGE).filter((e) => !have.has(e.threadId))]; });
+    } catch (e) { fail(e); } finally { loadingMore.current = false; }
   }
   const inboxRef = useRef(inbox); inboxRef.current = inbox;
   // Background push: a click on a notification opens that conversation; subscriptions expire, so renew every few days.
@@ -668,6 +687,19 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // The rows are memoised (Rows.tsx), so they get one handler object for the life of the screen. Each handler reads
+  // the newest functions through this ref, which is refreshed on every render: never a stale list or selection.
+  const rowLive = useRef({ openThread, toggleSelect, act, screen, selected });
+  rowLive.current = { openThread, toggleSelect, act, screen, selected };
+  const rowHandlers = useMemo<RowHandlers>(() => ({
+    onOpen: (tid) => rowLive.current.openThread(tid),
+    onSelect: (tid, range) => rowLive.current.toggleSelect(tid, range),
+    onAct: (a, tid) => rowLive.current.act(a, [tid]),
+    onScreen: (sender, allow) => rowLive.current.screen(sender, allow),
+    onDragStart: (tid) => setDragging(rowLive.current.selected.has(tid) ? [...rowLive.current.selected] : [tid]),
+    onDragEnd: () => { setDragging(null); setDropOn(null); },
+  }), []);
+
   // ── Drag to a folder ───────────────────────────────────
 
   const canDrag = !['drafts', 'trash', SCHEDULED].includes(role ?? '');
@@ -805,10 +837,8 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
             {list?.length === 0 && (role === 'inbox' && !query && (!categories || tab === 'primary')
               ? <InboxZero blocked={readTally(own.username).trackers} onCompose={newMessage} />
               : <p className="empty">{inScreener ? t('mail.screenerEmpty') : emptyText}</p>)}
-            <ConversationRows list={list ?? []} important={important} role={role} current={current} threadId={threadId} selected={selected}
-              me={client.username} inScreener={inScreener} canDrag={canDrag} labels={userFolders} colors={sigData.colors}
-              onOpen={openThread} onSelect={toggleSelect} onAct={(a, tid) => act(a, [tid])} onScreen={screen}
-              onDragStart={setDragging} onDragEnd={() => { setDragging(null); setDropOn(null); }} />
+            <ConversationRows list={list ?? EMPTY_LIST} important={important} role={role} current={current} threadId={threadId} selected={selected}
+              me={client.username} inScreener={inScreener} canDrag={canDrag} labels={userFolders} colors={sigData.colors} on={rowHandlers} />
             {hasMore && <div className="list-more"><Button variant="link" onClick={loadMore}>{t('mail.showMore')}</Button></div>}
           </>
         )}

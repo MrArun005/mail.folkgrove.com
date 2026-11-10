@@ -277,7 +277,22 @@ export class Jmap {
     try { return await fn(); } finally { g.inFlight--; g.waiting.shift()?.(); }
   }
 
+  /**
+   * Reads that are already on their way are shared: the same question asked twice at once (the folder list by three
+   * parts of the screen at sign-in, say) is one request, and both callers get its answer. Only pure reads
+   * (/get, /query, /changes): anything that writes always goes out on its own.
+   */
+  private inFlight = new Map<string, Promise<any[]>>();
   async call(methodCalls: [string, object, string][], extra: string[] = []): Promise<any[]> {
+    if (!methodCalls.every(([name]) => /\/(get|query|changes|queryChanges)$/.test(name))) return this.request(methodCalls, extra);
+    const key = JSON.stringify([methodCalls, extra]);
+    const going = this.inFlight.get(key);
+    if (going) return going.then((r) => structuredClone(r)); // its own copy: callers may sort or trim what they get
+    const p = this.request(methodCalls, extra).finally(() => this.inFlight.delete(key));
+    this.inFlight.set(key, p);
+    return p;
+  }
+  private async request(methodCalls: [string, object, string][], extra: string[]): Promise<any[]> {
     for (let attempt = 0; ; attempt++) {
       try { return await this.slot(() => this.callOnce(methodCalls, extra)); }
       catch (e) {
@@ -368,6 +383,19 @@ export class Jmap {
     this.lists.delete(key);
     this.lists.set(key, { state, rows: new Map(list.map((e) => [e.id, e])) });
     if (this.lists.size > 12) this.lists.delete(this.lists.keys().next().value!); // the oldest: a dozen lists is plenty
+  }
+
+  /**
+   * The next page of a list: `limit` conversations starting at `position`. For "load more" as you scroll: asking
+   * for the whole list again, one page longer each time, gets slower with every page (half a second by the
+   * thousandth row on a 50,000-message mailbox); asking for just the next fifty costs the same every time.
+   */
+  async threadsFrom(filter: Filter, position: number, limit: number): Promise<EmailSummary[]> {
+    const [, r] = await this.call([
+      ['Email/query', { accountId: this.accountId, filter, collapseThreads: true, position, limit, sort: [{ property: 'receivedAt', isAscending: false }] }, 'q'],
+      ['Email/get', { accountId: this.accountId, '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' }, properties: SUMMARY }, 'g'],
+    ]);
+    return r.list;
   }
 
   /** Unread Primary-inbox mail received after `since`, newest first (for desktop notifications). */
