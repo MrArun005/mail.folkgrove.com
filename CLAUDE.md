@@ -43,7 +43,10 @@ docs/           self-hosting.md, deploy-folkgrove.md, legal/ (policies + build.m
 
 **Mail list & reader**
 - `Mail.tsx` — the main screen: owns lists, selection, folders, virtual folders, account switcher; wires everything else.
-- `Rail.tsx` — left rail / phone drawer (`Rail`, `ShortcutsHelp`); stateless. `Rows.tsx` — conversation rows (`ConversationRows`, `InboxZero`).
+- `useListActions.ts` — list actions hook: `act` (star, read, archive, trash, junk, move, label, snooze, mute; optimistic, auto-advance, Undo), selection, drag to folder, Screener `screen`.
+- `useSending.ts` — sending hook: `send` (Undo send, schedule, offline outbox, delivery check), `reply`/`quickReply`, signatures, compose API, `editScheduled`.
+- `shortcuts.ts` — keyboard shortcuts (`useShortcuts`) and the ⌘K palette's `paletteCommands`.
+- `Rail.tsx` — left rail / phone drawer (`Rail`, `ShortcutsHelp`, `railItems`, virtual-folder ids `STARRED`…`VIRTUAL`); stateless. `Rows.tsx` — conversation rows (`ConversationRows`, `InboxZero`).
 - `Reader.tsx` — conversation view (`Reader`, `MessageFrame`, link checks `claimedHost`/`sameSite`).
 - `safeHtml.ts` — hostile-HTML rendering: sandboxed iframe srcdoc + CSP + tracker stripping (`buildSrcdoc`, `cleanLink`).
 - `messageActions.ts` — per-message/sender actions (unsubscribe, block, print, original, receipts, react, save search).
