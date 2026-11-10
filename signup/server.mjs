@@ -23,6 +23,9 @@ import { sendMail } from './mailer.mjs';
 import { tiers as makeTiers } from './tiers.mjs';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 
+/** A comma-separated list of usernames on DOMAIN ("ann, raj@example.com" → ['ann', 'raj']). */
+const names = (v) => (v || '').split(',').map((s) => s.trim().toLowerCase().replace(/@.*$/, '')).filter(Boolean);
+
 export function configFromEnv(env = process.env) {
   // ADMIN_FILE: JSON {"user","pass"}, or install.sh's .admin-credentials ("user:pass").
   const adminText = env.ADMIN_FILE ? readFileSync(env.ADMIN_FILE, 'utf8').trim() : '';
@@ -67,7 +70,10 @@ export function configFromEnv(env = process.env) {
     retiredFile: env.RETIRED_FILE || null,
     bimiLogos: env.BIMI_LOGOS === 'on', // brand logos (bimi.mjs): off until VMC certificates are checked // names of deleted accounts, never given out again (account.mjs)
     // Admin console (/admin): usernames on DOMAIN allowed to use it. Empty = console off.
-    admins: (env.ADMINS || '').split(',').map((s) => s.trim().toLowerCase().replace(/@.*$/, '')).filter(Boolean),
+    admins: names(env.ADMINS),
+    // Helpdesk (admin.mjs): usernames who may open /admin for day-to-day support only (password resets, sign-in on/off,
+    // lifting suspensions, held mail, the audit log). A name in both lists is an admin.
+    helpdesk: names(env.HELPDESK),
     // Large-file links (files.mjs): where links are kept, biggest file, total per user, uploads per user and downloads
     // per network an hour.
     filesDb: env.FILES_DB || null,

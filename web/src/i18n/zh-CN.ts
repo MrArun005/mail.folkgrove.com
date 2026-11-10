@@ -1749,4 +1749,24 @@ export default {
   'smarts.verifiedTitle': '已验证的发件人：{domain} 确认这封邮件来自他们 (DMARC)',
   'smarts.careful': '请小心这封邮件。',
   'smarts.carefulBody': '发件人名称显示为 {brand}，但无法验证邮件确实来自他们（实际来自 {email}）。不要点击其中的链接，也不要提供密码或付款信息。',
+  'admin.roleHelpdesk': '技术支持', // review: new
+  'admin.importTitle': '从 CSV 文件添加账户', // review: new
+  'admin.importHelp': '每行一个账户：用户名、显示名称、密码、存储上限（GB）。只有用户名是必填的：密码留空则自动生成，上限留空则使用服务器默认值。每次最多 1,000 行。', // review: new
+  'admin.importPaste': '粘贴列表', // review: new
+  'admin.importFile': '或选择文件', // review: new
+  'admin.importCheck': '检查列表', // review: new
+  'admin.importAdd': { other: '添加 {count} 个账户' }, // review: new
+  'admin.importGenerated': '自动生成', // review: new
+  'admin.importDefault': '服务器默认', // review: new
+  'admin.importNoLimit': '无上限', // review: new
+  'admin.importReady': '就绪', // review: new
+  'admin.importCreated': '已创建', // review: new
+  'admin.importDone': '已创建 {created} 个，{failed} 个未创建。', // review: new
+  'admin.importPasswordsOnce': '生成的密码只在此刻显示。请保存下来，并通过可信渠道分别交给每个人。', // review: new
+  'admin.importDownload': '下载密码（CSV）', // review: new
+  'admin.colPassword': '密码', // review: new
+  'admin.colDisplayName': '显示名称', // review: new
+  'admin.auditUserImport': '从 CSV 添加了账户', // review: new
+  'admin.auditCreated': { other: '已创建 {count} 个' }, // review: new
+  'admin.auditFailed': { other: '{count} 个未创建' }, // review: new
 } satisfies Catalog;

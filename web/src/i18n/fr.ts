@@ -1758,4 +1758,24 @@ export default {
   'smarts.verifiedTitle': 'Expéditeur vérifié : {domain} a confirmé que ce message vient bien de lui (DMARC)',
   'smarts.careful': 'Méfiez-vous de ce message.',
   'smarts.carefulBody': 'Le nom de l’expéditeur indique {brand}, mais rien ne confirme que le message vient d’eux (il vient de {email}). Ne cliquez pas sur ses liens et ne communiquez ni mot de passe ni données de paiement.',
+  'admin.roleHelpdesk': 'support', // review: new
+  'admin.importTitle': 'Ajouter des comptes depuis un fichier CSV', // review: new
+  'admin.importHelp': 'Un compte par ligne : nom d’utilisateur, nom affiché, mot de passe, limite de stockage en Go. Seul le nom d’utilisateur est obligatoire : un mot de passe vide est généré, une limite vide prend la valeur par défaut du serveur. 1 000 lignes au plus à la fois.', // review: new
+  'admin.importPaste': 'Collez la liste', // review: new
+  'admin.importFile': 'Ou choisissez un fichier', // review: new
+  'admin.importCheck': 'Vérifier la liste', // review: new
+  'admin.importAdd': { one: 'Ajouter {count} compte', other: 'Ajouter {count} comptes' }, // review: new
+  'admin.importGenerated': 'générée', // review: new
+  'admin.importDefault': 'valeur du serveur', // review: new
+  'admin.importNoLimit': 'sans limite', // review: new
+  'admin.importReady': 'Prêt', // review: new
+  'admin.importCreated': 'Créé', // review: new
+  'admin.importDone': '{created} créés, {failed} non créés.', // review: new
+  'admin.importPasswordsOnce': 'Les mots de passe générés ne sont affichés que maintenant. Enregistrez-les et transmettez à chacun le sien par un canal de confiance.', // review: new
+  'admin.importDownload': 'Télécharger les mots de passe (CSV)', // review: new
+  'admin.colPassword': 'Mot de passe', // review: new
+  'admin.colDisplayName': 'Nom affiché', // review: new
+  'admin.auditUserImport': 'A ajouté des comptes depuis un CSV', // review: new
+  'admin.auditCreated': { one: '{count} créé', other: '{count} créés' }, // review: new
+  'admin.auditFailed': { one: '{count} non créé', other: '{count} non créés' }, // review: new
 } satisfies Catalog;

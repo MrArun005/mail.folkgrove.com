@@ -26,6 +26,7 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `CHECKS_PER_MINUTE` | `30` | Username-availability checks allowed per client IP per minute. |
 | `CLIENT_IP_HEADER` | | Header that carries the real client IP when the service runs behind a proxy, for example `cf-connecting-ip` or `x-real-ip`. Set this **only** if the proxy overwrites that header, because otherwise clients can spoof it. If unset, the socket address is used. |
 | `ADMINS` | | Usernames on `DOMAIN` (comma-separated, e.g. `ann,raj`) who may use the admin console at `/admin`. Empty: the console is off and `/api/admin/*` answers 404. See [Admin console](#admin-console-apiadmin). |
+| `HELPDESK` | | Usernames on `DOMAIN` (comma-separated) with a limited console: see [Admin console](#admin-console-apiadmin). Reserved at sign-up like `ADMINS`; a name on both lists is an admin. |
 | `RESERVED_NAMES` | | Extra reserved usernames, comma-separated. They are added to the built-in list in `lib.mjs`. |
 | `RETENTION_FILE` | | JSON file for retention rules (`retention.mjs`). Without it rules last until restart. |
 | `AUDIT_FILE` | | File the admin console's [audit log](#audit-log) is appended to, one JSON object per line (`/data/audit.jsonl` in `docker-compose.yml`). Without it the log lasts until restart. |
@@ -178,13 +179,16 @@ Verified against Stalwart 1.0.3: `x:Domain/set` create (DKIM keys appear in `dns
 
 ### Admin console (`/api/admin/*`)
 
-The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change goes into the [audit log](#audit-log) with the admin's name.
+The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change goes into the [audit log](#audit-log) with the admin's name and `role`.
+
+A `HELPDESK` account may make only these requests; anything else is `403 not_allowed` (deny by default: `HELPDESK_ROUTES` in `admin.mjs`): `GET overview` (its `role` is `admin` or `helpdesk`; the web app shows only what the role can use), `GET users`, `PATCH users/:id` with only `enabled`, `resetPassword` or `sending: true`, and only on a plain account (User role, no permissions beyond the sign-in, sending and legal-hold switches this console sets, only in plain team mailboxes; never an admin or helpdesk account), `GET suspended`, `GET held`, `POST held/:id/release`, `DELETE held/:id` and `GET audit`. A helpdesk account gets at most 100 changes an hour (`429 rate_limited` after that, not recorded), so it can't flush the bounded audit log.
 
 | Request | What it does (Stalwart object) |
 |---|---|
 | `GET overview` | Counts: user accounts, messages waiting in the queue, blocked IPs, accounts on new-account limits, messages held as spam (`null` when holding is off) |
 | `GET users?q=` | Up to 200 user accounts by name; `q` matches whole words (Stalwart's text search). Each: email, created, storage used and limit, live alias count, enabled, server admin, on new-account limits (`x:Account`) |
 | `POST users` `{name, quotaBytes?, description?}` | Creates `name@DOMAIN` with a generated password, returned once. `quotaBytes` 0 = no limit; omitted = `QUOTA_BYTES` |
+| `POST users/check` `{rows}`, `POST users/import` `{rows}` | Add accounts from a CSV (the console parses it). `rows`: up to 1,000 `{name, description?, password?, quotaBytes?}`. `check` runs the checks only (not audited); `import` creates the accounts one by one and answers per row `{name, email, password?}` or `{name, error, message}`; a bad row never stops the others. Stricter than `POST users`: reserved, retired and admin/helpdesk names are refused, as is a name twice in the list or a password `checkPassword` refuses. An empty password is generated and returned once. Audit: `user.import` with the counts (`created:N`, `failed:N`), never names or passwords. Admins only |
 | `PATCH users/:id` `{enabled?, sending?, quotaBytes?, resetPassword?}` | `sending: false` pauses sending only (permissions `emailSend` and `jmapEmailSubmissionCreate` taken away: SMTP sign-in and web-app sending are refused, reading mail works); `true` lets them send again. Disable/enable sign-in (removes the `authenticate` permission: sign-in, sending and existing sessions stop; mail still arrives, except that disabling an account `GET inactive` lists as due also [refuses its mail](#mail-to-blocked-inactive-accounts); enabling accepts it again), set the storage limit (`null` = none), or replace the main password with a generated one (returned once; signs them out everywhere; app passwords stay) |
 | `DELETE users/:id` | Deletes the account and its mail. Its username and aliases are retired (`RETIRED_FILE`), never given out again |
 | `GET blocked`, `DELETE blocked/:id` | IPs Stalwart blocked (reason, when, until) and unblock (`x:BlockedIp`) |
@@ -211,7 +215,7 @@ Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) 
 Every change made through `/api/admin/*` (anything but a `GET`, and not the `retention/preview` dry run) is appended to `AUDIT_FILE` as one JSON line, written in the one place all admin requests pass through (`handle()` in `admin.mjs`; the format is in `audit.mjs`):
 
 ```json
-{"at":"2026-11-09T10:12:03.511Z","admin":"ann","ip":"203.0.113.7","action":"user.update","target":"sam@example.com","detail":["disable","quota:5000000000"],"outcome":"ok"}
+{"at":"2026-11-09T10:12:03.511Z","admin":"ann","role":"admin","ip":"203.0.113.7","action":"user.update","target":"sam@example.com","detail":["disable","quota:5000000000"],"outcome":"ok"}
 ```
 
 - `action`: `user.create|update|delete`, `team.create|members|delete`, `ip.unblock`, `limits.add|lift`, `queue.retry|cancel`, `held.release|delete`, `retention.rules|run|account`.

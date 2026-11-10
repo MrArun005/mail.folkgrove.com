@@ -1754,4 +1754,24 @@ export default {
   'smarts.verifiedTitle': 'Remitente verificado: {domain} confirmó que este mensaje es suyo (DMARC)',
   'smarts.careful': 'Ten cuidado con este mensaje.',
   'smarts.carefulBody': 'El nombre del remitente dice {brand}, pero no se pudo verificar que venga de ellos (viene de {email}). No hagas clic en sus enlaces ni compartas contraseñas ni datos de pago.',
+  'admin.roleHelpdesk': 'soporte', // review: new
+  'admin.importTitle': 'Añadir cuentas desde un archivo CSV', // review: new
+  'admin.importHelp': 'Una cuenta por línea: nombre de usuario, nombre visible, contraseña, límite de almacenamiento en GB. Solo el nombre de usuario es obligatorio: si la contraseña está vacía se genera una, y un límite vacío usa el predeterminado del servidor. Como máximo 1000 líneas a la vez.', // review: new
+  'admin.importPaste': 'Pega la lista', // review: new
+  'admin.importFile': 'O elige un archivo', // review: new
+  'admin.importCheck': 'Revisar la lista', // review: new
+  'admin.importAdd': { one: 'Añadir {count} cuenta', other: 'Añadir {count} cuentas' }, // review: new
+  'admin.importGenerated': 'se genera', // review: new
+  'admin.importDefault': 'predeterminado del servidor', // review: new
+  'admin.importNoLimit': 'sin límite', // review: new
+  'admin.importReady': 'Lista', // review: new
+  'admin.importCreated': 'Creada', // review: new
+  'admin.importDone': '{created} creadas, {failed} sin crear.', // review: new
+  'admin.importPasswordsOnce': 'Las contraseñas generadas solo se muestran ahora. Guárdalas y dale a cada persona la suya por un canal de confianza.', // review: new
+  'admin.importDownload': 'Descargar contraseñas (CSV)', // review: new
+  'admin.colPassword': 'Contraseña', // review: new
+  'admin.colDisplayName': 'Nombre visible', // review: new
+  'admin.auditUserImport': 'Añadió cuentas desde un CSV', // review: new
+  'admin.auditCreated': { one: '{count} creada', other: '{count} creadas' }, // review: new
+  'admin.auditFailed': { one: '{count} sin crear', other: '{count} sin crear' }, // review: new
 } satisfies Catalog;

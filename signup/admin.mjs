@@ -1,20 +1,24 @@
 // Admin console API (/api/admin/*): users, team mailboxes (groups), blocked IPs, new-account limits and the outgoing queue.
 // Who is an admin: the ADMINS setting (comma-separated usernames on DOMAIN). The caller proves who they are with
 // their own sign-in token (checked by Stalwart, as for aliases); then their name must be on that list.
+// HELPDESK lists support staff: they get only the routes in HELPDESK_ROUTES (deny by default), and never act on an
+// admin or another helpdesk account.
 // This is a short, explicit list of Stalwart admin operations, never a passthrough.
 // Every change made here (anything but a GET) goes into the audit log (audit.mjs), written in handle() below.
 import { randomBytes } from 'node:crypto';
 import { callerOf } from './aliases.mjs';
 import { retireNames } from './account.mjs';
 import { forgetFiles } from './files.mjs';
-import { checkUsername } from './lib.mjs';
-import { isHeld, policyStore, retentionAdmin } from './retention.mjs';
+import { checkPassword, checkUsername } from './lib.mjs';
+import { HOLD, isHeld, policyStore, retentionAdmin } from './retention.mjs';
+import { SEND } from './abuse.mjs';
 import { adminDomainList } from './domains.mjs';
 import { auditLog } from './audit.mjs';
 
 const NEW = 'new-accounts'; // x:MemoryLookupKey namespace for the stricter sending tier (key = full address)
 const USER_PROPS = ['name', 'emailAddress', 'description', 'createdAt', 'usedDiskQuota', 'quotas', 'aliases', 'permissions', 'roles'];
 const ID = '[A-Za-z0-9_-]{1,64}';
+const IMPORT_MAX = 1000; // accounts per CSV import request
 
 /** One account as the console shows it. Disabled = may not sign in (Stalwart permission "authenticate" taken away). */
 export function userView(a, newTier = new Set()) {
@@ -54,7 +58,7 @@ export function queueView(m) {
 // What the audit log calls each change. A route missing here isn't recorded: only retention/preview (a dry run).
 // Handlers add the target by name and what was asked for through note(); see handle().
 export const AUDITED = {
-  'POST users': 'user.create', 'PATCH users/:id': 'user.update', 'DELETE users/:id': 'user.delete',
+  'POST users': 'user.create', 'POST users/import': 'user.import', 'PATCH users/:id': 'user.update', 'DELETE users/:id': 'user.delete',
   'POST groups': 'team.create', 'PATCH groups/:id': 'team.members', 'DELETE groups/:id': 'team.delete',
   'DELETE blocked/:id': 'ip.unblock', 'POST new-accounts': 'limits.add', 'DELETE new-accounts/:id': 'limits.lift',
   'POST queue/:id/retry': 'queue.retry', 'DELETE queue/:id': 'queue.cancel',
@@ -62,16 +66,31 @@ export const AUDITED = {
   'PUT retention': 'retention.rules', 'POST retention/run': 'retention.run', 'PATCH retention/:id': 'retention.account',
 };
 
+// What a helpdesk account may call. Anything not here is refused (403) before its handler runs.
+export const HELPDESK_ROUTES = new Set(['GET overview', 'GET users', 'PATCH users/:id', 'GET suspended', 'GET held', 'POST held/:id/release', 'DELETE held/:id', 'GET audit']);
+// ...and of PATCH users/:id only these (sending: true only: lift a suspension, never impose one).
+const HELPDESK_PATCH = ['enabled', 'resetPassword', 'sending'];
+
+/** Permissions as this console leaves them: inherited, or only its own switches off (sign-in, sending, legal hold).
+ *  Anything else (a right granted, or one taken away by hand) was set deliberately in Stalwart's own admin.
+ *  The list is built per call: abuse.mjs imports this file, so SEND may not exist yet while it loads. */
+export const plainPerms = (p) => !p || p['@type'] === 'Inherit' || (p['@type'] === 'Merge' && !Object.keys(p.enabledPermissions ?? {}).length
+  && Object.keys(p.disabledPermissions ?? {}).every((k) => ['authenticate', ...SEND, ...HOLD].includes(k)));
+
 const password = () => randomBytes(12).toString('base64url'); // 16 characters, about 96 bits
 
 export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, abuse, hold = null, retention = policyStore(null) }) {
   const admins = new Set(cfg.admins ?? []);
-  // Admin rights go by name, so admin names can never be signed up for, and the console can't touch admin accounts.
-  cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins];
+  const helpdesk = new Set((cfg.helpdesk ?? []).filter((n) => !admins.has(n))); // on both lists: an admin
+  // Admin rights go by name, so admin (and helpdesk) names can never be signed up for, and the console can't touch admin accounts.
+  cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins, ...helpdesk];
   const reloadLookups = () => jmap([['x:Action/set', { create: { r: { '@type': 'ReloadLookupStores' } } }, 'r']]);
   const isAdmin = (a) => a.roles?.['@type'] !== 'User' || admins.has(String(a.name).toLowerCase());
   const caller = callerOf({ cfg, jmap, getDomainId });
   const badAuth = new RateLimiter(20, 15 * 60e3); // failed sign-ins per network, as for /api/aliases
+  // Changes per helpdesk account an hour: every one is an audit line, and a bounded log must not be flushable by
+  // the lower role (10,000 lines would take 100 hours of nothing else).
+  const deskWrites = new RateLimiter(100, 3600e3);
   const audit = cfg.audit ?? auditLog(cfg.auditFile, { max: cfg.auditMax || undefined });
 
   const set = async (type, args) => {
@@ -88,9 +107,57 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     return (await get('x:MemoryLookupKey', ids)).filter((k) => k.namespace === NEW);
   };
   const account = async (id) => (await get('x:Account', [id], USER_PROPS))[0];
+  const quotaOf = (v) => (v == null || v === '' ? (cfg.quotaBytes || null) : Number(v)); // empty: the server default
+  const badQuota = (q) => q !== null && !(Number.isSafeInteger(q) && q >= 0);
+  /** Create one user account; [status, code, message] when Stalwart refuses the name, else its id. */
+  const createUser = async ({ name, description, quota, secret }) => {
+    const r = await jmap([['x:Account/set', { create: { n: {
+      '@type': 'User', name, domainId: await getDomainId(),
+      description: typeof description === 'string' && description.trim() ? description.trim().slice(0, 200) : null,
+      ...(secret && { credentials: { 0: { '@type': 'Password', secret } } }),
+      ...(quota ? { quotas: { maxDiskQuota: quota } } : {}),
+    } } }, 'c']]);
+    if (r.notCreated?.n?.type === 'primaryKeyViolation') return [409, 'username_taken', 'That username is already taken.'];
+    if (!r.created?.n) throw Object.assign(new Error('create refused'), { detail: r.notCreated?.n });
+    return r.created.n.id;
+  };
+  // CSV import rows ({name, description?, password?, quotaBytes?}), checked as one list. Stricter than POST users:
+  // reserved and retired names are refused too (no admin judgement per row), and so is a name twice in the list.
+  const checkRows = (rows) => {
+    const seen = new Set();
+    return rows.map((row) => {
+      const name = typeof row?.name === 'string' ? row.name.trim().toLowerCase() : '';
+      const given = typeof row?.password === 'string' && row.password !== '' ? row.password : null;
+      const quota = quotaOf(row?.quotaBytes);
+      const bad = checkUsername(name, cfg.extraReserved)
+        ?? (seen.has(name) ? { code: 'duplicate', message: 'This username is in the list twice.' } : null)
+        ?? (given && cfg.oidc ? { code: 'sso', message: 'Passwords are managed by your identity provider; leave it empty.' } : null)
+        ?? (given && checkPassword(given, name))
+        ?? (badQuota(quota) ? { code: 'bad_quota', message: 'Enter the storage limit as a number of GB.' } : null);
+      seen.add(name);
+      return { name, given, quota, description: row?.description, bad };
+    });
+  };
+  const importRows = async (req) => {
+    const body = await readJson(req, 512 * 1024).catch((s) => s); // 1,000 rows of name, display name and password fit
+    if (body === 413) return [413, 'body_too_large', 'The list is too large.'];
+    if (!Array.isArray(body?.rows) || !body.rows.length) return [400, 'no_rows', 'Add at least one account.'];
+    if (body.rows.length > IMPORT_MAX) return [400, 'too_many_rows', `At most ${IMPORT_MAX.toLocaleString('en')} accounts at a time.`];
+    return { rows: checkRows(body.rows) };
+  };
+  // The helpdesk may only act on a plain account, or a password reset could take over one with extra rights: the
+  // User role, plain permissions, and only in plain team mailboxes (a group's roles and permissions pass to its
+  // members, as in PATCH groups/:id). Deny by default: anything unknown or missing is not plain.
+  const plainAccount = async (id) => {
+    const [u] = await get('x:Account', [id], ['roles', 'permissions', 'memberGroupIds']);
+    if (u?.roles?.['@type'] !== 'User' || !plainPerms(u.permissions)) return false;
+    const ids = Object.keys(u.memberGroupIds ?? {});
+    const groups = await get('x:Account', ids, ['roles', 'permissions', 'memberGroupIds']);
+    return groups.length === ids.length && groups.every((g) => g.roles?.['@type'] === 'Default' && g.permissions?.['@type'] === 'Inherit' && !Object.keys(g.memberGroupIds ?? {}).length);
+  };
 
   const handlers = {
-    'GET overview': async () => {
+    'GET overview': async (_req, _url, _id, who) => { // the console's first call, so it also tells the UI the caller's role
       const [a, q, b, n] = await Promise.all([
         query('x:Account', { filter: { '@type': 'User' }, calculateTotal: true, limit: 0 }),
         query('x:QueuedMessage', { calculateTotal: true, limit: 0 }),
@@ -98,7 +165,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         newTier(),
       ]);
       const suspended = Object.values(abuse?.state.suspensions ?? {}).filter((h) => !h.at(-1)?.liftedAt).length;
-      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length, suspended, held: hold ? hold.list().length : null };
+      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length, suspended, held: hold ? hold.list().length : null, role: who.role };
     },
 
     'GET users': async (_req, url) => {
@@ -107,7 +174,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       const r = await query('x:Account', { filter: { '@type': 'User', ...(q && { text: q }) }, sort: [{ property: 'name' }], limit: 200, calculateTotal: true });
       const [list, tier] = await Promise.all([get('x:Account', r.ids, USER_PROPS), newTier()]);
       const keys = new Set(tier.map((k) => k.key.toLowerCase()));
-      return { users: list.map((a) => userView(a, keys)), total: r.total };
+      return { users: list.map((a) => ({ ...userView(a, keys), helpdesk: helpdesk.has(String(a.name).toLowerCase()) })), total: r.total };
     },
 
     'POST users': async (req, _url, _id, _who, note) => {
@@ -116,19 +183,41 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       note(`${name.slice(0, 64)}@${cfg.domain}`);
       const bad = checkUsername(name);
       if (bad && bad.code !== 'username_reserved') return [400, bad.code, bad.message]; // admins may use reserved names
-      const quota = body.quotaBytes == null || body.quotaBytes === '' ? (cfg.quotaBytes || null) : Number(body.quotaBytes);
-      if (quota !== null && !(Number.isSafeInteger(quota) && quota >= 0)) return [400, 'bad_quota', 'Enter the storage limit as a whole number.'];
+      const quota = quotaOf(body.quotaBytes);
+      if (badQuota(quota)) return [400, 'bad_quota', 'Enter the storage limit as a whole number.'];
       // Single sign-on: the account signs in through the provider, so it gets no password (Stalwart refuses one).
       const secret = cfg.oidc ? null : password();
-      const r = await jmap([['x:Account/set', { create: { n: {
-        '@type': 'User', name, domainId: await getDomainId(),
-        description: typeof body.description === 'string' && body.description.trim() ? body.description.trim().slice(0, 200) : null,
-        ...(secret && { credentials: { 0: { '@type': 'Password', secret } } }),
-        ...(quota ? { quotas: { maxDiskQuota: quota } } : {}),
-      } } }, 'c']]);
-      if (r.notCreated?.n?.type === 'primaryKeyViolation') return [409, 'username_taken', 'That username is already taken.'];
-      if (!r.created?.n) throw Object.assign(new Error('create refused'), { detail: r.notCreated?.n });
-      return { user: userView(await account(r.created.n.id)), ...(secret && { password: secret }) };
+      const id = await createUser({ name, description: body.description, quota, secret });
+      if (Array.isArray(id)) return id;
+      return { user: userView(await account(id)), ...(secret && { password: secret }) };
+    },
+
+    // Add accounts from a CSV (the console parses it): check first (nothing created, not audited), then import.
+    // The import creates them one by one and reports each row; a bad row never stops the others. Generated passwords
+    // are returned once; the audit log gets the counts only.
+    'POST users/check': async (req) => {
+      const got = await importRows(req);
+      return got.rows ? { results: got.rows.map(({ name, bad }) => ({ name, ...(bad && { error: bad.code, message: bad.message }) })) } : got;
+    },
+    'POST users/import': async (req, _url, _id, who, note) => {
+      note(cfg.domain); // accounts on DOMAIN (names stay out of the log: the counts say enough)
+      const got = await importRows(req);
+      if (!got.rows) return got;
+      const results = [];
+      for (const { name, given, quota, description, bad } of got.rows) {
+        if (bad) { results.push({ name, error: bad.code, message: bad.message }); continue; }
+        const secret = cfg.oidc ? null : given ?? password();
+        try {
+          const id = await createUser({ name, description, quota, secret });
+          results.push(Array.isArray(id) ? { name, error: id[1], message: id[2] } : { name, email: `${name}@${cfg.domain}`, ...(secret && !given && { password: secret }) });
+        } catch (e) {
+          console.error(`admin: import of ${name} by ${who.name} failed:`, e.message, e.detail ? JSON.stringify(e.detail) : '');
+          results.push({ name, error: 'stalwart_refused', message: 'The mail server refused this account.' });
+        }
+      }
+      const created = results.filter((r) => r.email).length;
+      note(null, `created:${created}`, `failed:${results.length - created}`);
+      return { results, created };
     },
 
     'PATCH users/:id': async (req, _url, id, who, note) => {
@@ -140,6 +229,8 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         typeof body.enabled === 'boolean' && (body.enabled ? 'enable' : 'disable'),
         'quotaBytes' in body && `quota:${body.quotaBytes === null ? 'none' : Number(body.quotaBytes) || 0}`, body.resetPassword === true && 'password_reset'].filter(Boolean));
       if (isAdmin(a)) return [403, 'protected', 'Administrator accounts are managed in Stalwart’s own admin.'];
+      if (who.role === 'helpdesk' && (helpdesk.has(String(a.name).toLowerCase()) || body.sending === false || Object.keys(body).some((k) => !HELPDESK_PATCH.includes(k)) || !(await plainAccount(id))))
+        return [403, 'not_allowed', 'The helpdesk can’t make that change. Ask an administrator.'];
       if (typeof body.sending === 'boolean' && abuse) { // suspend or allow sending, with the reason kept (abuse.mjs)
         if (body.sending) await abuse.liftAccount(a, who.name); else await abuse.suspendAccount(a, 'An administrator suspended sending.', who.name);
         a = await account(id);
@@ -339,25 +430,30 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   return async function handle(req, res, url) {
     const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains|suspended|inactive|groups|held|retention|audit)(?:/(${ID}))?(/retry|/release)?$`));
     if (!m) return false;
-    if (!admins.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS is set
+    if (!admins.size && !helpdesk.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS (or HELPDESK) is set
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);
     if (blocked) return fail(res, 429, 'rate_limited', 'Too many failed sign-ins from your network. Try again later.', { retryAfter: blocked }), true;
     let who;
     try { who = await caller(req); } catch (e) { badAuth.refund(ip, win); throw e; }
     if (!who) return fail(res, 401, 'unauthorized', 'Please sign in again.'), true;
     badAuth.refund(ip, win);
-    if (!admins.has(who.name)) return fail(res, 403, 'not_admin', 'This account isn’t an administrator.'), true;
+    who.role = admins.has(who.name) ? 'admin' : helpdesk.has(who.name) ? 'helpdesk' : null;
+    if (!who.role) return fail(res, 403, 'not_admin', 'This account isn’t an administrator.'), true;
 
     let key = `${req.method} ${m[1]}${m[2] ? '/:id' : ''}${m[3] ?? ''}`;
-    if (key === 'POST retention/:id') key = `POST retention/${m[2]}`; // preview, run
+    if (key === 'POST retention/:id' || key === 'POST users/:id') key = `POST ${m[1]}/${m[2]}`; // retention preview, run; users check, import
     const fn = handlers[key];
     if (!fn) return fail(res, 405, 'method_not_allowed', 'Not allowed.'), true;
+    if (who.role === 'helpdesk' && !HELPDESK_ROUTES.has(key)) return fail(res, 403, 'not_allowed', 'The helpdesk can’t do that. Ask an administrator.'), true;
     // The audit log: every change an administrator asks for passes here, so this is the one place that records it,
     // whatever its outcome ('ok', or the error code the admin was shown). Handlers only say whom it was about and
     // what was asked (note): names, addresses and numbers, never the request body or a password.
     // Not recorded: reads (GET), and requests refused before this point. Anyone signed in can earn a 403 here, and
     // letting them write lines would let them push the real ones out of a bounded log.
-    const entry = AUDITED[key] ? { at: new Date().toISOString(), admin: who.name, ip, action: AUDITED[key], target: m[2] ?? null } : null;
+    const entry = AUDITED[key] ? { at: new Date().toISOString(), admin: who.name, role: who.role, ip, action: AUDITED[key], target: m[2] ?? null } : null;
+    // Refused before this point (role, route, rate): not recorded. A helpdesk account's changes are capped per hour.
+    const wait = entry && who.role === 'helpdesk' && deskWrites.take(who.name);
+    if (wait) return fail(res, 429, 'rate_limited', 'Too many changes. Try again later.', { retryAfter: wait }), true;
     const note = (target, ...detail) => { if (entry && target) entry.target = String(target); if (entry && detail.length) entry.detail = [...(entry.detail ?? []), ...detail.map(String)]; };
     const done = (outcome) => { if (entry) audit.record({ ...entry, outcome }); };
     let out;
