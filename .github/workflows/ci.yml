@@ -80,6 +80,17 @@ jobs:
           # Sign-up is off on a self-hosted install, so the account service answers "not found" in its own JSON
           # ({"ok":false,...}); anything else means Caddy isn't routing /api to it.
           curl -sSk --resolve mx.example.test:10443:127.0.0.1 'https://mx.example.test:10443/api/username-available?name=owner' | grep -q '"ok"'
+      - name: Security headers on the app, and the account service's data private
+        working-directory: deploy/production
+        run: |
+          h=$(curl -fsSkI --resolve mx.example.test:10443:127.0.0.1 https://mx.example.test:10443/)
+          echo "$h"
+          for want in 'strict-transport-security: max-age=' 'x-content-type-options: nosniff' 'referrer-policy: same-origin' "content-security-policy: frame-ancestors 'none'"; do
+            echo "$h" | grep -qi "^$want" || { echo "missing: $want"; exit 1; }
+          done
+          # Stalwart's answers get HTTPS-only too, and only once.
+          [ "$(curl -sSkI --resolve mx.example.test:10443:127.0.0.1 https://mx.example.test:10443/.well-known/jmap | grep -ci '^strict-transport-security')" = 1 ]
+          [ "$(sudo stat -c %a signup-data)" = 700 ]
       - name: Logs on failure
         if: failure()
         run: |

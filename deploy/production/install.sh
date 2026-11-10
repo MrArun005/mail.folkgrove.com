@@ -370,6 +370,10 @@ umask 022
 
 say "Starting the stack"
 mkdir -p signup-data && { chown 1000:1000 signup-data 2>/dev/null || warn "Not root: the account service may be unable to write signup-data"; }   # it runs as uid 1000 (node)
+# Its files hold large-file download ids, held mail and the audit log: the service's uid only. On every run, which
+# repairs installs made before this (the directory was world-readable). Not when someone else owns it: that'd lock
+# the service out entirely (it can still read what it couldn't write, without this).
+[ "$(stat -c %u signup-data 2>/dev/null || stat -f %u signup-data)" = 1000 ] && chmod 700 signup-data
 # The account service reads the admin login (mounted at /run/secrets/admin) as uid 1000 too. The file stays 0600:
 # readable by that uid and root, nobody else. Without this the service can't start on Linux ("EACCES") and masked
 # addresses, the admin console, "keep me signed in" and the outgoing-spam hold are all down.
