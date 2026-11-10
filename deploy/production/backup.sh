@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Encrypted backup and restore of the whole mail server: Stalwart's two volumes (all mail, accounts,
-# settings, DKIM keys, certificate copy) plus .env, .admin-credentials and signup-data/ (retired usernames).
+# settings, DKIM keys, certificate copy) plus .env, .admin-credentials and signup-data/ (retired usernames,
+# file links, pending custom domains, audit log and the account service's other /data files).
 #
 #   ./backup.sh --recipient age1...      first time: save the public key backups are encrypted to
 #   ./backup.sh                          make backups/openmail-<date>.tar.gz.age (keeps the newest 14)

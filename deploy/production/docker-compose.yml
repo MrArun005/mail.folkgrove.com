@@ -86,6 +86,7 @@ services:
       INACTIVE_MONTHS: ${INACTIVE_MONTHS:-}  # inactive-account reminders; empty = 12 with SIGNUP=on, else off
       ARF_REPORTERS: ${ARF_REPORTERS:-}  # spam complaints to abuse@: trusted feedback loops (domains, IPs); empty = any that pass DKIM/DMARC
       HOLD_DIR: /data/held   # outgoing mail held as likely spam, waiting for an admin (signup/hold.mjs)
+      PENDING_DOMAINS_FILE: /data/pending-domains.json   # users' domains still waiting for DNS verification (signup/domains.mjs)
       RETENTION_FILE: /data/retention.json   # retention rules (signup/retention.mjs)
       AUDIT_FILE: /data/audit.jsonl   # what administrators changed in the admin console (signup/audit.mjs); backup.sh copies it
       # Single sign-on (install.sh --oidc-*); empty = off.

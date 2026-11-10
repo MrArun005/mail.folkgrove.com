@@ -29,7 +29,7 @@ export function DomainsSection({ client, onChanged }: { client: Jmap; onChanged:
     if (!r) return setList('off');
     setMax(r.maxDomains);
     setGiven(r.memberOf ?? []);
-    setList((old) => [...r.domains, ...(Array.isArray(old) ? old.filter((d) => d.status === 'pending' && !r.domains.some((x: CustomDomain) => x.name === d.name)) : [])]);
+    setList(r.domains);
   }, (e) => { setList((l) => (Array.isArray(l) ? l : [])); setMsg(e.message); });
   useEffect(() => { load(); }, [client]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -43,7 +43,7 @@ export function DomainsSection({ client, onChanged }: { client: Jmap; onChanged:
     put(d); setDomain('');
     if (d.status !== 'pending') onChanged(); // its first address is now in the From menu
   });
-  const remove = async (d: CustomDomain) => (d.status === 'pending' ? setList((l) => (Array.isArray(l) ? l.filter((x) => x !== d) : l))
+  const remove = async (d: CustomDomain) => (d.status === 'pending' ? run(`rm:${d.name}`, async () => { await client.customDomains(`/${d.name}`, 'DELETE'); setList((l) => (Array.isArray(l) ? l.filter((x) => x !== d) : l)); })
     : await confirmIt({ title: t('domains.removeTitle', { domain: d.name }), body: t('domains.removeBody', { count: d.addresses.length + (d.members?.length ?? 0) }), confirm: t('domains.removeConfirm'), danger: true })
       && run(`rm:${d.name}`, async () => { await client.customDomains(`/${d.name}`, 'DELETE'); setList((l) => (Array.isArray(l) ? l.filter((x) => x.name !== d.name) : l)); onChanged(); }));
   const giveUp = async (g: GivenAddress) => await confirmIt({ title: t('domains.giveUpTitle', { email: g.email }), body: t('domains.giveUpBody'), confirm: t('domains.giveUpConfirm'), danger: true })

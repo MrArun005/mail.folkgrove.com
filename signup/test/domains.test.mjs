@@ -4,7 +4,9 @@
 // Never touches alice or bob.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { connect } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../server.mjs';
@@ -97,8 +99,9 @@ test('custom domain on the dev server: claim, DKIM, addresses, delivery, pause, 
   const [uid, oid] = [await mk(user), await mk(other)];
 
   const dns = fakeDns({});
+  const pendingDomainsFile = join(mkdtempSync(join(tmpdir(), 'om-pending-')), 'pending-domains.json');
   const cfg = { stalwartUrl: STALWART, admin, domain: 'openmail.test', signupEnabled: false, inviteRequired: false, invites: new Invites({ text: '' }), turnstileSecret: null,
-    quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], allowBasicAuth: true, resolver: dns, maxDomainAddresses: 3 };
+    quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], allowBasicAuth: true, resolver: dns, maxDomainAddresses: 3, pendingDomainsFile, domainSecret: `secret-${tag}` };
   const app = createApp(cfg);
   await new Promise((r) => app.listen(0, '127.0.0.1', r));
   t.after(async () => { // whatever the test left behind
@@ -136,12 +139,22 @@ test('custom domain on the dev server: claim, DKIM, addresses, delivery, pause, 
   assert.ok(!(await jmap([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).list.some((d) => d.name === domain));
   // The other account sees a different token, so this account's TXT record doesn't let them claim it.
   assert.notEqual((await call2('', 'POST', { domain })).domain.records[0].value, verify.value);
+  // Still pending after a restart: a new service on the same PENDING_DOMAINS_FILE lists it, with the same record.
+  const app2 = createApp(cfg);
+  await new Promise((r) => app2.listen(0, '127.0.0.1', r));
+  const again = await (await fetch(`http://127.0.0.1:${app2.address().port}/api/domains`, { headers: { Authorization: basic(`${user}@openmail.test`, pass) } })).json();
+  app2.close();
+  assert.deepEqual(again.domains.map((d) => [d.name, d.status, d.records[0].value]), [[domain, 'pending', verify.value]]);
+  // Removing a pending domain forgets it.
+  assert.equal((await call2(`/${domain}`, 'DELETE')).status, 200);
+  assert.deepEqual((await call2()).domains, []);
 
   // 2. TXT is live: claimed, created in Stalwart, main address added.
   dns.zone[`TXT ${domain}`] = [verify.value];
   const c = await call('', 'POST', { domain });
   assert.equal(c.status, 200);
   assert.equal(c.domain.status, 'active');
+  assert.deepEqual(JSON.parse(readFileSync(pendingDomainsFile, 'utf8')), {}); // claimed: no longer pending
   assert.deepEqual(c.domain.addresses.map((a) => [a.email, a.main]), [[`${user}@${domain}`, true]]);
   assert.equal(await rcptCode(`${user}@${domain}`), 250);
   assert.deepEqual(await identities(), [`${user}@openmail.test`, `${user}@${domain}`]); // Compose's From menu
