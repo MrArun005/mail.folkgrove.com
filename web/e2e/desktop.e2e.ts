@@ -122,7 +122,7 @@ test('quick reply sends from under the conversation; Undo brings it back as a dr
   // Undo: nothing is sent; what was written comes back in the editor, under nothing but the quote.
   await page.locator('.toast').getByRole('button', { name: 'Undo' }).click();
   const editor = page.locator('.compose [contenteditable]').first();
-  await expect(editor).toContainText('Thanks, got it.');
+  await expect(editor).toContainText('Thanks, got it.', { timeout: 30_000 }); // Undo waits for the server to take the message back
   await expect(editor).toContainText('wrote:'); // the quoted message is there
   await page.locator('.compose').getByRole('button', { name: 'Discard draft' }).click();
   await page.getByRole('button', { name: 'Discard', exact: true }).click();

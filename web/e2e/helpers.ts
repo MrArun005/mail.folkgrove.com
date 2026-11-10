@@ -12,13 +12,20 @@ export async function signIn(page: Page, path = '/') {
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt) await page.waitForTimeout(15_000);
     await page.goto(path);
+    // A retry can find the mailbox already open: the first try's session was kept even though its page showed an error.
+    const form = page.locator('input[name=email]'), open = page.locator('.rows .row').first();
+    await expect(form.or(open)).toBeVisible({ timeout: 20_000 });
+    if (!(await form.isVisible())) { await expect(open).toBeVisible({ timeout: 20_000 }); return; }
     await page.fill('input[name=email]', USER);
     await page.fill('input[name=password]', PASS);
     await page.click('button[type=submit]');
     const rows = page.locator('.rows .row').first(), error = page.locator('.login .error');
     await expect(rows.or(error)).toBeVisible({ timeout: 20_000 });
-    if (await rows.isVisible()) return;
+    // Decide by the error, not the rows: the list re-renders as it refreshes, so "are rows visible this instant"
+    // can be no on a mailbox that signed in fine.
+    if (!(await error.isVisible())) { await expect(rows).toBeVisible({ timeout: 20_000 }); return; }
     said = (await error.innerText().catch(() => '')) || said;
+    console.log(`sign-in attempt ${attempt + 1} was refused: ${said}`);
   }
   throw new Error(`Could not sign in: ${said || 'no error shown'}`);
 }
