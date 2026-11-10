@@ -687,7 +687,7 @@ cat <<EOF
 Done.
   Webmail:   $PUBLIC_URL   (works once DNS points here and the certificate is issued)
   Admin UI:  $PUBLIC_URL/admin/  (Stalwart) login in $HERE/.admin-credentials; OpenMail console: $PUBLIC_URL/admin (set ADMINS)
-  Mail apps: IMAP $MAIL_HOSTNAME:993 (TLS), SMTP $MAIL_HOSTNAME:465 (TLS) or 587 (STARTTLS)
+  Mail apps: IMAP $MAIL_HOSTNAME:${IMAPS_PORT:-993} (TLS), SMTP $MAIL_HOSTNAME:${SUBMISSIONS_PORT:-465} (TLS) or ${SUBMISSION_PORT:-587} (STARTTLS)
   Backups:   $HERE/backup.sh   (see docs/self-hosting.md)
 EOF
 if [ "${MONITORING:-0}" = 1 ]; then
