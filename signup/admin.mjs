@@ -77,7 +77,8 @@ const HELPDESK_PATCH = ['enabled', 'resetPassword', 'sending'];
 export const plainPerms = (p) => !p || p['@type'] === 'Inherit' || (p['@type'] === 'Merge' && !Object.keys(p.enabledPermissions ?? {}).length
   && Object.keys(p.disabledPermissions ?? {}).every((k) => ['authenticate', ...SEND, ...HOLD].includes(k)));
 
-const password = () => randomBytes(12).toString('base64url'); // 16 characters, about 96 bits
+// 16 characters, about 95 bits. Never starts with "-": spreadsheets read a leading "-" in the downloaded CSV as a formula.
+const password = () => randomBytes(12).toString('base64url').replace(/^-/, 'x');
 
 export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, abuse, hold = null, retention = policyStore(null) }) {
   const admins = new Set(cfg.admins ?? []);
