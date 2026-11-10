@@ -604,6 +604,8 @@ export default {
   'compose.from': '发件人',
   'compose.to': '收件人',
   'compose.cc': '抄送',
+  'compose.groupExpand': '显示并编辑 {name} 中的地址',
+  'compose.groupRemove': '移除 {name}',
   'compose.bcc': '密送',
   'compose.subject': '主题',
   'compose.message': '正文',

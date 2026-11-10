@@ -1,13 +1,22 @@
 // @vitest-environment happy-dom
 import { expect, it } from 'vitest';
 import type { EmailFull } from './jmap';
-import { cleanHtml, draftFor, fileLinkHtml, fileLinks, htmlToText, parseAddresses, textToHtml } from './mailutil';
+import { cleanHtml, draftFor, fileLinkHtml, fileLinks, htmlToText, parseAddresses, textToHtml, withGroups } from './mailutil';
 
 it('parses address lists and flags junk', () => {
   expect(parseAddresses('Ann Lee <ann@x.org>, bob@y.org; "Cee" <c@z.io>, nope, ')).toEqual({
     list: [{ name: 'Ann Lee', email: 'ann@x.org' }, { name: null, email: 'bob@y.org' }, { name: 'Cee', email: 'c@z.io' }],
     invalid: ['nope'],
   });
+});
+
+it('expands contact-group chips into their members, each address once', () => {
+  const team = { members: [{ name: 'Ann', email: 'ann@x.org' }, { name: null, email: 'bob@y.org' }] };
+  const more = { members: [{ name: 'Bob', email: 'BOB@y.org' }, { name: null, email: 'cee@z.io' }] };
+  expect(withGroups('', [team])).toBe('Ann <ann@x.org>, bob@y.org');
+  expect(withGroups('ann@x.org, ', [team, more])).toBe('ann@x.org, bob@y.org, cee@z.io'); // typed or in two groups: once
+  expect(withGroups('dee@w.net', [])).toBe('dee@w.net');
+  expect(parseAddresses(withGroups('dee@w.net;', [more])).list.map((a) => a.email)).toEqual(['dee@w.net', 'BOB@y.org', 'cee@z.io']);
 });
 
 it('cleanHtml keeps formatting, drops anything active or tracking', () => {

@@ -611,6 +611,8 @@ export default {
   'compose.from': 'من',
   'compose.to': 'إلى',
   'compose.cc': 'نسخة',
+  'compose.groupExpand': 'عرض العناوين في {name} وتعديلها',
+  'compose.groupRemove': 'إزالة {name}',
   'compose.bcc': 'نسخة مخفية',
   'compose.subject': 'الموضوع',
   'compose.message': 'الرسالة',

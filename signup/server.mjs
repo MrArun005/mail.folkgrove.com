@@ -79,6 +79,7 @@ export function configFromEnv(env = process.env) {
     customDomains: env.CUSTOM_DOMAINS !== 'off',
     maxDomains: Number(env.MAX_DOMAINS || 3),
     maxDomainAddresses: Number(env.MAX_DOMAIN_ADDRESSES || 10),
+    pendingDomainsFile: env.PENDING_DOMAINS_FILE || null, // domains waiting for their TXT record
     reservedDomains: (env.RESERVED_DOMAINS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
     dnsServers: (env.DNS_SERVERS || '').split(',').map((s) => s.trim()).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),

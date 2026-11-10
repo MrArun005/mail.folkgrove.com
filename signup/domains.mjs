@@ -4,8 +4,9 @@
 // new addresses show up in Compose's From menu by themselves.
 //
 // State lives in Stalwart, not here: a claimed domain is an x:Domain whose description is TAG + JSON
-// { owner, token, added, checked, missing, paused, members }. A domain still waiting for its TXT record isn't stored
-// at all: its token is an HMAC of (account, domain), so the same person always sees the same record to add.
+// { owner, token, added, checked, missing, paused, members }. A domain still waiting for its TXT record is only in
+// PENDING_DOMAINS_FILE ({ <account id>: { <domain>: token } }), so it is still listed after a restart; its token is an
+// HMAC of (account, domain), so the same person always sees the same record to add.
 //
 // Shared (organisation) domains: the owner can give addresses on the domain to other accounts on this server
 // ("members"). Such an address is an alias of the member's account, so its mail lands in their mailbox and it shows
@@ -22,7 +23,7 @@
 import { createHmac } from 'node:crypto';
 import { Resolver } from 'node:dns/promises';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { callerOf, serial } from './aliases.mjs';
 import { retire } from './account.mjs';
@@ -243,6 +244,22 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     const at = (await jmap([['x:Account/get', { ids: [who.id], properties: ['createdAt'] }, 'c']])).list[0]?.createdAt ?? '';
     return tokenFor(secret, `${who.id}/${at}`, name);
   };
+  // Domains added but not verified yet. An entry whose token no longer matches (the account id was reused) is ignored.
+  // ponytail: whole file rewritten on every change; at most maxDomains entries per account.
+  const pendingFile = cfg.pendingDomainsFile;
+  if (!pendingFile) console.warn('domains: PENDING_DOMAINS_FILE is not set; domains waiting for verification are only kept until restart');
+  const pending = pendingFile && existsSync(pendingFile) ? JSON.parse(readFileSync(pendingFile, 'utf8')) : {};
+  const setPending = (who, name, token) => {
+    const p = { ...pending[who.id] };
+    if (token) p[name] = token; else delete p[name];
+    if (Object.keys(p).length) pending[who.id] = p; else delete pending[who.id];
+    if (pendingFile) { writeFileSync(pendingFile + '.tmp', JSON.stringify(pending)); renameSync(pendingFile + '.tmp', pendingFile); }
+  };
+  const pendingOf = async (who) => {
+    const out = [];
+    for (const [name, token] of Object.entries(pending[who.id] ?? {})) if (token === await tokenOf(who, name)) out.push(name);
+    return out;
+  };
   /** Switch every address on the domain on or off, the members' too (paused domains neither send nor receive). */
   const switchAll = async (d, enable) => {
     const members = await memberAddresses(jmap, d, await claimOf(jmap, d));
@@ -373,7 +390,8 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
       const owners = new Map(given.length ? (await jmap([['x:Account/get', { ids: [...new Set(given.map((d) => d.meta.owner).filter(Boolean))], properties: ['emailAddress'] }, 'o']])).list.map((a) => [a.id, a.emailAddress]) : []);
       const memberOf = given.flatMap((d) => Object.values(theirs).filter((a) => a.domainId === d.id && d.meta.members[who.id].includes(a.name))
         .map((a) => ({ domain: d.name, name: a.name, email: `${a.name}@${d.name}`, enabled: a.enable !== false, owner: owners.get(d.meta.owner) ?? null })));
-      return { domains: await Promise.all(mine.map((d) => view(d, who))), maxDomains, memberOf };
+      const waiting = (await pendingOf(who)).filter((name) => !mine.some((d) => d.name === name));
+      return { domains: await Promise.all([...mine.map((d) => view(d, who)), ...waiting.map((name) => view({ name }, who))]), maxDomains, memberOf };
     },
     // Add a domain, or "Check again" while it waits for its TXT record. Claimed the moment the record is seen.
     'POST ': async (who, req) => {
@@ -386,18 +404,24 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
       if (mine) return { domain: await view(mine, who) };
       const existing = (await jmap([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).list.some((d) => d.name === name);
       if (existing) return [409, 'taken', 'That domain is already in use on this server.'];
-      if (all.filter((d) => d.meta.owner === who.id).length >= maxDomains) return [409, 'too_many', `You can add up to ${maxDomains} domains.`];
-      const pending = await view({ name }, who);
-      if (!pending.records[0].ok) return { domain: pending };
+      const waiting = (await pendingOf(who)).filter((n) => n !== name);
+      if (all.filter((d) => d.meta.owner === who.id).length + waiting.length >= maxDomains) return [409, 'too_many', `You can add up to ${maxDomains} domains.`];
+      const token = await tokenOf(who, name);
+      const unverified = await view({ name, meta: { token } }, who);
+      if (!unverified.records[0].ok) {
+        if (pending[who.id]?.[name] !== token) setPending(who, name, token);
+        return { domain: unverified };
+      }
 
       const wait = claims.take(who.id);
       if (wait) return [429, 'rate_limited', 'You’ve added a lot of domains recently. Try again tomorrow.', { retryAfter: wait }];
       const now = new Date().toISOString();
-      const meta = { owner: who.id, token: await tokenOf(who, name), added: now, checked: now, missing: null, paused: false };
+      const meta = { owner: who.id, token, added: now, checked: now, missing: null, paused: false };
       const r = await jmap([['x:Domain/set', { create: { d: { name, description: writeMeta(meta) } } }, 'c']]);
       if (r.notCreated?.d?.type === 'primaryKeyViolation') return [409, 'taken', 'That domain is already in use on this server.'];
       if (!r.created?.d) throw Object.assign(new Error('domain create refused'), { detail: r.notCreated?.d });
       const d = { id: r.created.d.id, name, meta };
+      if (pending[who.id]?.[name]) setPending(who, name, null);
       console.log(`domains: ${who.name} claimed ${name}`);
       const no = await addAddress(who, d, who.name); // their own name, e.g. ann@ann.dev
       if (no && no[1] !== 'retired') throw Object.assign(new Error('main address refused'), { detail: no });
@@ -471,6 +495,7 @@ export function domainRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rat
     if (sub) {
       // The owner manages the domain. A member gets one thing: giving up their own address (DELETE members).
       d = (await customDomains(jmap)).find((x) => x.name === m[1] && (x.meta.owner === who.id || (key === 'DELETE members' && x.meta.members?.[who.id])));
+      if (!d && key === 'DELETE domain' && pending[who.id]?.[m[1]]) return setPending(who, m[1], null), send(res, 200, { ok: true }), true;
       if (!d) return fail(res, 404, 'not_found', 'That domain isn’t on your account.'), true;
     }
     let out;

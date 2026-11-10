@@ -611,6 +611,8 @@ export default {
   'compose.from': 'De',
   'compose.to': 'À',
   'compose.cc': 'Cc',
+  'compose.groupExpand': 'Afficher et modifier les adresses de {name}',
+  'compose.groupRemove': 'Retirer {name}',
   'compose.bcc': 'Cci',
   'compose.subject': 'Objet',
   'compose.message': 'Message',

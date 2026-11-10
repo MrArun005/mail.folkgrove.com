@@ -4,7 +4,7 @@ import type { Address, Attachment, Draft, SharedFile, Template } from './jmap';
 import { Button } from './Button';
 import { Icon, type IconName } from './icons';
 import { nextAt, usualTime, type When } from './when';
-import { cleanHtml, displayName, fileLinkHtml, fileLinks, fileSize, formatAddresses, htmlToText, isReplyLead, parseAddresses, signatureHtml, type Signature } from './mailutil';
+import { cleanHtml, displayName, fileLinkHtml, fileLinks, fileSize, formatAddresses, htmlToText, isReplyLead, parseAddresses, signatureHtml, withGroups, type Signature } from './mailutil';
 import { RecipientInput } from './RecipientInput';
 import { canRewrite, rewrite, type RewriteStyle } from './ai';
 import { Menu, TimeChoices } from './Menu';
@@ -35,7 +35,7 @@ export interface ComposeApi {
   activity?: (email: string) => Promise<string[]>;
 }
 
-/** A contact group offered in recipient autocomplete; picking it adds every member. */
+/** A contact group offered in recipient autocomplete; picking it adds one chip that stands for every member. */
 export interface RecipientGroup { name: string; members: Address[] }
 const phone = () => typeof matchMedia === 'function' && matchMedia('(max-width: 860px)').matches;
 
@@ -66,6 +66,11 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
   const [showCc, setShowCc] = useState(initial.cc.length > 0);
   const [bcc, setBcc] = useState(formatAddresses(initial.bcc ?? []));
   const [showBcc, setShowBcc] = useState(!!initial.bcc?.length);
+  // Groups picked as one chip per field; their members become plain addresses in every draft saved and sent.
+  // ponytail: a reopened draft shows the members' addresses, not the chip (the draft holds addresses only).
+  const [picked, setPicked] = useState<Record<'to' | 'cc' | 'bcc', RecipientGroup[]>>({ to: [], cc: [], bcc: [] });
+  const chipsFor = (f: 'to' | 'cc' | 'bcc') => ({ chips: picked[f], onChips: (g: RecipientGroup[]) => { setPicked((p) => ({ ...p, [f]: g })); changed(); } });
+  const toAll = withGroups(to, picked.to), ccAll = showCc ? withGroups(cc, picked.cc) : '', bccAll = showBcc ? withGroups(bcc, picked.bcc) : '';
   const [from, setFrom] = useState(initial.from ?? identities[0]?.email ?? '');
   const [subject, setSubject] = useState(initial.subject);
   const [files, setFiles] = useState<Attachment[]>(initial.attachments);
@@ -77,7 +82,7 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
   const [passcode, setPasscode] = useState('');
   // ponytail: your key is kept under the account's main address (identities[0]), which is its sign-in name.
   const me = identities[0]?.email ?? '';
-  const keys = useRecipientKeys([to, showCc ? cc : '', showBcc ? bcc : ''], me);
+  const keys = useRecipientKeys([toAll, ccAll, bccAll], me);
   const [uploading, setUploading] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState('');
@@ -189,7 +194,7 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
     const attachments = files.filter((a) => !a.cid || html.includes(`cid:${a.cid}`));
     return {
       ...initial, id: draftId.current, subject: subject.trim(), html, text: htmlToText(html), attachments, receipt,
-      to: parseAddresses(to).list, cc: parseAddresses(showCc ? cc : '').list, bcc: parseAddresses(showBcc ? bcc : '').list,
+      to: parseAddresses(toAll).list, cc: parseAddresses(ccAll).list, bcc: parseAddresses(bccAll).list,
       from: from || undefined, followUpDays: followUp, encrypt: encrypt || undefined,
     };
   };
@@ -243,7 +248,7 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
   // Schedule send's first choice: when the (first) recipient is usually at their mail, judged from when their
   // recent mail reached you. Looked up once per address, a moment after you stop typing it.
   const [awake, setAwake] = useState<When | null>(null);
-  const firstTo = parseAddresses(to).list[0];
+  const firstTo = parseAddresses(toAll).list[0];
   const firstEmail = firstTo?.email.toLowerCase() ?? '';
   useEffect(() => {
     setAwake(null);
@@ -291,7 +296,7 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
   }
 
   async function send(sendAt?: Date) {
-    const tt = parseAddresses(to), c = parseAddresses(showCc ? cc : ''), b = parseAddresses(showBcc ? bcc : '');
+    const tt = parseAddresses(toAll), c = parseAddresses(ccAll), b = parseAddresses(bccAll);
     const bad = [...tt.invalid, ...c.invalid, ...b.invalid];
     if (bad.length) return setError(t('compose.checkAddresses', { count: bad.length, list: bad.join(', ') }));
     if (!tt.list.length && !c.list.length && !b.list.length) return setError(t('compose.addRecipient'));
@@ -371,18 +376,18 @@ export function Compose({ initial, contacts, groups, api, signatures, identities
       )}
       <label className="field">
         <span>{t('compose.to')}</span>
-        <RecipientInput label={t('compose.to')} inputRef={toRef} value={to} onChange={(v) => { setTo(v); changed(); }} contacts={contacts} groups={groups} />
+        <RecipientInput label={t('compose.to')} inputRef={toRef} value={to} onChange={(v) => { setTo(v); changed(); }} contacts={contacts} groups={groups} {...chipsFor('to')} />
         {!showCc && <Button variant="link" onClick={() => setShowCc(true)}>{t('compose.cc')}</Button>}
         {!showBcc && <Button variant="link" onClick={() => setShowBcc(true)}>{t('compose.bcc')}</Button>}
       </label>
       {showCc && (
         <label className="field"><span>{t('compose.cc')}</span>
-          <RecipientInput label={t('compose.cc')} value={cc} onChange={(v) => { setCc(v); changed(); }} contacts={contacts} groups={groups} />
+          <RecipientInput label={t('compose.cc')} value={cc} onChange={(v) => { setCc(v); changed(); }} contacts={contacts} groups={groups} {...chipsFor('cc')} />
         </label>
       )}
       {showBcc && (
         <label className="field"><span>{t('compose.bcc')}</span>
-          <RecipientInput label={t('compose.bcc')} value={bcc} onChange={(v) => { setBcc(v); changed(); }} contacts={contacts} groups={groups} />
+          <RecipientInput label={t('compose.bcc')} value={bcc} onChange={(v) => { setBcc(v); changed(); }} contacts={contacts} groups={groups} {...chipsFor('bcc')} />
         </label>
       )}
       <label className="field"><span>{t('compose.subject')}</span>
