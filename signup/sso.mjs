@@ -118,11 +118,15 @@ export function ssoRoutes({ cfg, send, fail, RateLimiter, ipOf }) {
     if (wait) return back(res, { sso_error: 'rate_limited' }), true;
 
     if (m[1] === '/start') {
-      const now = Date.now();
-      for (const [k, v] of pending) if (now - v.at > 600e3) pending.delete(k);
+      const now = Date.now(), net = ipOf(req);
+      let mine = 0;
+      for (const [k, v] of pending) if (now - v.at > 600e3) pending.delete(k); else if (v.net === net) mine++;
+      // At most 20 unfinished sign-ins per network: the rate limit alone lets one network leave 300 in 10 minutes,
+      // and a few dozen networks would fill the table and turn everyone away.
+      if (mine >= 20) return back(res, { sso_error: 'rate_limited' }), true;
       if (pending.size > 10_000) return back(res, { sso_error: 'busy' }), true;
       const state = randomBytes(24).toString('base64url'), nonce = randomBytes(24).toString('base64url'), verifier = randomBytes(48).toString('base64url');
-      pending.set(state, { nonce, verifier, at: now });
+      pending.set(state, { nonce, verifier, at: now, net });
       let d;
       try { d = await discovery(); } catch (e) { console.error('sso: discovery failed:', e.message); return back(res, { sso_error: 'unavailable' }), true; }
       // ponytail: Google wants access_type=offline for a refresh token and rejects the offline_access scope; others want the scope.

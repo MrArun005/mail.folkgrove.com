@@ -176,6 +176,16 @@ test('SSO relying party refuses a token with the wrong nonce, audience or issuer
   }
 });
 
+test('SSO: unfinished sign-ins are capped per network, so a few networks cannot fill the table for everyone', async (t) => {
+  const idp = await mockProvider();
+  t.after(() => idp.srv.close());
+  const h = await harness(t, idp, { cfg: { clientIpHeader: 'x-real-ip' } });
+  const start = (ip) => fetch(`${h.base}/api/sso/start`, { redirect: 'manual', headers: { 'X-Real-IP': ip } }).then((r) => r.headers.get('location'));
+  for (let i = 0; i < 20; i++) assert.ok(!(await start('203.0.113.7')).startsWith('/?'), `start ${i}`);
+  assert.equal(await start('203.0.113.7'), '/?sso_error=rate_limited'); // under the per-minute limit (30), over the pending cap
+  assert.ok(!(await start('198.51.100.9')).startsWith('/?'), 'another network still signs in');
+});
+
 test('ssoIdentity: verified address only, tenant, never admin, reserved or retired names', () => {
   const ok = { email: 'Ann@openmail.test', email_verified: true, hd: 'openmail.test', tid: 'T1' };
   assert.deepEqual(ssoIdentity(ok), { address: 'ann@openmail.test' });
