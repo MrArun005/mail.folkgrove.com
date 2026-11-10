@@ -11,9 +11,12 @@ import { locale, t } from './i18n';
  * account is on its ADMINS list.
  */
 type Tab = 'overview' | 'users' | 'teams' | 'limits' | 'queue' | 'held' | 'domains' | 'abuse' | 'retention' | 'audit';
+// What the helpdesk role (signup/admin.mjs HELPDESK_ROUTES) can open; the server refuses the rest anyway.
+const HELPDESK_TABS: Tab[] = ['overview', 'users', 'held', 'abuse', 'audit'];
 const TABS = [['overview', 'admin.tabOverview'], ['users', 'admin.tabUsers'], ['teams', 'admin.tabTeams'], ['limits', 'admin.tabLimits'], ['queue', 'admin.tabQueue'], ['held', 'admin.tabHeld'], ['domains', 'admin.tabDomains'], ['abuse', 'admin.tabAbuse'], ['retention', 'admin.tabRetention'], ['audit', 'admin.tabAudit']] as const;
 
-interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; sending: boolean; admin: boolean; newAccount: boolean }
+interface User { id: string; name: string; email: string; description: string; createdAt: string; used: number; quota: number | null; aliases: number; enabled: boolean; sending: boolean; admin: boolean; helpdesk?: boolean; newAccount: boolean }
+interface Stats { accounts: number; queued: number; blockedIps: number; newAccounts: number; suspended: number; held: number | null; role: 'admin' | 'helpdesk' }
 interface Held { id: string; at: string; login: string; from: string; to: string[]; subject: string; size: number; score: number; reasons: string[] }
 interface Blocked { id: string; address: string; reason: string; createdAt: string; expiresAt: string | null }
 interface Queued { id: string; from: string; createdAt: string; nextRetry: string | null; size: number; recipients: { to: string; status: string; attempts: number; nextAttempt: string | null; error: string | null; code: string | null }[] }
@@ -56,25 +59,29 @@ const act = async (fn: () => Promise<unknown>, then?: () => unknown) => {
 
 export function Admin({ client }: { client: Jmap }) {
   const [tab, setTab] = useState<Tab>('overview');
+  // The overview is the first call; it also says the caller's role, which decides the tabs and buttons shown.
+  const overview = useLoad(() => client.admin<Stats>('overview'));
+  const desk = overview.data?.role === 'helpdesk';
+  const tabs = TABS.filter(([id]) => !desk || HELPDESK_TABS.includes(id));
   return (
     <div className="admin">
       <header className="admin-head">
         <p className="wordmark">OpenMail</p>
         <h1>{t('admin.title')}</h1>
-        <span className="fine grow">{client.username}</span>
+        <span className="fine grow">{client.username}{desk && ` · ${t('admin.roleHelpdesk')}`}</span>
         <Button size="sm" onClick={() => location.assign('/')}>{t('login.backToMail')}</Button>
       </header>
       <nav className="tabs" role="tablist">
-        {TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'tab on' : 'tab'} onClick={() => setTab(id)}>{t(label)}</button>)}
+        {tabs.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'tab on' : 'tab'} onClick={() => { setTab(id); if (id === 'overview') overview.reload(); }}>{t(label)}</button>)}
       </nav>
       <main>
-        {tab === 'overview' && <Overview client={client} go={setTab} />}
-        {tab === 'users' && <Users client={client} />}
+        {tab === 'overview' && <Overview {...overview} go={setTab} tabs={tabs.map(([id]) => id)} />}
+        {tab === 'users' && <Users client={client} desk={desk} />}
         {tab === 'teams' && <Teams client={client} />}
         {tab === 'limits' && <><BlockedIps client={client} /><NewAccounts client={client} /></>}
         {tab === 'queue' && <Queue client={client} />}
         {tab === 'domains' && <Domains client={client} />}
-        {tab === 'abuse' && <><Suspended client={client} /><Inactive client={client} /></>}
+        {tab === 'abuse' && <><Suspended client={client} />{!desk && <Inactive client={client} />}</>}
         {tab === 'held' && <HeldMail client={client} />}
         {tab === 'retention' && <RetentionAdmin client={client} />}
         {tab === 'audit' && <AuditLog client={client} />}
@@ -83,8 +90,7 @@ export function Admin({ client }: { client: Jmap }) {
   );
 }
 
-function Overview({ client, go }: { client: Jmap; go: (tab: Tab) => void }) {
-  const { data, error } = useLoad(() => client.admin<{ accounts: number; queued: number; blockedIps: number; newAccounts: number; suspended: number; held: number | null }>('overview'));
+function Overview({ data, error, go, tabs }: { data: Stats | null; error: string; go: (tab: Tab) => void; tabs: Tab[] }) {
   if (error) return <p className="error" role="alert">{error}</p>;
   const stats: [string, number | undefined, Tab][] = [[t('admin.statAccounts'), data?.accounts, 'users'], [t('admin.statQueued'), data?.queued, 'queue'],
     [t('admin.blockedIps'), data?.blockedIps, 'limits'], [t('admin.statNewAccounts'), data?.newAccounts, 'limits'], [t('admin.sendingSuspended'), data?.suspended, 'abuse'],
@@ -92,7 +98,7 @@ function Overview({ client, go }: { client: Jmap; go: (tab: Tab) => void }) {
   return (
     <section>
       <div className="stats">
-        {stats.map(([label, n, tab]) => (
+        {stats.filter(([, , tab]) => tabs.includes(tab)).map(([label, n, tab]) => (
           <div key={label} className="stat">
             <span className="num">{n ?? '–'}</span>
             <span className="fine">{label}</span>
@@ -104,7 +110,8 @@ function Overview({ client, go }: { client: Jmap; go: (tab: Tab) => void }) {
   );
 }
 
-function Users({ client }: { client: Jmap }) {
+/** desk: the helpdesk role sees only sign-in, password reset and lifting a suspension, and not on helpdesk accounts. */
+function Users({ client, desk }: { client: Jmap; desk: boolean }) {
   const [q, setQ] = useState('');
   const [search, setSearch] = useState('');
   const { data, error, reload } = useLoad(() => client.admin<{ users: User[]; total: number }>(`users?q=${encodeURIComponent(search)}`), [search]);
@@ -134,11 +141,11 @@ function Users({ client }: { client: Jmap }) {
         <input className="input" type="search" placeholder={t('admin.searchUsersPlaceholder')} aria-label={t('admin.searchUsers')} value={q} onChange={(e) => setQ(e.target.value)} />
         <Button type="submit">{t('admin.search')}</Button>
       </form>
-      <form className="admin-bar" onSubmit={create}>
+      {!desk && <form className="admin-bar" onSubmit={create}>
         <label>{t('admin.newAccount')}<input className="input" placeholder={t('admin.usernamePlaceholder')} autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} /></label>
         <label className="narrow">{t('admin.storageGb')}<input className="input" inputMode="decimal" value={gb} onChange={(e) => setGb(e.target.value)} /></label>
         <Button type="submit" variant="primary">{t('admin.createAccount')}</Button>
-      </form>
+      </form>}
       {msg && <p className="error" role="alert">{msg}</p>}
       {error && <p className="error" role="alert">{error}</p>}
       {data && (data.users.length === 0 ? <p className="empty">{t('admin.noUsersMatch', { query: search })}</p> : <>
@@ -158,22 +165,23 @@ function Users({ client }: { client: Jmap }) {
                   {u.newAccount && <span className="pill pill--warn">{t('admin.newAccountLimits')}</span>}
                   {!u.sending && <span className="pill pill--warn">{t('admin.sendingSuspended')}</span>}
                   {u.admin && <span className="pill">{t('admin.serverAdmin')}</span>}
+                  {u.helpdesk && <span className="pill">{t('admin.roleHelpdesk')}</span>}
                 </td>
                 <td className="acts">
-                  {!u.admin && <>
+                  {!u.admin && !(desk && u.helpdesk) && <>
                     <Button size="sm" variant="quiet" onClick={async () => {
                       if (!(await confirmIt({ title: t('admin.resetTitle', { email: u.email }), body: t('admin.resetBody'), confirm: t('admin.resetPassword'), danger: true }))) return;
                       await act(async () => { const r = await patch(u, { resetPassword: true }); await showPassword(u.email, r.password!); });
                     }}>{t('admin.resetPassword')}</Button>
-                    <Button size="sm" variant="quiet" onClick={async () => {
+                    {!desk && <Button size="sm" variant="quiet" onClick={async () => {
                       const v = await promptIt({ title: t('admin.storageTitle', { email: u.email }), body: t('admin.storageBody', { used: size(u.used) }), label: t('admin.limitGb'), value: u.quota ? String(+(u.quota / GB).toFixed(2)) : '0', confirm: t('admin.setLimit') });
                       if (v === null) return;
                       const n = Number(v);
                       if (!(n >= 0)) return notify(t('admin.notNumber'), t('admin.notNumberBody'));
                       await act(() => patch(u, { quotaBytes: n === 0 ? null : Math.round(n * GB) }), reload);
-                    }}>{t('admin.setStorage')}</Button>
+                    }}>{t('admin.setStorage')}</Button>}
                     {u.sending
-                      ? <Button size="sm" variant="quiet" onClick={async () => {
+                      ? !desk && <Button size="sm" variant="quiet" onClick={async () => {
                           if (await confirmIt({ title: t('admin.pauseTitle', { email: u.email }), body: t('admin.pauseBody'), confirm: t('admin.pauseSending'), danger: true }))
                             await act(() => patch(u, { sending: false }), reload);
                         }}>{t('admin.pauseSending')}</Button>
@@ -185,15 +193,15 @@ function Users({ client }: { client: Jmap }) {
                         }}>{t('admin.disable')}</Button>
                       : <Button size="sm" variant="quiet" onClick={() => act(() => patch(u, { enabled: true }), reload)}>{t('admin.enable')}</Button>}
                     {u.sending
-                      ? <Button size="sm" variant="quiet" onClick={async () => {
+                      ? !desk && <Button size="sm" variant="quiet" onClick={async () => {
                           if (await confirmIt({ title: t('admin.suspendTitle', { email: u.email }), body: t('admin.suspendBody'), confirm: t('admin.suspendSending'), danger: true }))
                             await act(() => patch(u, { sending: false }), reload);
                         }}>{t('admin.suspendSending')}</Button>
                       : <Button size="sm" variant="quiet" onClick={() => act(() => patch(u, { sending: true }), reload)}>{t('admin.allowSending')}</Button>}
-                    <Button size="sm" variant="quiet" icon="trash" label={t('admin.deleteLabel', { email: u.email })} onClick={async () => {
+                    {!desk && <Button size="sm" variant="quiet" icon="trash" label={t('admin.deleteLabel', { email: u.email })} onClick={async () => {
                       if (await confirmIt({ title: t('admin.deleteTitle', { email: u.email }), body: t('admin.deleteUserBody'), confirm: t('admin.deleteAccount'), danger: true }))
                         await act(() => client.admin(`users/${u.id}`, 'DELETE'), reload);
-                    }} />
+                    }} />}
                   </>}
                 </td>
               </tr>
@@ -483,7 +491,7 @@ function Inactive({ client }: { client: Jmap }) {
   );
 }
 
-interface AuditEntry { at: string; admin: string; action: string; target: string | null; detail?: string[]; outcome: string }
+interface AuditEntry { at: string; admin: string; role?: 'admin' | 'helpdesk'; action: string; target: string | null; detail?: string[]; outcome: string }
 
 /** One "what was asked" code from the audit log ("quota:5000000", "member_add:sam@x") in words; unknown ones as they are. */
 function auditDetail(code: string) {
@@ -518,7 +526,7 @@ function AuditLog({ client }: { client: Jmap }) {
             {data.entries.map((e, i) => (
               <tr key={`${e.at}${i}`}>
                 <td data-label={t('admin.colTime')}>{when(e.at)}</td>
-                <td data-label={t('admin.colAdmin')}>{e.admin}</td>
+                <td data-label={t('admin.colAdmin')}>{e.admin}{e.role === 'helpdesk' && <span className="fine"> {t('admin.roleHelpdesk')}</span>}</td>
                 <td data-label={t('admin.colAction')}>{named(AUDIT_ACTION, e.action)}{e.detail?.length ? <span className="fine"> · {e.detail.map(auditDetail).join(', ')}</span> : null}</td>
                 <td data-label={t('admin.colTarget')}>{e.target ?? ''}</td>
                 <td data-label={t('admin.colOutcome')}>{e.outcome === 'ok'

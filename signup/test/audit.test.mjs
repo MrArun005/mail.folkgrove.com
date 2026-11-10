@@ -155,7 +155,7 @@ test('admin console writes the audit log: who, what, whom, outcome; no secrets; 
     assert.equal(e.admin, boss);
     assert.ok(Math.abs(Date.now() - Date.parse(e.at)) < 60_000, e.at);
     assert.equal(e.ip, '127.0.0.1');
-    assert.deepEqual(Object.keys(e).filter((k) => !['at', 'admin', 'ip', 'action', 'target', 'detail', 'outcome'].includes(k)), []);
+    assert.deepEqual(Object.keys(e).filter((k) => !['at', 'admin', 'role', 'ip', 'action', 'target', 'detail', 'outcome'].includes(k)), []);
   }
   // Every route that changes something has a name in the log.
   assert.deepEqual(Object.values(AUDITED).filter((a) => !/^[a-z]+\.[a-z]+$/.test(a)), []);

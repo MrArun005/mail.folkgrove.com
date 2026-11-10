@@ -1763,4 +1763,5 @@ export default {
   'smarts.verifiedTitle': 'مُرسِل موثَّق: أكّد {domain} أن هذه الرسالة منه (DMARC)',
   'smarts.careful': 'احذر من هذه الرسالة.',
   'smarts.carefulBody': 'يقول اسم المرسِل إنه {brand}، لكن تعذّر التحقق من أنها منه فعلًا (وصلت من {email}). لا تنقر على روابطها ولا تشارك كلمات المرور أو بيانات الدفع.',
+  'admin.roleHelpdesk': 'الدعم الفني', // review: new
 } satisfies Catalog;

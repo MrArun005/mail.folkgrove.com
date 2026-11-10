@@ -1756,4 +1756,5 @@ export default {
   'smarts.verifiedTitle': 'Expéditeur vérifié : {domain} a confirmé que ce message vient bien de lui (DMARC)',
   'smarts.careful': 'Méfiez-vous de ce message.',
   'smarts.carefulBody': 'Le nom de l’expéditeur indique {brand}, mais rien ne confirme que le message vient d’eux (il vient de {email}). Ne cliquez pas sur ses liens et ne communiquez ni mot de passe ni données de paiement.',
+  'admin.roleHelpdesk': 'support', // review: new
 } satisfies Catalog;

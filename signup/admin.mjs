@@ -1,6 +1,8 @@
 // Admin console API (/api/admin/*): users, team mailboxes (groups), blocked IPs, new-account limits and the outgoing queue.
 // Who is an admin: the ADMINS setting (comma-separated usernames on DOMAIN). The caller proves who they are with
 // their own sign-in token (checked by Stalwart, as for aliases); then their name must be on that list.
+// HELPDESK lists support staff: they get only the routes in HELPDESK_ROUTES (deny by default), and never act on an
+// admin or another helpdesk account.
 // This is a short, explicit list of Stalwart admin operations, never a passthrough.
 // Every change made here (anything but a GET) goes into the audit log (audit.mjs), written in handle() below.
 import { randomBytes } from 'node:crypto';
@@ -62,12 +64,18 @@ export const AUDITED = {
   'PUT retention': 'retention.rules', 'POST retention/run': 'retention.run', 'PATCH retention/:id': 'retention.account',
 };
 
+// What a helpdesk account may call. Anything not here is refused (403) before its handler runs.
+export const HELPDESK_ROUTES = new Set(['GET overview', 'GET users', 'PATCH users/:id', 'GET suspended', 'GET held', 'POST held/:id/release', 'DELETE held/:id', 'GET audit']);
+// ...and of PATCH users/:id only these (sending: true only: lift a suspension, never impose one).
+const HELPDESK_PATCH = ['enabled', 'resetPassword', 'sending'];
+
 const password = () => randomBytes(12).toString('base64url'); // 16 characters, about 96 bits
 
 export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, abuse, hold = null, retention = policyStore(null) }) {
   const admins = new Set(cfg.admins ?? []);
-  // Admin rights go by name, so admin names can never be signed up for, and the console can't touch admin accounts.
-  cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins];
+  const helpdesk = new Set((cfg.helpdesk ?? []).filter((n) => !admins.has(n))); // on both lists: an admin
+  // Admin rights go by name, so admin (and helpdesk) names can never be signed up for, and the console can't touch admin accounts.
+  cfg.extraReserved = [...(cfg.extraReserved ?? []), ...admins, ...helpdesk];
   const reloadLookups = () => jmap([['x:Action/set', { create: { r: { '@type': 'ReloadLookupStores' } } }, 'r']]);
   const isAdmin = (a) => a.roles?.['@type'] !== 'User' || admins.has(String(a.name).toLowerCase());
   const caller = callerOf({ cfg, jmap, getDomainId });
@@ -90,7 +98,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   const account = async (id) => (await get('x:Account', [id], USER_PROPS))[0];
 
   const handlers = {
-    'GET overview': async () => {
+    'GET overview': async (_req, _url, _id, who) => { // the console's first call, so it also tells the UI the caller's role
       const [a, q, b, n] = await Promise.all([
         query('x:Account', { filter: { '@type': 'User' }, calculateTotal: true, limit: 0 }),
         query('x:QueuedMessage', { calculateTotal: true, limit: 0 }),
@@ -98,7 +106,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         newTier(),
       ]);
       const suspended = Object.values(abuse?.state.suspensions ?? {}).filter((h) => !h.at(-1)?.liftedAt).length;
-      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length, suspended, held: hold ? hold.list().length : null };
+      return { accounts: a.total, queued: q.total, blockedIps: b.total, newAccounts: n.length, suspended, held: hold ? hold.list().length : null, role: who.role };
     },
 
     'GET users': async (_req, url) => {
@@ -107,7 +115,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
       const r = await query('x:Account', { filter: { '@type': 'User', ...(q && { text: q }) }, sort: [{ property: 'name' }], limit: 200, calculateTotal: true });
       const [list, tier] = await Promise.all([get('x:Account', r.ids, USER_PROPS), newTier()]);
       const keys = new Set(tier.map((k) => k.key.toLowerCase()));
-      return { users: list.map((a) => userView(a, keys)), total: r.total };
+      return { users: list.map((a) => ({ ...userView(a, keys), helpdesk: helpdesk.has(String(a.name).toLowerCase()) })), total: r.total };
     },
 
     'POST users': async (req, _url, _id, _who, note) => {
@@ -140,6 +148,8 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         typeof body.enabled === 'boolean' && (body.enabled ? 'enable' : 'disable'),
         'quotaBytes' in body && `quota:${body.quotaBytes === null ? 'none' : Number(body.quotaBytes) || 0}`, body.resetPassword === true && 'password_reset'].filter(Boolean));
       if (isAdmin(a)) return [403, 'protected', 'Administrator accounts are managed in Stalwart’s own admin.'];
+      if (who.role === 'helpdesk' && (helpdesk.has(String(a.name).toLowerCase()) || body.sending === false || Object.keys(body).some((k) => !HELPDESK_PATCH.includes(k))))
+        return [403, 'not_allowed', 'The helpdesk can’t make that change. Ask an administrator.'];
       if (typeof body.sending === 'boolean' && abuse) { // suspend or allow sending, with the reason kept (abuse.mjs)
         if (body.sending) await abuse.liftAccount(a, who.name); else await abuse.suspendAccount(a, 'An administrator suspended sending.', who.name);
         a = await account(id);
@@ -339,25 +349,27 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   return async function handle(req, res, url) {
     const m = url.pathname.match(new RegExp(`^/api/admin/(overview|users|blocked|new-accounts|queue|domains|suspended|inactive|groups|held|retention|audit)(?:/(${ID}))?(/retry|/release)?$`));
     if (!m) return false;
-    if (!admins.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS is set
+    if (!admins.size && !helpdesk.size) return fail(res, 404, 'not_found', 'Not found.'), true; // console off unless ADMINS (or HELPDESK) is set
     const ip = ipOf(req), blocked = badAuth.take(ip), win = badAuth.window(ip);
     if (blocked) return fail(res, 429, 'rate_limited', 'Too many failed sign-ins from your network. Try again later.', { retryAfter: blocked }), true;
     let who;
     try { who = await caller(req); } catch (e) { badAuth.refund(ip, win); throw e; }
     if (!who) return fail(res, 401, 'unauthorized', 'Please sign in again.'), true;
     badAuth.refund(ip, win);
-    if (!admins.has(who.name)) return fail(res, 403, 'not_admin', 'This account isn’t an administrator.'), true;
+    who.role = admins.has(who.name) ? 'admin' : helpdesk.has(who.name) ? 'helpdesk' : null;
+    if (!who.role) return fail(res, 403, 'not_admin', 'This account isn’t an administrator.'), true;
 
     let key = `${req.method} ${m[1]}${m[2] ? '/:id' : ''}${m[3] ?? ''}`;
     if (key === 'POST retention/:id') key = `POST retention/${m[2]}`; // preview, run
     const fn = handlers[key];
     if (!fn) return fail(res, 405, 'method_not_allowed', 'Not allowed.'), true;
+    if (who.role === 'helpdesk' && !HELPDESK_ROUTES.has(key)) return fail(res, 403, 'not_allowed', 'The helpdesk can’t do that. Ask an administrator.'), true;
     // The audit log: every change an administrator asks for passes here, so this is the one place that records it,
     // whatever its outcome ('ok', or the error code the admin was shown). Handlers only say whom it was about and
     // what was asked (note): names, addresses and numbers, never the request body or a password.
     // Not recorded: reads (GET), and requests refused before this point. Anyone signed in can earn a 403 here, and
     // letting them write lines would let them push the real ones out of a bounded log.
-    const entry = AUDITED[key] ? { at: new Date().toISOString(), admin: who.name, ip, action: AUDITED[key], target: m[2] ?? null } : null;
+    const entry = AUDITED[key] ? { at: new Date().toISOString(), admin: who.name, role: who.role, ip, action: AUDITED[key], target: m[2] ?? null } : null;
     const note = (target, ...detail) => { if (entry && target) entry.target = String(target); if (entry && detail.length) entry.detail = [...(entry.detail ?? []), ...detail.map(String)]; };
     const done = (outcome) => { if (entry) audit.record({ ...entry, outcome }); };
     let out;

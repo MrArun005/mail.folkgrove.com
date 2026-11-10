@@ -1714,6 +1714,7 @@ export const en = {
   'admin.notSince': 'Not since {date}',
   'admin.dueBlocking': 'Due for blocking',
   'admin.reminded': { one: 'Reminded ({count} day before)', other: 'Reminded ({count} days before)' },
+  'admin.roleHelpdesk': 'helpdesk',
   // ── Inbox smarts: tabs, purchase and travel cards, add to calendar, verified senders ──
   // context: inbox tab for marketing mail (Gmail calls it Promotions)
   'smarts.promotions': 'Promotions',

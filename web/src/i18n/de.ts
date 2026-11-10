@@ -1753,4 +1753,5 @@ export default {
   'smarts.verifiedTitle': 'Bestätigter Absender: {domain} hat bestätigt, dass diese Nachricht von dort stammt (DMARC)',
   'smarts.careful': 'Vorsicht bei dieser Nachricht.',
   'smarts.carefulBody': 'Der Absendername sagt {brand}, aber es ließ sich nicht bestätigen, dass sie von dort kommt (sie kommt von {email}). Klicke auf keine Links und gib keine Passwörter oder Zahlungsdaten ein.',
+  'admin.roleHelpdesk': 'Helpdesk', // review: new
 } satisfies Catalog;

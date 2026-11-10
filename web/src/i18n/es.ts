@@ -1752,4 +1752,5 @@ export default {
   'smarts.verifiedTitle': 'Remitente verificado: {domain} confirmó que este mensaje es suyo (DMARC)',
   'smarts.careful': 'Ten cuidado con este mensaje.',
   'smarts.carefulBody': 'El nombre del remitente dice {brand}, pero no se pudo verificar que venga de ellos (viene de {email}). No hagas clic en sus enlaces ni compartas contraseñas ni datos de pago.',
+  'admin.roleHelpdesk': 'soporte', // review: new
 } satisfies Catalog;

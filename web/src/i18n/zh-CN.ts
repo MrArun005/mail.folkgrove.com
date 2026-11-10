@@ -1747,4 +1747,5 @@ export default {
   'smarts.verifiedTitle': '已验证的发件人：{domain} 确认这封邮件来自他们 (DMARC)',
   'smarts.careful': '请小心这封邮件。',
   'smarts.carefulBody': '发件人名称显示为 {brand}，但无法验证邮件确实来自他们（实际来自 {email}）。不要点击其中的链接，也不要提供密码或付款信息。',
+  'admin.roleHelpdesk': '技术支持', // review: new
 } satisfies Catalog;

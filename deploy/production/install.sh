@@ -30,6 +30,7 @@ Usage: ./install.sh [options]
   --email E             your email for Let's Encrypt expiry notices
   --webmail-host H      an easier address for webmail (e.g. mail.example.com); it redirects to the mail host
   --admins NAMES        who may use the admin console at /admin (comma-separated; default: the first mailbox)
+  --helpdesk NAMES      support staff: a limited /admin (password resets, sign-in, suspensions, held mail; comma-separated)
   --user NAME           first mailbox: NAME@domain (also receives postmaster@)
   --password P          its password (default: ask, or generate one with --yes)
   --relay HOST:PORT     send outgoing mail through this smarthost (e.g. smtp-relay.brevo.com:587)
@@ -72,6 +73,7 @@ while [ $# -gt 0 ]; do
     --hostname) MAIL_HOSTNAME=$2; shift ;;
     --webmail-host) WEBMAIL_HOST=$2; shift ;;
     --admins) ADMINS=$2; shift ;;
+    --helpdesk) HELPDESK=$2; shift ;;
     --email) ACME_EMAIL=$2; shift ;;
     --user) USER_NAME=$2; shift ;;
     --password) USER_PASS=$2; shift ;;
@@ -356,7 +358,7 @@ fi
 say "Writing $HERE/.env"
 umask 077
 {
-  for v in COMPOSE_PROJECT_NAME MAIL_DOMAIN MAIL_HOSTNAME WEBMAIL_HOST ADMINS ACME_EMAIL PUBLIC_URL WEB_DIST \
+  for v in COMPOSE_PROJECT_NAME MAIL_DOMAIN MAIL_HOSTNAME WEBMAIL_HOST ADMINS HELPDESK ACME_EMAIL PUBLIC_URL WEB_DIST \
            RELAY_HOST RELAY_PORT RELAY_USER RELAY_PASSWORD RELAY_SPF SERVER_IP CADDY_CERT_ISSUER \
            ADMIN_PORT HTTP_PORT HTTPS_PORT SMTP_PORT SUBMISSIONS_PORT SUBMISSION_PORT IMAPS_PORT \
            MONITORING ALERT_EMAIL HOSTED COMPOSE_FILE PG_PASSWORD S3_SECRET \

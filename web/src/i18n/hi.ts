@@ -1752,4 +1752,5 @@ export default {
   'smarts.verifiedTitle': 'सत्यापित भेजने वाला: {domain} ने पुष्टि की कि यह संदेश उन्हीं का है (DMARC)',
   'smarts.careful': 'इस संदेश से सावधान रहें।',
   'smarts.carefulBody': 'भेजने वाले का नाम {brand} बताता है, लेकिन यह पुष्टि नहीं हो सकी कि यह उन्हीं की ओर से है (यह {email} से आया है)। इसके लिंक पर क्लिक न करें और पासवर्ड या भुगतान की जानकारी न दें।',
+  'admin.roleHelpdesk': 'हेल्पडेस्क', // review: new
 } satisfies Catalog;

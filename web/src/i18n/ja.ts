@@ -1749,4 +1749,5 @@ export default {
   'smarts.verifiedTitle': '確認済みの送信者: このメッセージが自分のものだと {domain} が確認しました (DMARC)',
   'smarts.careful': 'このメッセージにご注意ください。',
   'smarts.carefulBody': '送信者名は {brand} となっていますが、本当にその会社からのものか確認できませんでした (送信元は {email})。リンクをクリックしたり、パスワードや支払い情報を入力したりしないでください。',
+  'admin.roleHelpdesk': 'ヘルプデスク', // review: new
 } satisfies Catalog;

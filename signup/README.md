@@ -26,6 +26,7 @@ npm test        # unit tests, plus an integration test against the local dev Sta
 | `CHECKS_PER_MINUTE` | `30` | Username-availability checks allowed per client IP per minute. |
 | `CLIENT_IP_HEADER` | | Header that carries the real client IP when the service runs behind a proxy, for example `cf-connecting-ip` or `x-real-ip`. Set this **only** if the proxy overwrites that header, because otherwise clients can spoof it. If unset, the socket address is used. |
 | `ADMINS` | | Usernames on `DOMAIN` (comma-separated, e.g. `ann,raj`) who may use the admin console at `/admin`. Empty: the console is off and `/api/admin/*` answers 404. See [Admin console](#admin-console-apiadmin). |
+| `HELPDESK` | | Usernames on `DOMAIN` (comma-separated) with a limited console: see [Admin console](#admin-console-apiadmin). Reserved at sign-up like `ADMINS`; a name on both lists is an admin. |
 | `RESERVED_NAMES` | | Extra reserved usernames, comma-separated. They are added to the built-in list in `lib.mjs`. |
 | `RETENTION_FILE` | | JSON file for retention rules (`retention.mjs`). Without it rules last until restart. |
 | `AUDIT_FILE` | | File the admin console's [audit log](#audit-log) is appended to, one JSON object per line (`/data/audit.jsonl` in `docker-compose.yml`). Without it the log lasts until restart. |
@@ -177,7 +178,9 @@ Verified against Stalwart 1.0.3: `x:Domain/set` create (DKIM keys appear in `dns
 
 ### Admin console (`/api/admin/*`)
 
-The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change goes into the [audit log](#audit-log) with the admin's name.
+The web app's `/admin` screen calls these. Each request must carry the admin's own sign-in token (`Authorization: Bearer …`). The service checks it with Stalwart (same check as `/api/aliases`), then checks that the account's name is in `ADMINS`: `401 unauthorized` without a valid token, `403 not_admin` for anyone else. Failed sign-ins count against the same per-network limit as aliases. It is a fixed list of operations, not a passthrough to Stalwart's admin API. Every change goes into the [audit log](#audit-log) with the admin's name and `role`.
+
+A `HELPDESK` account may make only these requests; anything else is `403 not_allowed` (deny by default: `HELPDESK_ROUTES` in `admin.mjs`): `GET overview` (its `role` is `admin` or `helpdesk`; the web app shows only what the role can use), `GET users`, `PATCH users/:id` with only `enabled`, `resetPassword` or `sending: true`, and never on an admin or helpdesk account, `GET suspended`, `GET held`, `POST held/:id/release`, `DELETE held/:id` and `GET audit`.
 
 | Request | What it does (Stalwart object) |
 |---|---|
@@ -210,7 +213,7 @@ Administrator accounts (a Stalwart role other than User, or a name in `ADMINS`) 
 Every change made through `/api/admin/*` (anything but a `GET`, and not the `retention/preview` dry run) is appended to `AUDIT_FILE` as one JSON line, written in the one place all admin requests pass through (`handle()` in `admin.mjs`; the format is in `audit.mjs`):
 
 ```json
-{"at":"2026-11-09T10:12:03.511Z","admin":"ann","ip":"203.0.113.7","action":"user.update","target":"sam@example.com","detail":["disable","quota:5000000000"],"outcome":"ok"}
+{"at":"2026-11-09T10:12:03.511Z","admin":"ann","role":"admin","ip":"203.0.113.7","action":"user.update","target":"sam@example.com","detail":["disable","quota:5000000000"],"outcome":"ok"}
 ```
 
 - `action`: `user.create|update|delete`, `team.create|members|delete`, `ip.unblock`, `limits.add|lift`, `queue.retry|cancel`, `held.release|delete`, `retention.rules|run|account`.
