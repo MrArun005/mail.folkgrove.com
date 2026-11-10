@@ -24,12 +24,19 @@ export function setCookie(name, value, maxAge, secure = true) {
   return `${name}=${encodeURIComponent(value)}; HttpOnly;${secure ? ' Secure;' : ''} SameSite=Strict; Path=/api/session; Max-Age=${maxAge}`;
 }
 
-const validUser = (u) => typeof u === 'string' && /^[^\s@<>()]{1,64}@[^\s@<>()]{1,253}$/.test(u);
+// Secure, except on plain http to this machine (the dev server, a browser test run). Chromium and Firefox store a
+// Secure cookie that arrives over http://localhost; WebKit (Safari, every iPhone browser) drops it, so "Keep me
+// signed in" there was forgotten on the first reload. A cookie for localhost never crosses a network. Behind Caddy the
+// Host is the real domain and X-Forwarded-Proto is https, so production always gets Secure.
+const LOOPBACK = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?$/i;
+export const secureCookie = (cfg, req) => cfg.secureCookies !== false
+  && !(LOOPBACK.test(req.headers.host ?? '') && req.headers['x-forwarded-proto'] !== 'https' && !req.socket?.encrypted);
+
+const validUser =(u) => typeof u === 'string' && /^[^\s@<>()]{1,64}@[^\s@<>()]{1,253}$/.test(u);
 const validToken = (t) => typeof t === 'string' && t.length >= 10 && t.length <= 4096 && /^[\w.~+/=-]+$/.test(t);
 
 export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf, sso = null }) {
   const limit = new RateLimiter(cfg.sessionPerMinute ?? 60, 60e3); // refreshes per network per minute
-  const secure = cfg.secureCookies !== false;
   // Two tabs refreshing at once send the same cookie; the second would carry a token Stalwart already rotated away and
   // be signed out. So one refresh per token at a time, and its result is reused for a short while.
   // ponytail: in this process only; with several replicas, route /api/session to one of them (or move this to Valkey).
@@ -65,7 +72,7 @@ export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf, ss
     if (wait) return fail(res, 429, 'rate_limited', 'Too many requests. Try again shortly.', { retryAfter: wait }), true;
     const body = await readJson(req).catch(() => ({}));
     if (!validUser(body.username)) return fail(res, 400, 'bad_request', 'Missing account.'), true;
-    const name = cookieName(body.username);
+    const name = cookieName(body.username), secure = secureCookie(cfg, req);
 
     if (m[1] === 'remember') {
       // Proof the caller holds this account's refresh token: use it once now (Stalwart rotates it).

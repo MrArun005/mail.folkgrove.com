@@ -32,10 +32,13 @@ jobs:
         working-directory: web
         run: npm run build
 
-      # Back, links, the phone drawer, swipe, drag to a folder, Undo: in a real browser against the same mail server.
+      # Back, links, the phone drawer, swipe, drag to a folder, Undo: in real browsers against the same mail server.
+      # All three engines (E2E_ALL): Chromium, Firefox, and WebKit (Safari and every iPhone browser), desktop and phone.
       - name: Web client — browser tests
         working-directory: web
-        run: npx playwright install --with-deps chromium && npm run e2e
+        env:
+          E2E_ALL: '1'
+        run: npx playwright install --with-deps chromium firefox webkit && npm run e2e
 
       - name: Signup service — tests
         working-directory: signup

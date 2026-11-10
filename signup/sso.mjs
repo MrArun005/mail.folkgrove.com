@@ -14,7 +14,7 @@
 // on, nobody signs in with a Stalwart password any more: mail apps need app passwords, which an external directory
 // doesn't allow either. Webmail only, until Stalwart's OAUTHBEARER for IMAP/SMTP is wired up.
 import { createHash, createPublicKey, randomBytes, verify } from 'node:crypto';
-import { cookieName, readCookies, setCookie } from './session.mjs';
+import { cookieName, readCookies, secureCookie, setCookie } from './session.mjs';
 import { checkUsername } from './lib.mjs';
 
 /**
@@ -69,7 +69,6 @@ export function verifyIdToken(jwt, { keys, issuer, clientId, nonce, now = Date.n
 
 export function ssoRoutes({ cfg, send, fail, RateLimiter, ipOf }) {
   const o = cfg.oidc; // { issuer, clientId, secret, name, publicUrl }
-  const secure = cfg.secureCookies !== false;
   const redirectUri = `${o.publicUrl}/api/sso/callback`;
   const limit = new RateLimiter(30, 60e3); // sign-in starts and callbacks per network per minute
   // ponytail: pending sign-ins live in this process for 10 minutes (one instance, as for sign-up codes).
@@ -116,6 +115,7 @@ export function ssoRoutes({ cfg, send, fail, RateLimiter, ipOf }) {
     if (!m[1]) return send(res, 200, { ok: true, name: o.name }), true; // the login page shows the button
     const wait = limit.take(ipOf(req));
     if (wait) return back(res, { sso_error: 'rate_limited' }), true;
+    const secure = secureCookie(cfg, req);
 
     if (m[1] === '/start') {
       const now = Date.now(), net = ipOf(req);

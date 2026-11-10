@@ -105,7 +105,10 @@ const sessionApi = (path: string, body: object) => fetch(`/api/session/${path}`,
 
 /** True when this server runs the account service, so "Keep me signed in" can work. */
 export async function canRememberDevice(): Promise<boolean> {
-  const r = await fetch('/api/session/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-OpenMail': '1' }, body: '{}' }).catch(() => null);
+  // A browser that keeps no cookies (Safari's "Block all cookies") would sign in, hand the token to a cookie it then
+  // drops, and be signed out on the first reload. This tab keeping the session is better than that.
+  if (!navigator.cookieEnabled) return false;
+  const r =await fetch('/api/session/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-OpenMail': '1' }, body: '{}' }).catch(() => null);
   return !!r && (r.status === 400 || r.status === 401); // it answered: present (404/502: not running)
 }
 

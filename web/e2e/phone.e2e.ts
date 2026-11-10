@@ -44,7 +44,9 @@ test('Back closes a conversation, Settings, and saves a draft', async ({ page })
   await expect(page.locator('.compose')).toHaveCount(0);
 });
 
-test('swipe left archives, Undo puts it back; a short swipe does nothing', async ({ page }) => {
+test('swipe left archives, Undo puts it back; a short swipe does nothing', async ({ page, browserName }) => {
+  // swipe() drives the finger through Chromium's DevTools protocol; WebKit and Firefox have no equivalent here.
+  test.skip(browserName !== 'chromium', 'touch input is sent through a Chromium-only protocol');
   await signIn(page);
   await swipe(page, SEEDED, -40);
   await page.waitForTimeout(400);

@@ -20,10 +20,12 @@ export default defineConfig({
     // A phone's size and touch, in Chromium (the browser CI installs).
     { name: 'phone', use: { ...devices['Pixel 7'] }, testMatch: 'phone.e2e.ts' },
     // Other engines, on request (E2E_ALL=1; CI sets it): Firefox, and WebKit, the engine inside Safari and every
-    // iPhone browser. Desktop tests only: touch input here is sent through Chromium's own protocol.
+    // iPhone browser, at desktop size and at an iPhone's (the swipe test skips itself there: helpers.ts sends touch
+    // input through Chromium's own protocol).
     ...(process.env.E2E_ALL ? [
       { name: 'firefox', use: { ...devices['Desktop Firefox'], viewport: { width: 1440, height: 900 } }, testIgnore: 'phone.e2e.ts' },
       { name: 'webkit', use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 900 } }, testIgnore: 'phone.e2e.ts' },
+      { name: 'iphone', use: { ...devices['iPhone 13'] }, testMatch: 'phone.e2e.ts' },
     ] : []),
   ],
 });
