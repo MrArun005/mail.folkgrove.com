@@ -107,3 +107,33 @@ test('a filter being written shows what it would have caught', async ({ page }) 
   await page.locator('.rule-form input').first().fill('nobody-at-all@nowhere.example');
   await expect(page.locator('.rule-preview')).toContainText('would not have caught any');
 });
+
+test('quick reply sends from under the conversation; Undo brings it back as a draft', async ({ page }) => {
+  await signIn(page);
+  await row(page, SEEDED).first().locator('.open').click();
+  const box = page.locator('.quick-reply textarea');
+  await expect(box).toHaveAttribute('placeholder', /Reply to /);
+  await box.click();
+  await box.fill('Thanks, got it.');
+  await page.locator('.quick-reply').getByRole('button', { name: 'Send' }).click();
+  await expect(page.locator('.toast')).toContainText('Sending');
+  await expect(box).toHaveValue('');
+
+  // Undo: nothing is sent; what was written comes back in the editor, under nothing but the quote.
+  await page.locator('.toast').getByRole('button', { name: 'Undo' }).click();
+  const editor = page.locator('.compose [contenteditable]').first();
+  await expect(editor).toContainText('Thanks, got it.', { timeout: 30_000 }); // Undo waits for the server to take the message back
+  await expect(editor).toContainText('wrote:'); // the quoted message is there
+  await page.locator('.compose').getByRole('button', { name: 'Discard draft' }).click();
+  await page.getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(page.locator('.compose')).toHaveCount(0);
+});
+
+test('a reply does not offer to add the quoted message\'s date to the calendar', async ({ page }) => {
+  await signIn(page);
+  // "Re: Venue for the March offsite" quotes an earlier message under an "On … wrote:" line.
+  await row(page, 'Venue for the March offsite').first().locator('.open').click();
+  await expect(page.locator('.thread .subject')).toBeVisible();
+  await expect(page.locator('.thread .message').last()).toBeVisible();
+  await expect(page.getByText('This message mentions')).toHaveCount(0);
+});

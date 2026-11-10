@@ -1175,3 +1175,13 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
   }
   .row .row-actions:not(.screen-actions):focus-within { width: auto; height: auto; padding: 2px; overflow: visible; clip-path: none; box-shadow: var(--lift-sm); }
 }
+
+/* Quick reply under a conversation: one line until you click into it. */
+.quick-reply { display: grid; gap: var(--s2); margin-block: var(--s4) 0; margin-inline: var(--text-col) 0; max-width: 720px; }
+.quick-reply textarea.input { resize: none; border-radius: var(--r-lg); padding: var(--s2) var(--s4); min-height: var(--h-md); }
+.quick-reply.open textarea.input { border-radius: var(--r-md); padding: var(--s3) var(--s4); resize: vertical; }
+.quick-reply-bar { display: flex; align-items: center; gap: var(--s4); }
+.quick-reply-bar .inline { display: flex; align-items: center; gap: var(--s2); color: var(--ink-2); font-size: var(--t-sm); }
+.quick-reply-bar .grow { flex: 1; }
+
+.feed-item .acts { align-items: center; } .feed-item .acts .btn--link { font-size: var(--t-sm); margin-inline-end: var(--s2); }

@@ -242,6 +242,10 @@ export default {
   'mail.settings': '设置',
   'mail.openMenu': '文件夹和账户', // review: new
   'mail.undone': '已撤销', // review: new
+  'reader.quickReplyTo': '回复 {name}…', // review: new
+  'reader.quickSend': '发送', // review: new
+  'reader.quickSendTitle': '发送此回复（Ctrl 或 ⌘ + Enter）', // review: new
+  'reader.quickExpand': '在完整编辑器中打开', // review: new
   'mail.zeroTitle': '收件箱已清空', // review: new
   'mail.zeroBody': '没有待处理的邮件。好好享受吧。', // review: new
   'mail.zeroBlocked': { other: '没有待处理的邮件。到目前为止，已为你拦截 {count} 个跟踪器。' }, // review: new

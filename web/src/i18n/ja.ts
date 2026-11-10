@@ -242,6 +242,10 @@ export default {
   'mail.settings': '設定',
   'mail.openMenu': 'フォルダとアカウント', // review: new
   'mail.undone': '元に戻しました', // review: new
+  'reader.quickReplyTo': '{name} に返信…', // review: new
+  'reader.quickSend': '送信', // review: new
+  'reader.quickSendTitle': 'この返信を送信（Ctrl または ⌘ + Enter）', // review: new
+  'reader.quickExpand': 'フルエディタで開く', // review: new
   'mail.zeroTitle': '受信トレイは空です', // review: new
   'mail.zeroBody': '対応が必要なメールはありません。', // review: new
   'mail.zeroBlocked': { other: '対応が必要なメールはありません。これまでに {count} 個のトラッカーをブロックしました。' }, // review: new

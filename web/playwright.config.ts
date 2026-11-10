@@ -8,7 +8,7 @@ export default defineConfig({
   testMatch: '*.e2e.ts', // not *.spec.ts / *.test.ts: those belong to vitest
   workers: 1,            // one mailbox, shared: tests take turns and put back what they move
   retries: process.env.CI ? 1 : 0,
-  timeout: 45_000,
+  timeout: 90_000, // room for one sign-in retry (helpers.ts)
   reporter: process.env.CI ? 'github' : 'list',
   use: { baseURL: 'http://localhost:5173', trace: 'off' },
   webServer: { command: 'npm run dev -- --port 5173 --strictPort', url: 'http://localhost:5173', reuseExistingServer: true, timeout: 60_000 },

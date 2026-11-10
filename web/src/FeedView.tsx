@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
 import { hue } from './Contacts';
 import type { EmailFull, EmailSummary, Jmap } from './jmap';
-import { displayName, textToHtml } from './mailutil';
+import { displayName, textToHtml, unsubscribePlan } from './mailutil';
 import { recordTrackers } from './privacy';
 import { MessageFrame, shortDate } from './Reader';
 import { tabKeyword, TABS } from './rules';
@@ -16,7 +16,9 @@ import { t } from './i18n';
 
 const PAGE = 20;
 
-export function FeedView({ client, say, onOpen }: { client: Jmap; say: (text: string) => void; onOpen: (threadId: string) => void }) {
+export function FeedView({ client, say, onOpen, onUnsubscribe }: { client: Jmap; say: (text: string) => void; onOpen: (threadId: string) => void;
+  /** Unsubscribe from the sender of this message (asks first); resolves true when it went through. */
+  onUnsubscribe: (m: EmailFull) => Promise<boolean> }) {
   const [items, setItems] = useState<EmailSummary[] | null>(null);
   const [more, setMore] = useState(false);
   const limit = useRef(PAGE);
@@ -58,14 +60,15 @@ export function FeedView({ client, say, onOpen }: { client: Jmap; say: (text: st
       {items === null && <div className="rows-loading" aria-busy="true">{[0, 1, 2].map((i) => <span key={i} />)}</div>}
       {items?.length === 0 && <p className="empty">{t('feed.empty')}</p>}
       <div className="feed-items">
-        {items?.map((e) => <FeedItem key={e.threadId} client={client} e={e} onOpen={() => onOpen(e.threadId)} onDone={() => done(e)} />)}
+        {items?.map((e) => <FeedItem key={e.threadId} client={client} e={e} onOpen={() => onOpen(e.threadId)} onDone={() => done(e)}
+          onUnsubscribe={async (m) => { if (await onUnsubscribe(m)) done(e); }} />)}
       </div>
       {more && <div className="list-more"><Button variant="link" onClick={() => { limit.current += PAGE; load(); }}>{t('mail.showMore')}</Button></div>}
     </section>
   );
 }
 
-function FeedItem({ client, e, onOpen, onDone }: { client: Jmap; e: EmailSummary; onOpen: () => void; onDone: () => void }) {
+function FeedItem({ client, e, onOpen, onDone, onUnsubscribe }: { client: Jmap; e: EmailSummary; onOpen: () => void; onDone: () => void; onUnsubscribe: (m: EmailFull) => void }) {
   const ref = useRef<HTMLElement>(null);
   const [near, setNear] = useState(false);
   const [m, setM] = useState<EmailFull | null>(null);
@@ -94,6 +97,8 @@ function FeedItem({ client, e, onOpen, onDone }: { client: Jmap; e: EmailSummary
         <span className="avatar" aria-hidden="true" style={{ '--h': hue(from?.email ?? '') } as React.CSSProperties}>{(displayName(from) || '?').slice(0, 1).toUpperCase()}</span>
         <span className="who"><b dir="auto">{displayName(from)}</b><time dateTime={e.receivedAt}>{shortDate(e.receivedAt)}</time></span>
         <span className="acts">
+          {/* Only when the sender offers a safe way out (a one-click or mail address; never a link we'd have to trust). */}
+          {m && unsubscribePlan(m.unsubscribe) && <Button variant="link" onClick={() => onUnsubscribe(m)}>{t('mail.unsubscribe')}</Button>}
           <Button variant="quiet" size="sm" icon="popOut" label={t('feed.open')} onClick={onOpen} />
           <Button variant="quiet" size="sm" icon="archive" label={t('mail.archive')} onClick={onDone} />
         </span>

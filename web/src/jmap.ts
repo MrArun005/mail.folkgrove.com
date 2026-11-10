@@ -487,11 +487,20 @@ export class Jmap {
   // ── Filters: one Sieve script owned by this app (rules.ts compiles it) ──
 
   async getRules(): Promise<{ id: string | null; script: string; state?: string }> {
-    const [r] = await this.call([['SieveScript/get', { accountId: this.accountId }, 'g']]);
-    const mine = (r.list as { id: string; name: string; blobId: string }[]).find((x) => x.name === SCRIPT_NAME);
-    if (!mine) return { id: null, script: '', state: r.state };
-    const blob = await this.download({ blobId: mine.blobId, name: 'rules.sieve', type: 'application/sieve', size: 0 });
-    return { id: mine.id, script: await blob.text(), state: r.state };
+    // Two steps: find the script, then fetch its text. If another device saves in between, the text we were about
+    // to fetch is gone (the save replaces it), so look again rather than fail: that is the moment saveScript's
+    // "re-read and re-apply" exists for.
+    for (let attempt = 0; ; attempt++) {
+      const [r] = await this.call([['SieveScript/get', { accountId: this.accountId }, 'g']]);
+      const mine = (r.list as { id: string; name: string; blobId: string }[]).find((x) => x.name === SCRIPT_NAME);
+      if (!mine) return { id: null, script: '', state: r.state };
+      try {
+        const blob = await this.download({ blobId: mine.blobId, name: 'rules.sieve', type: 'application/sieve', size: 0 });
+        return { id: mine.id, script: await blob.text(), state: r.state };
+      } catch (e) {
+        if (attempt >= 3 || isOffline(e)) throw e;
+      }
+    }
   }
 
   /** ifInState: refuse (JmapError "stateMismatch…") if the script changed on the server since `state` was read. */

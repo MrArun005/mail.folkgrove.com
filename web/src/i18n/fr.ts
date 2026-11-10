@@ -246,6 +246,10 @@ export default {
   'mail.settings': 'Paramètres',
   'mail.openMenu': 'Dossiers et compte', // review: new
   'mail.undone': 'Annulé', // review: new
+  'reader.quickReplyTo': 'Répondre à {name}…', // review: new
+  'reader.quickSend': 'Envoyer', // review: new
+  'reader.quickSendTitle': 'Envoyer cette réponse (Ctrl ou ⌘ + Entrée)', // review: new
+  'reader.quickExpand': 'Ouvrir dans l’éditeur complet', // review: new
   'mail.zeroTitle': 'Boîte de réception vide', // review: new
   'mail.zeroBody': 'Rien ne vous attend. Profitez-en.', // review: new
   'mail.zeroBlocked': { one: 'Rien ne vous attend. {count} traceur a été écarté de votre courrier jusqu’ici.', other: 'Rien ne vous attend. {count} traceurs ont été écartés de votre courrier jusqu’ici.' }, // review: new

@@ -99,6 +99,13 @@ await jmap(admin, [['x:MtaStageRcpt/set', { update: { singleton: { maxRecipients
 // Dev only: the test suite deliberately fails sign-ins (wrong passwords, 2FA codes). Don't let that ban this machine.
 await jmap(admin, [['x:Security/set', { update: { singleton: { authBanRate: { count: 100000, period: 86400000 }, abuseBanRate: { count: 100000, period: 86400000 }, loiterBanRate: { count: 100000, period: 86400000 } } } }, 's']]);
 
+// Dev only: lift the HTTP request limits. Stalwart allows 100 requests a minute per address before sign-in
+// (1,000 after), and here every browser test and every tab comes from the same address: a test suite that signs
+// in once per test gets "429" on about the sixteenth sign-in. Production keeps Stalwart's defaults, and sees each
+// visitor's own address (install.sh sets clientIpSource to X-Forwarded-For behind Caddy).
+await jmap(admin, [['x:Http/set', { update: { singleton: { rateLimitAnonymous: { count: 100000, period: 60000 }, rateLimitAuthenticated: { count: 100000, period: 60000 } } } }, 'h'],
+  ['x:Action/set', { create: { r: { '@type': 'ReloadSettings' } } }, 'r']]);
+
 // Dev only: switch off inbound rate limits. The test suite sends bursts of mail to one mailbox and would hit
 // "25 per hour per sender domain and recipient" within a couple of runs. Production keeps Stalwart's defaults.
 {

@@ -5,11 +5,29 @@ const SERVER = 'http://localhost:8080';
 const auth = 'Basic ' + Buffer.from(`${USER}:${PASS}`).toString('base64');
 
 export async function signIn(page: Page, path = '/') {
-  await page.goto(path);
-  await page.fill('input[name=email]', USER);
-  await page.fill('input[name=password]', PASS);
-  await page.click('button[type=submit]');
-  await expect(page.locator('.rows .row').first()).toBeVisible({ timeout: 20_000 });
+  // The mail server limits how fast one address may sign in; a whole suite signing in test after test can meet that
+  // limit on a fast machine. So: if the sign-in page answers with an error, wait and try again, and if it still
+  // fails, say what the page said (not just "no rows").
+  let said = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await page.waitForTimeout(15_000);
+    await page.goto(path);
+    // A retry can find the mailbox already open: the first try's session was kept even though its page showed an error.
+    const form = page.locator('input[name=email]'), open = page.locator('.rows .row').first();
+    await expect(form.or(open)).toBeVisible({ timeout: 20_000 });
+    if (!(await form.isVisible())) { await expect(open).toBeVisible({ timeout: 20_000 }); return; }
+    await page.fill('input[name=email]', USER);
+    await page.fill('input[name=password]', PASS);
+    await page.click('button[type=submit]');
+    const rows = page.locator('.rows .row').first(), error = page.locator('.login .error');
+    await expect(rows.or(error)).toBeVisible({ timeout: 20_000 });
+    // Decide by the error, not the rows: the list re-renders as it refreshes, so "are rows visible this instant"
+    // can be no on a mailbox that signed in fine.
+    if (!(await error.isVisible())) { await expect(rows).toBeVisible({ timeout: 20_000 }); return; }
+    said = (await error.innerText().catch(() => '')) || said;
+    console.log(`sign-in attempt ${attempt + 1} was refused: ${said}`);
+  }
+  throw new Error(`Could not sign in: ${said || 'no error shown'}`);
 }
 
 /** A conversation row by its subject. */

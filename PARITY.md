@@ -13,6 +13,7 @@ Phase numbers refer to PLAN.md. Last reviewed: 2026-11-08.
 | Conversation view | ✅ | ✅ | Paper-trail layout: newest open, older folded |
 | Unified folders + labels (tags) | ✅ | ✅ | A conversation can live in several folders (JMAP), no tag/folder split |
 | Star / flag | ✅ | ✅ | |
+| Quick reply | ✅ | ✅ | A box under every conversation: type, Send (or ⌘/Ctrl Enter), with the same Undo as any send; one click opens it in the full editor |
 | Private notes on a conversation | 🟡 | ✅ | A note to yourself under any conversation: synced (a hidden folder in your mailbox), never sent |
 | Snooze | 🟡 (reminders) | ✅ | Real snooze: leaves the inbox, returns unread |
 | Archive, delete, spam / not spam | ✅ | ✅ | Auto-advance to the next conversation; Undo on the toast (or `z`) puts it back |

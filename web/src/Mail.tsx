@@ -8,7 +8,7 @@ import { messageActions } from './messageActions';
 import { SearchChips } from './SearchChips';
 import { Icon, roleIcon } from './icons';
 import { Jmap, UNDO_SECONDS, type SharedAccount, type Contact, type Subscription, type Address, type Draft, type EmailFull, type EmailSummary, type Filter, type Identity, type Mailbox, type Scheduled } from './jmap';
-import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, fileSize, textToHtml, type ReplyMode, type Signature } from './mailutil';
+import { addSignature, chooseSignature, displayName, draftFor, draftFromEmail, fileSize, htmlToText, textToHtml, type ReplyMode, type Signature } from './mailutil';
 import { Menu, TimeChoices } from './Menu';
 import { Palette, type Command } from './Palette';
 import { canAsk } from './ai';
@@ -452,8 +452,21 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
   function reply(mode: ReplyMode, e: EmailFull, text?: string) {
     const d = draftFor(mode, e, client.username, identities.map((i) => i.email));
     // A picked suggestion goes on the first line; the user edits it like anything they typed.
-    if (text) d.html = d.html.replace('<div><br></div>', `<div>${escape(text)}</div><div><br></div>`);
-    setCompose(withSignature(d, 'reply'));
+    // The signature is added before the words, so it lands under them rather than above (it goes after the first
+    // blank line, and the words then take that line).
+    const signed = withSignature(d, 'reply');
+    if (text) signed.html = signed.html.replace('<div><br></div>', `${text.trim().split('\n').map((l) => `<div>${escape(l) || '<br>'}</div>`).join('')}<div><br></div>`);
+    setCompose(signed);
+  }
+
+  /** A short reply typed under the conversation: built like any reply (quote, signature) and sent at once, with Undo. */
+  function quickReply(e: EmailFull, text: string, all: boolean) {
+    const d = draftFor(all ? 'replyAll' : 'reply', e, client.username, identities.map((i) => i.email));
+    const lines = text.trim().split('\n').map((l) => `<div>${escape(l) || '<br>'}</div>`).join('');
+    // Signature first (it goes under the blank first line), then the words onto that line: text, signature, quote.
+    const signed = withSignature(d, 'reply');
+    const html = signed.html.replace('<div><br></div>', `${lines}<div><br></div>`);
+    send({ ...signed, html, text: htmlToText(html) });
   }
 
   const composeApi: ComposeApi = {
@@ -712,7 +725,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         onSettings={() => { setNavOpen(false); setOverlay('settings'); }} onPalette={() => { setNavOpen(false); setOverlay('palette'); }} onPrivacy={() => { setNavOpen(false); setOverlay('privacy'); }} blockedThisWeek={week(readTally(own.username)).total}
         takesDrop={takesDrop} dropOn={dropOn} onDropOver={setDropOn} onDrop={drop} />
 
-      {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : role === FEED ? <FeedView client={client} say={(text) => say({ text })} onOpen={(tid) => openRef.current(tid)} /> : role === NOTES ? <NotesView client={client} say={(text) => say({ text })} /> : <>
+      {role === CALENDAR ? <CalendarView client={client} say={(text) => say({ text })} /> : role === FEED ? <FeedView client={client} say={(text) => say({ text })} onOpen={(tid) => openRef.current(tid)} onUnsubscribe={unsubscribe} /> : role === NOTES ? <NotesView client={client} say={(text) => say({ text })} /> : <>
       <section className="list" aria-label={t('mail.conversations')} inert={navOpen} onScroll={(e) => {
         const el = e.currentTarget;
         if (hasMore && el.scrollTop + el.clientHeight > el.scrollHeight - 600) loadMore();
@@ -819,6 +832,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
                 onAction={(a) => act(a, [threadId])} onReply={reply} onBack={() => setThreadId(null)}
                 onSnooze={(d) => act({ snooze: d }, [threadId])} onMoveTo={(id, label) => act({ moveTo: id, label }, [threadId])}
                 onUnsubscribe={unsubscribe} onMore={more} onRsvp={rsvp} onReceipt={receipt} onReact={opened ? undefined : react}
+                onQuickReply={role === 'trash' || role === 'junk' || role === 'drafts' || (opened && !opened.canSend) ? undefined : quickReply}
                 footer={opened ? opened.whole && <TeamComments client={client} threadId={threadId} version={threadVersion} me={own.username} />
                   : <TeamComments mine client={client} threadId={threadId} version={threadVersion} me={own.username} />} />
             </ErrorBoundary>

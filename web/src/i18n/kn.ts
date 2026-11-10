@@ -242,6 +242,10 @@ export default {
   'mail.settings': 'ಸೆಟ್ಟಿಂಗ್‌ಗಳು',
   'mail.openMenu': 'ಫೋಲ್ಡರ್‌ಗಳು ಮತ್ತು ಖಾತೆ', // review: new
   'mail.undone': 'ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ', // review: new
+  'reader.quickReplyTo': '{name} ಅವರಿಗೆ ಉತ್ತರಿಸಿ…', // review: new
+  'reader.quickSend': 'ಕಳುಹಿಸಿ', // review: new
+  'reader.quickSendTitle': 'ಈ ಉತ್ತರವನ್ನು ಕಳುಹಿಸಿ (Ctrl ಅಥವಾ ⌘ + Enter)', // review: new
+  'reader.quickExpand': 'ಪೂರ್ಣ ಸಂಪಾದಕದಲ್ಲಿ ತೆರೆಯಿರಿ', // review: new
   'mail.zeroTitle': 'ಇನ್‌ಬಾಕ್ಸ್ ಖಾಲಿ', // review: new
   'mail.zeroBody': 'ನಿಮಗಾಗಿ ಏನೂ ಕಾಯುತ್ತಿಲ್ಲ. ಆನಂದಿಸಿ.', // review: new
   'mail.zeroBlocked': { one: 'ನಿಮಗಾಗಿ ಏನೂ ಕಾಯುತ್ತಿಲ್ಲ. ಇದುವರೆಗೆ ನಿಮ್ಮ ಮೇಲ್‌ನಿಂದ {count} ಟ್ರ್ಯಾಕರ್ ತೆಗೆದುಹಾಕಲಾಗಿದೆ.', other: 'ನಿಮಗಾಗಿ ಏನೂ ಕಾಯುತ್ತಿಲ್ಲ. ಇದುವರೆಗೆ ನಿಮ್ಮ ಮೇಲ್‌ನಿಂದ {count} ಟ್ರ್ಯಾಕರ್‌ಗಳನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ.' }, // review: new

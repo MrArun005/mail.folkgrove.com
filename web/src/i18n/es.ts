@@ -243,6 +243,10 @@ export default {
   'mail.settings': 'Configuración',
   'mail.openMenu': 'Carpetas y cuenta', // review: new
   'mail.undone': 'Deshecho', // review: new
+  'reader.quickReplyTo': 'Responder a {name}…', // review: new
+  'reader.quickSend': 'Enviar', // review: new
+  'reader.quickSendTitle': 'Enviar esta respuesta (Ctrl o ⌘ + Intro)', // review: new
+  'reader.quickExpand': 'Abrir en el editor completo', // review: new
   'mail.zeroTitle': 'Bandeja vacía', // review: new
   'mail.zeroBody': 'No hay nada pendiente. Disfrútalo.', // review: new
   'mail.zeroBlocked': { one: 'No hay nada pendiente. Hasta ahora se ha bloqueado {count} rastreador en tu correo.', other: 'No hay nada pendiente. Hasta ahora se han bloqueado {count} rastreadores en tu correo.' }, // review: new

@@ -21,7 +21,7 @@ import { EmojiPicker } from './EmojiPicker';
 export type Action = 'archive' | 'trash' | 'junk' | 'unread' | 'star' | 'mute';
 export type MoreAction = 'original' | 'print' | 'block' | 'filter' | 'addContact' | 'unmute' | 'task' | 'fromSender';
 
-export function Reader({ client, me, messages: all, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt, onReact, footer }: {
+export function Reader({ client, me, messages: all, error, inTrash, inJunk, folders, onAction, onReply, onBack, onSnooze, onMoveTo, onUnsubscribe, onMore, onRsvp, onReceipt, onReact, onQuickReply, footer }: {
   client: Jmap; me: string; messages: EmailFull[] | null; error: string; inTrash: boolean; inJunk: boolean;
   /** Folders the user created (moving/labelling targets). */
   folders: Mailbox[];
@@ -35,6 +35,8 @@ export function Reader({ client, me, messages: all, error, inTrash, inJunk, fold
   onReceipt: (m: EmailFull, send: boolean) => void;
   /** Shown under the conversation (team comments in a shared mailbox). */
   footer?: ReactNode;
+  /** Send a short reply written under the conversation (absent: no quick reply box, e.g. in Deleted Items). */
+  onQuickReply?: (m: EmailFull, text: string, all: boolean) => void;
   /** Send an emoji reaction (RFC 9078) to a message. */
   onReact?: (m: EmailFull, emoji: string) => void;
 }) {
@@ -128,6 +130,8 @@ export function Reader({ client, me, messages: all, error, inTrash, inJunk, fold
           <Button icon="replyAll" title={t('reader.replyAllTitle')} onClick={() => onReply('replyAll', last)}>{t('reader.replyAll')}</Button>}
         <Button icon="forward" title={t('reader.forwardTitle')} onClick={() => onReply('forward', last)}>{t('reader.forward')}</Button>
       </div>
+      {onQuickReply && <QuickReply key={last.threadId} m={last} me={me} onSend={(text, all) => onQuickReply(last, text, all)}
+        onExpand={(text, all) => onReply(all ? 'replyAll' : 'reply', last, text)} />}
       {footer}
     </article>
   );
@@ -389,6 +393,39 @@ function SmartReplies({ m, me, onPick }: { m: EmailFull; me: string; onPick: (te
   return (
     <div className="smart-replies" role="group" aria-label={t('reader.suggestedReplies')}>
       {ideas.map((idea) => <button key={idea} className="filter-chip" onClick={() => onPick(idea)}>{idea}</button>)}
+    </div>
+  );
+}
+
+/**
+ * A short answer, written right under the conversation and sent from there (Undo works as for any send). One line
+ * until you click into it. "Reply to all" appears when there is anyone else to reply to; the arrow opens what you
+ * wrote in the full editor (formatting, attachments, scheduling).
+ */
+function QuickReply({ m, me, onSend, onExpand }: { m: EmailFull; me: string; onSend: (text: string, all: boolean) => void; onExpand: (text: string, all: boolean) => void }) {
+  const [text, setText] = useState('');
+  const [open, setOpen] = useState(false);
+  const [all, setAll] = useState(false);
+  const others = (m.to?.length ?? 0) + (m.cc?.length ?? 0) > 1;
+  const mine = m.from?.[0]?.email.toLowerCase() === me.toLowerCase();
+  const who = displayName(mine ? m.to?.[0] : (m.replyTo?.[0] ?? m.from?.[0]));
+  const send = () => { if (!text.trim()) return; onSend(text, all); setText(''); setOpen(false); };
+  return (
+    <div className={`quick-reply${open ? ' open' : ''}`}>
+      <textarea className="input" rows={open ? 4 : 1} value={text} placeholder={t('reader.quickReplyTo', { name: who })} aria-label={t('reader.quickReplyTo', { name: who })}
+        onFocus={() => setOpen(true)} onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+          else if (e.key === 'Escape' && !text) { e.stopPropagation(); setOpen(false); e.currentTarget.blur(); }
+        }} />
+      {open && (
+        <div className="quick-reply-bar">
+          <Button variant="primary" disabled={!text.trim()} onClick={send} title={t('reader.quickSendTitle')}>{t('reader.quickSend')}</Button>
+          {others && <label className="inline"><input type="checkbox" className="check" checked={all} onChange={(e) => setAll(e.target.checked)} />{t('reader.replyAll')}</label>}
+          <span className="grow" />
+          <Button variant="quiet" icon="popOut" label={t('reader.quickExpand')} onClick={() => { onExpand(text, all); setText(''); setOpen(false); }} />
+        </div>
+      )}
     </div>
   );
 }
