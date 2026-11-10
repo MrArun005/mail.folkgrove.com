@@ -47,22 +47,24 @@ export function ContactList({ contacts, selected, onSelect, onNew, onNewGroup }:
 }
 
 /** Reader pane: a contact's details, or the editor. */
-export function ContactPanel({ contact, editing, all = [], onEdit, onSave, onDelete, onCancel, onEmail, onEmailAll }: {
+export function ContactPanel({ contact, editing, all = [], onEdit, onSave, onDelete, onCancel, onEmail, onEmailAll, onBack }: {
   /** editing 'group': a new group. */
   contact: Contact | null; editing: boolean | 'group';
   /** The whole address book (a group's members come from it). */
   all?: Contact[];
   onEdit: () => void; onSave: (c: Contact) => Promise<void>; onDelete: (c: Contact) => void; onCancel: () => void; onEmail: (c: Contact) => void;
   onEmailAll?: (to: Address[]) => void;
+  /** Back to the list (shown when the list is hidden: full-page reading or a phone). */
+  onBack: () => void;
 }) {
   if (editing === 'group' || (editing && contact?.kind === 'group')) return <GroupEditor initial={editing === 'group' ? null : contact} all={all} onSave={onSave} onCancel={onCancel} />;
   if (editing) return <ContactEditor initial={contact} onSave={onSave} onCancel={onCancel} />;
   if (!contact) return <div className="reader-empty"><p>{t('contacts.select')}</p></div>;
-  if (contact.kind === 'group') return <GroupView group={contact} all={all} onEdit={onEdit} onDelete={onDelete} onEmailAll={onEmailAll} />;
+  if (contact.kind === 'group') return <GroupView group={contact} all={all} onEdit={onEdit} onDelete={onDelete} onEmailAll={onEmailAll} onBack={onBack} />;
   return (
     <article className="thread contact">
       <div className="toolbar">
-        <span className="only-mobile" />
+        <Button variant="quiet" icon="back" label={t('reader.backToList')} className="only-mobile" onClick={onBack} />
         <Button variant="quiet" icon="compose" label={t('contacts.edit')} onClick={onEdit} />
         <Button variant="quiet" icon="trash" label={t('contacts.delete')} onClick={() => onDelete(contact)} />
       </div>
@@ -134,13 +136,13 @@ function ContactEditor({ initial, onSave, onCancel }: { initial: Contact | null;
 export const groupAddresses = (g: Contact, all: Contact[]): Address[] =>
   (g.members ?? []).map((id) => all.find((c) => c.id === id)).filter((c): c is Contact => !!c?.emails[0]).map((c) => ({ name: fullName(c) || null, email: c.emails[0] }));
 
-function GroupView({ group, all, onEdit, onDelete, onEmailAll }: { group: Contact; all: Contact[]; onEdit: () => void; onDelete: (c: Contact) => void; onEmailAll?: (to: Address[]) => void }) {
+function GroupView({ group, all, onEdit, onDelete, onEmailAll, onBack }: { group: Contact; all: Contact[]; onEdit: () => void; onDelete: (c: Contact) => void; onEmailAll?: (to: Address[]) => void; onBack: () => void }) {
   const people = (group.members ?? []).map((id) => all.find((c) => c.id === id)).filter((c): c is Contact => !!c);
   const to = groupAddresses(group, all);
   return (
     <article className="thread contact">
       <div className="toolbar">
-        <span className="only-mobile" />
+        <Button variant="quiet" icon="back" label={t('reader.backToList')} className="only-mobile" onClick={onBack} />
         <Button variant="quiet" icon="compose" label={t('contacts.editGroup')} onClick={onEdit} />
         <Button variant="quiet" icon="trash" label={t('contacts.deleteGroup')} onClick={() => onDelete(group)} />
       </div>

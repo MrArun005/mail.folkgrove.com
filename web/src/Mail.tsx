@@ -818,7 +818,7 @@ function MailView({ client, own, sharing, opened, startView, onOpenShared, onLog
         {role === CONTACTS
           ? <ContactPanel contact={people?.find((x) => x.id === personId) ?? null} editing={editingPerson} all={people ?? []}
               onEmailAll={(to) => setCompose(withSignature({ ...EMPTY_DRAFT, to }))}
-              onEdit={() => setEditingPerson(true)} onCancel={() => setEditingPerson(false)}
+              onEdit={() => setEditingPerson(true)} onCancel={() => setEditingPerson(false)} onBack={() => { setPersonId(null); setEditingPerson(false); }}
               onSave={async (c) => { const id = await client.saveContact(c); setEditingPerson(false); setPersonId(id); say({ text: t('mail.contactSaved') }); refresh(); loadContacts(); }}
               onDelete={async (c) => {
                 if (!(await confirmIt({ title: t('mail.deleteContactTitle', { name: fullName(c) || c.emails[0] }), body: t('mail.deleteContactBody'), confirm: t('mail.deleteContact'), danger: true }))) return;
