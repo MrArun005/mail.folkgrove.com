@@ -6,7 +6,7 @@ import { Admin } from './Admin';
 import { DialogHost } from './Dialog';
 import { signOutPush } from './notify';
 import { offlineStore } from './offline';
-import { adoptSso, canRememberDevice, forgetSession, Session, signedInAccounts, signIn, ssoError, ssoProvider } from './oauth';
+import { adoptSso, canRememberDevice, forgetSession, Session, SessionEnded, signedInAccounts, signIn, ssoError, ssoProvider } from './oauth';
 import { applyDisplayPrefs, applyTheme, savedTheme } from './Settings';
 import { Signup, signupAvailable } from './Signup';
 import { cache } from './store';
@@ -37,7 +37,8 @@ export default function App() {
         const s = Session.resume();
         if (s) { session.current = s; const c = await Jmap.connect(s); c.offline = s.remembered; setClient(c); }
       } catch (e) {
-        session.current = null; forgetSession();
+        session.current = null;
+        if (e instanceof SessionEnded) forgetSession(); // a temporary failure keeps the account: a reload tries again
         setError(e instanceof Error ? e.message : String(e));
       } finally { setBooting(false); }
     })();

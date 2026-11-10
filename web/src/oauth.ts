@@ -74,12 +74,19 @@ export async function signIn(user: string, pass: string, otp?: string): Promise<
 
 export interface Tokens { access: string; refresh: string; expiresAt: number; username: string }
 
+/**
+ * The sign-in really is over (expired, revoked, the account gone): the one failure after which a device should
+ * forget the account. Anything else (a busy server's 429 or 5xx, no network) is temporary: the account stays
+ * remembered, and the next try can succeed.
+ */
+export class SessionEnded extends Error {}
+
 async function tokenRequest(body: Record<string, string>): Promise<Tokens> {
   const res = await fetch('/auth/token', {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: CLIENT_ID, ...body }),
   });
   const j = await res.json().catch(() => ({}));
-  if (j.error === 'invalid_grant') throw new Error(t('oauth.sessionEnded')); // expired, revoked or account gone
+  if (j.error === 'invalid_grant') throw new SessionEnded(t('oauth.sessionEnded')); // expired, revoked or account gone
   if (!res.ok || !j.access_token) throw new Error(j.error_description || j.error || t('oauth.failed', { status: res.status }));
   return { access: j.access_token, refresh: j.refresh_token, expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000, username: j.username ?? '' };
 }
@@ -207,8 +214,12 @@ export class Session {
     const r = await sessionApi('refresh', { username: this.t.username });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.access_token) {
+      const text = j.error?.message ? serverText(j.error.code, j.error.message) : t('oauth.sessionEnded');
+      // Only "no such session" (the cookie is missing, expired or revoked) ends it. "Too many requests" or a server
+      // error must not make this device forget the account: it used to, so one bad minute signed people out for good.
+      if (r.status !== 401 && r.status !== 403) throw new Error(text);
       device.set(device.get().filter((x) => x !== this.t.username));
-      throw new Error(j.error?.message ? serverText(j.error.code, j.error.message) : t('oauth.sessionEnded'));
+      throw new SessionEnded(text);
     }
     this.t = { ...this.t, access: j.access_token, expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000 };
   }

@@ -93,6 +93,9 @@ export function sessionRoutes({ cfg, send, fail, readJson, RateLimiter, ipOf, ss
     // refresh
     if (!token) return fail(res, 401, 'unauthorized', 'Not remembered on this device.'), true;
     const r = await refreshOnce(token, body.username);
+    // The mail server being busy or down (429, 5xx) says nothing about the token: keep the cookie and say "try
+    // again". Clearing it here signed people out for good because of one bad minute on the server.
+    if (r.status === 429 || r.status >= 500) return fail(res, 503, 'unavailable', 'The mail server is busy. Please try again in a moment.'), true;
     if (!r.ok || !r.body.access_token) {
       res.setHeader('Set-Cookie', setCookie(name, '', 0, secure)); // dead token: forget it
       return fail(res, 401, 'unauthorized', 'Your session has ended. Please sign in again.'), true;

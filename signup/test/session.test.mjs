@@ -77,3 +77,39 @@ test('keep me signed in: remember, refresh from the cookie only (also two tabs a
   assert.equal((await call('/refresh', { username: user })).status, 401, 'forgotten');
   assert.deepEqual(readCookies('a=1; b=x%3Dy'), { a: '1', b: 'x=y' });
 });
+
+test('a busy mail server does not end a remembered session: the cookie is kept, the answer is "try again"', async (t) => {
+  // A stand-in for Stalwart that is having a bad minute, then recovers.
+  const { createServer } = await import('node:http');
+  let mode = 503;
+  const fake = createServer((req, res) => {
+    if (req.url !== '/auth/token') { res.writeHead(404); return res.end(); }
+    if (mode !== 200) { res.writeHead(mode, { 'Content-Type': 'application/json' }); return res.end('{}'); }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ access_token: 'new-access', refresh_token: 'kept-refresh', expires_in: 3600 }));
+  });
+  await new Promise((r) => fake.listen(0, '127.0.0.1', r));
+  const app = createApp({ stalwartUrl: `http://127.0.0.1:${fake.address().port}`, admin: { user: 'a', pass: 'b' }, domain: 'openmail.test', signupEnabled: false, inviteRequired: false,
+    invites: new Invites({ text: '' }), turnstileSecret: null, quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], secureCookies: false });
+  await new Promise((r) => app.listen(0, '127.0.0.1', r));
+  t.after(() => { app.close(); fake.close(); });
+  const user = 'alice@openmail.test';
+  const refresh = (token = 'kept-refresh') => fetch(`http://127.0.0.1:${app.address().port}/api/session/refresh`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-OpenMail': '1', Cookie: `${cookieName(user)}=${token}` }, body: JSON.stringify({ username: user }) });
+
+  for (const status of [503, 429, 500]) {
+    mode = status;
+    const r = await refresh();
+    assert.equal(r.status, 503, `mail server ${status} → "try again", not "signed out"`);
+    assert.equal(r.headers.get('set-cookie'), null, 'the cookie is left alone');
+  }
+  mode = 200;
+  const ok = await refresh();
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).access_token, 'new-access', 'and the same cookie works once the server is back');
+  // A token the server refuses outright still ends the session and clears the cookie.
+  mode = 400;
+  const dead = await refresh('another-token'); // not the one just refreshed: that answer is reused for a moment (two tabs)
+  assert.equal(dead.status, 401);
+  assert.match(dead.headers.get('set-cookie') ?? '', /Max-Age=0/);
+});
