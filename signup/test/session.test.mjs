@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../server.mjs';
 import { Invites } from '../lib.mjs';
-import { cookieName, readCookies } from '../session.mjs';
+import { cookieName, readCookies, secureCookie } from '../session.mjs';
 
 const STALWART = process.env.STALWART_URL || 'http://localhost:8080';
 const ADMIN_FILE = fileURLToPath(new URL('../../deploy/.dev-admin.json', import.meta.url));
@@ -28,6 +28,15 @@ async function signIn(user, pass) {
     body: new URLSearchParams({ client_id: 'openmail-web', grant_type: 'authorization_code', code, redirect_uri: 'http://localhost:5173/', code_verifier: verifier }) }).then((x) => x.json());
   return t.refresh_token;
 }
+
+test('the cookie is Secure except on plain http to this machine (WebKit drops a Secure cookie sent over http)', () => {
+  const req = (host, proto, encrypted = false) => ({ headers: { host, ...(proto && { 'x-forwarded-proto': proto }) }, socket: { encrypted } });
+  for (const host of ['localhost:5173', 'localhost', '127.0.0.1:3000', '[::1]:5175']) assert.equal(secureCookie({}, req(host)), false, host);
+  assert.equal(secureCookie({}, req('localhost:5173', 'https')), true); // behind a proxy that served it over https
+  assert.equal(secureCookie({}, req('localhost:3000', null, true)), true);
+  for (const host of ['mail.example.org', 'localhost.example.org', 'mail.example.org:443', '']) assert.equal(secureCookie({}, req(host)), true, host);
+  assert.equal(secureCookie({ secureCookies: false }, req('mail.example.org', 'https')), false); // INSECURE_COOKIES=true
+});
 
 test('keep me signed in: remember, refresh from the cookie only (also two tabs at once), forget', { skip }, async (t) => {
   const admin = JSON.parse(readFileSync(ADMIN_FILE, 'utf8'));
