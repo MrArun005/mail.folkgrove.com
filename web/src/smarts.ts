@@ -213,3 +213,30 @@ export function trust(m: Pick<EmailFull, 'from' | 'authResults' | 'received'>, m
   const brand = claimed && !genuine ? claimed[0] : null;
   return { domain, verified, brand };
 }
+
+/**
+ * What the sender wrote themselves, as text: the message without what it quotes. A reply quotes the mail it
+ * answers under a line like "On 10 Nov 2026, 12:26, Alice wrote:", and that line's date is not something the
+ * message "mentions": without this, every reply offered to add the time of the previous message to the calendar.
+ * HTML: quoted blocks (blockquote, the common quote wrappers) go, with the line that introduces each. Plain text:
+ * ">" lines go, with the line before them when it ends in a colon.
+ */
+export function ownWords(html: string | null, text: string): string {
+  if (html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('blockquote, .gmail_quote, .yahoo_quoted, [type="cite"], #divRplyFwdMsg, #appendonsend').forEach((q) => {
+      if (!q.isConnected) return; // inside a quote already removed
+      const lead = q.previousElementSibling;
+      if (lead && /[:：]\s*$/.test(lead.textContent ?? '') && (lead.textContent ?? '').length < 200) lead.remove();
+      q.remove();
+    });
+    doc.querySelectorAll('script, style, head').forEach((el) => el.remove());
+    return (doc.body.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim();
+  }
+  const lines = text.split('\n'), keep: string[] = [];
+  for (const line of lines) {
+    if (/^\s*>/.test(line)) { if (/[:：]\s*$/.test(keep[keep.length - 1] ?? '')) keep.pop(); continue; }
+    keep.push(line);
+  }
+  return keep.join('\n').trim();
+}

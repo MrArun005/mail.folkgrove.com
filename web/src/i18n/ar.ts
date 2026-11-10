@@ -242,6 +242,10 @@ export default {
   'mail.settings': 'الإعدادات',
   'mail.openMenu': 'المجلدات والحساب', // review: new
   'mail.undone': 'تم التراجع', // review: new
+  'reader.quickReplyTo': 'الرد على {name}…', // review: new
+  'reader.quickSend': 'إرسال', // review: new
+  'reader.quickSendTitle': 'إرسال هذا الرد (Ctrl أو ⌘ + Enter)', // review: new
+  'reader.quickExpand': 'فتح في المحرر الكامل', // review: new
   'mail.zeroTitle': 'صندوق الوارد فارغ', // review: new
   'mail.zeroBody': 'لا شيء بانتظارك. استمتع بذلك.', // review: new
   'mail.zeroBlocked': { zero: 'لا شيء بانتظارك.', one: 'لا شيء بانتظارك. أُبعد متتبّع واحد عن بريدك حتى الآن.', two: 'لا شيء بانتظارك. أُبعد متتبّعان عن بريدك حتى الآن.', few: 'لا شيء بانتظارك. أُبعدت {count} متتبّعات عن بريدك حتى الآن.', many: 'لا شيء بانتظارك. أُبعد {count} متتبّعًا عن بريدك حتى الآن.', other: 'لا شيء بانتظارك. أُبعد {count} متتبّع عن بريدك حتى الآن.' }, // review: new

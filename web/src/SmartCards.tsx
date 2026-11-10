@@ -7,7 +7,7 @@ import { EventEditor } from './CalendarView';
 import { localZone, toDuration, toLocal, type CalEvent } from './calendar';
 import { Icon } from './icons';
 import type { EmailFull, Jmap } from './jmap';
-import { findCards, findWhen, trust, type CalendarDraft, type Card, type When } from './smarts';
+import { findCards, findWhen, trust, type CalendarDraft, type Card, type When, ownWords } from './smarts';
 import { lang, locale, t } from './i18n';
 
 const ICON = { parcel: 'archive', flight: 'sent', order: 'receipt', stay: 'calendar', event: 'calendar' } as const;
@@ -26,7 +26,7 @@ export function SmartCards({ client, m, html, text, hasInvite }: { client: Jmap;
   const cards = useMemo(() => findCards(html), [html]); // html: the decrypted one, for encrypted mail
   const mention = useMemo(() => {
     if (hasInvite || cards.length) return null; // an invitation or a card already says when
-    const w = findWhen(`${m.subject ?? ''}\n${text}`, new Date(m.receivedAt), lang());
+    const w = findWhen(`${m.subject ?? ''}\n${ownWords(html, text)}`, new Date(m.receivedAt), lang()); // not dates inside what it quotes
     const today = new Date(); today.setHours(0, 0, 0, 0);
     return w && +w.start >= +today ? w : null;
   }, [m.id, text, cards, hasInvite]);

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { findCards, findWhen, trust } from './smarts';
+import { findCards, findWhen, ownWords, trust } from './smarts';
 
 const ld = (o: unknown) => `<html><head><script type="application/ld+json">${JSON.stringify(o)}</script></head><body>hi from schema.org</body></html>`;
 
@@ -87,5 +87,21 @@ describe('who sent it', () => {
     // "OpenMail" from anywhere but this server is a warning; our own notices aren't.
     expect(trust(m('OpenMail Security', 'alert@openmail-help.example', ar('dmarc=pass header.from=openmail-help.example')), 'me@ours.test').brand).toBe('OpenMail');
     expect(trust(m('OpenMail', 'noreply@ours.test'), 'me@ours.test').brand).toBeNull();
+  });
+});
+
+describe('ownWords: a message without what it quotes', () => {
+  it('drops the quoted mail and the line that introduces it (HTML)', () => {
+    const html = '<div>See you then.</div><div><br></div><div>On Nov 10, 2026, 12:26 AM, alice@openmail.test wrote:</div><blockquote>Lunch on Friday 14 Dec at 1pm?</blockquote>';
+    expect(ownWords(html, '')).toBe('See you then.');
+    expect(findWhen(ownWords(html, ''), new Date(2026, 10, 10))).toBeNull();
+  });
+  it('keeps a date the sender wrote themselves', () => {
+    const html = '<p>Shall we say Friday 14 Dec at 3pm?</p><div class="gmail_quote">On Mon, Bob wrote:<blockquote>When?</blockquote></div>';
+    expect(ownWords(html, '')).toBe('Shall we say Friday 14 Dec at 3pm?');
+  });
+  it('plain text: ">" lines go, with the line before them when it ends in a colon', () => {
+    expect(ownWords(null, 'Fine by me.\n\nOn Tue, Priya wrote:\n> Friday at 3pm?\n> > earlier one\n\nThanks')).toBe('Fine by me.\n\n\nThanks');
+    expect(ownWords(null, 'Agenda:\nfirst item')).toBe('Agenda:\nfirst item'); // a colon not followed by a quote stays
   });
 });

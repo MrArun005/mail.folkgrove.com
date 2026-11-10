@@ -242,6 +242,10 @@ export default {
   'mail.settings': 'Einstellungen',
   'mail.openMenu': 'Ordner und Konto', // review: new
   'mail.undone': 'Rückgängig gemacht', // review: new
+  'reader.quickReplyTo': '{name} antworten …', // review: new
+  'reader.quickSend': 'Senden', // review: new
+  'reader.quickSendTitle': 'Diese Antwort senden (Strg oder ⌘ + Eingabe)', // review: new
+  'reader.quickExpand': 'Im vollständigen Editor öffnen', // review: new
   'mail.zeroTitle': 'Posteingang leer', // review: new
   'mail.zeroBody': 'Nichts wartet auf Sie. Genießen Sie es.', // review: new
   'mail.zeroBlocked': { one: 'Nichts wartet auf Sie. Bisher wurde {count} Tracker aus Ihrer Post entfernt.', other: 'Nichts wartet auf Sie. Bisher wurden {count} Tracker aus Ihrer Post entfernt.' }, // review: new

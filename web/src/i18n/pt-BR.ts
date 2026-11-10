@@ -243,6 +243,10 @@ export default {
   'mail.settings': 'Configurações',
   'mail.openMenu': 'Pastas e conta', // review: new
   'mail.undone': 'Desfeito', // review: new
+  'reader.quickReplyTo': 'Responder a {name}…', // review: new
+  'reader.quickSend': 'Enviar', // review: new
+  'reader.quickSendTitle': 'Enviar esta resposta (Ctrl ou ⌘ + Enter)', // review: new
+  'reader.quickExpand': 'Abrir no editor completo', // review: new
   'mail.zeroTitle': 'Caixa de entrada vazia', // review: new
   'mail.zeroBody': 'Nada esperando por você. Aproveite.', // review: new
   'mail.zeroBlocked': { one: 'Nada esperando por você. Até agora, {count} rastreador foi barrado no seu e-mail.', other: 'Nada esperando por você. Até agora, {count} rastreadores foram barrados no seu e-mail.' }, // review: new

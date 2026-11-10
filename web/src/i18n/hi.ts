@@ -242,6 +242,10 @@ export default {
   'mail.settings': 'सेटिंग',
   'mail.openMenu': 'फ़ोल्डर और खाता', // review: new
   'mail.undone': 'पहले जैसा कर दिया', // review: new
+  'reader.quickReplyTo': '{name} को जवाब दें…', // review: new
+  'reader.quickSend': 'भेजें', // review: new
+  'reader.quickSendTitle': 'यह जवाब भेजें (Ctrl या ⌘ + Enter)', // review: new
+  'reader.quickExpand': 'पूरे संपादक में खोलें', // review: new
   'mail.zeroTitle': 'इनबॉक्स खाली', // review: new
   'mail.zeroBody': 'कुछ भी बाकी नहीं है। आराम कीजिए।', // review: new
   'mail.zeroBlocked': { one: 'कुछ भी बाकी नहीं है। अब तक आपकी मेल से {count} ट्रैकर हटाया गया है।', other: 'कुछ भी बाकी नहीं है। अब तक आपकी मेल से {count} ट्रैकर हटाए गए हैं।' }, // review: new

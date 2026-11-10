@@ -243,6 +243,10 @@ export default {
   'mail.settings': 'அமைப்புகள்',
   'mail.openMenu': 'கோப்புறைகளும் கணக்கும்', // review: new
   'mail.undone': 'செயல்தவிர்க்கப்பட்டது', // review: new
+  'reader.quickReplyTo': '{name} க்கு பதிலளி…', // review: new
+  'reader.quickSend': 'அனுப்பு', // review: new
+  'reader.quickSendTitle': 'இந்தப் பதிலை அனுப்பு (Ctrl அல்லது ⌘ + Enter)', // review: new
+  'reader.quickExpand': 'முழு திருத்தியில் திற', // review: new
   'mail.zeroTitle': 'இன்பாக்ஸ் காலி', // review: new
   'mail.zeroBody': 'உங்களுக்காக எதுவும் காத்திருக்கவில்லை. மகிழுங்கள்.', // review: new
   'mail.zeroBlocked': { one: 'உங்களுக்காக எதுவும் காத்திருக்கவில்லை. இதுவரை உங்கள் அஞ்சலிலிருந்து {count} கண்காணிப்பி நீக்கப்பட்டது.', other: 'உங்களுக்காக எதுவும் காத்திருக்கவில்லை. இதுவரை உங்கள் அஞ்சலிலிருந்து {count} கண்காணிப்பிகள் நீக்கப்பட்டன.' }, // review: new
