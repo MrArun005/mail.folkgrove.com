@@ -86,6 +86,9 @@ export function configFromEnv(env = process.env) {
     maxDomains: Number(env.MAX_DOMAINS || 3),
     maxDomainAddresses: Number(env.MAX_DOMAIN_ADDRESSES || 10),
     pendingDomainsFile: env.PENDING_DOMAINS_FILE || null, // domains waiting for their TXT record
+    // An address offered to another account waits this many days for an answer; one account can have this many waiting.
+    domainInviteDays: Number(env.DOMAIN_INVITE_DAYS || 14),
+    maxDomainInvites: Number(env.MAX_DOMAIN_INVITES || 5),
     reservedDomains: (env.RESERVED_DOMAINS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
     dnsServers: (env.DNS_SERVERS || '').split(',').map((s) => s.trim()).filter(Boolean),
     extraReserved: (env.RESERVED_NAMES || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),

@@ -138,9 +138,13 @@ export interface CustomDomain {
   records: DnsRecord[]; addresses: { name: string; email: string; enabled: boolean; main: boolean }[]; maxAddresses: number;
   /** Addresses the owner gave to other accounts on this server (`account`: that person's own address). maxAddresses counts both lists. */
   members?: { account: string; name: string; email: string; enabled: boolean }[];
+  /** Addresses offered to other accounts that haven't answered yet (they count toward maxAddresses until `expires`). */
+  invitations?: { account: string; name: string; email: string; invited: string; expires: string }[];
 }
-/** An address on someone else's domain that its owner gave to this account. */
+/** An address on someone else's domain that its owner gave to this account (and this account accepted). */
 export interface GivenAddress { domain: string; name: string; email: string; enabled: boolean; owner: string | null }
+/** An address on someone else's domain that its owner offers to this account: nothing changes until it is accepted. */
+export interface DomainInvitation { domain: string; name: string; email: string; owner: string | null; invited: string; expires: string }
 export interface MaskedAlias { id: string; email: string; label: string; enabled: boolean; masked: boolean }
 /** A large file sent as a download link (signup/files.mjs). url is absolute; expires is ms since 1970, null = never. */
 export interface SharedFile { id: string; url: string; name: string; size: number; created: number; expires: number | null; downloads: number }
@@ -738,7 +742,7 @@ export class Jmap {
     await aliasReply(await this.fetch(`${this.base}/api/aliases/${encodeURIComponent(id)}`, { method: 'DELETE' }));
   }
 
-  /** Your own domains (the account service, signup/domains.mjs). GET → { domains, maxDomains }, or null when this
+  /** Your own domains (the account service, signup/domains.mjs). GET → { domains, maxDomains, memberOf, invitations }, or null when this
    *  server doesn't offer them; changes → { domain }. Errors carry the service's message. */
   async customDomains(path = '', method = 'GET', body?: object): Promise<any> {
     const r = await this.fetch(`${this.base}/api/domains${path}`, { method, ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });

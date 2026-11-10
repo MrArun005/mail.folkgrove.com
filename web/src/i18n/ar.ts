@@ -298,14 +298,14 @@ export default {
   'privacy.weekBadge': { zero: 'لم يُزَل أي متتبّع هذا الأسبوع', one: 'أُزيل متتبّع واحد هذا الأسبوع', two: 'أُزيل متتبّعان هذا الأسبوع', few: 'أُزيلت {count} متتبّعات هذا الأسبوع', many: 'أُزيل {count} متتبّعًا هذا الأسبوع', other: 'أُزيل {count} متتبّع هذا الأسبوع' }, // review: new
   'display.grove': 'Grove', // review: new
   'domains.membersTitle': 'عناوين لأشخاص آخرين', // review: new
-  'domains.membersIntro': 'امنح عنوانًا على {domain} لشخص آخر لديه حساب هنا. يصل البريد المُرسَل إليه إلى صندوق بريده هو لا إلى صندوق بريدك، ويمكنه الإرسال منه. أنت وحدك من يستطيع تغيير النطاق.', // review: new
-  'domains.addressesUsed': 'العناوين المستخدَمة: {used} من {max}، بما فيها عناوينك.', // review: new
+  'domains.membersIntro': 'اعرض عنوانًا على {domain} على شخص آخر لديه حساب هنا. يصبح العنوان له عندما يقبل الدعوة من إعداداته: عندها يصل البريد المُرسَل إليه إلى صندوق بريده هو لا إلى صندوق بريدك، ويمكنه الإرسال منه. أنت وحدك من يستطيع تغيير النطاق.', // review: new
+  'domains.addressesUsed': 'العناوين المستخدَمة: {used} من {max}، بما فيها عناوينك والدعوات التي تنتظر الرد.', // review: new
   'domains.memberFor': 'لـ {account}', // review: new
   'domains.memberNamePlaceholder': 'sam', // review: new
   'domains.memberNewAddress': 'عنوانه الجديد على {domain}', // review: new
   'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
   'domains.memberAccountLabel': 'العنوان الذي يسجّل به الدخول، على {domain}', // review: new
-  'domains.giveAddress': 'منح العنوان', // review: new
+  'domains.invite': 'دعوة', // review: new
   'domains.takeBack': 'استرداد {email}', // review: new
   'domains.takeBackTitle': 'هل تريد استرداد {email} من {account}؟', // review: new
   'domains.takeBackBody': 'سيُرتد البريد المُرسَل إليه، ولا يمكن منحه لأي شخص مرة أخرى. يبقى لديه البريد الذي استلمه من قبل.', // review: new
@@ -317,6 +317,16 @@ export default {
   'domains.giveUpTitle': 'هل تريد التخلي عن {email}؟', // review: new
   'domains.giveUpBody': 'سيُرتد البريد المُرسَل إليه، ولا يمكن استعادته، لا من قِبلك ولا من قِبل أي شخص.', // review: new
   'domains.giveUpConfirm': 'التخلي عن العنوان', // review: new
+  'domains.invitedWaiting': 'تمت الدعوة، في انتظار الرد حتى {date}', // review: new
+  'domains.withdraw': 'سحب', // review: new
+  'domains.withdrawLabel': 'سحب الدعوة إلى {email}', // review: new
+  'domains.invitesTitle': 'الدعوات', // review: new
+  'domains.invitesIntro': 'يعرض عليك مالك أحد النطاقات هذه العناوين. إذا قبلت أحدها فسيصل البريد المُرسَل إليه إلى هنا، ويمكنك اختياره في حقل «من» عند الكتابة. لن يتغير شيء حتى تقبل.', // review: new
+  'domains.inviteAnswerBy': 'الرد قبل {date}', // review: new
+  'domains.accept': 'قبول', // review: new
+  'domains.decline': 'رفض', // review: new
+  'domains.acceptLabel': 'قبول {email}', // review: new
+  'domains.declineLabel': 'رفض {email}', // review: new
   'admin.tabAudit': 'سجل التدقيق', // review: new
   'admin.domainMembers': { one: 'بعضها لحساب واحد آخر', two: 'بعضها لحسابين آخرين', few: 'بعضها لـ {count} حسابات أخرى', many: 'بعضها لـ {count} حسابًا آخر', other: 'بعضها لـ {count} حساب آخر' }, // review: new
   'admin.auditHelp': 'كل تغيير أُجري في هذه اللوحة: من أجراه، وما هو، وبمن أو بماذا يتعلق، وهل تم أم لا. الأحدث أولًا. لا تُسجَّل كلمات المرور ولا محتوى الرسائل أبدًا.', // review: new

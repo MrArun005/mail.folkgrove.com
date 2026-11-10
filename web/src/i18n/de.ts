@@ -298,14 +298,14 @@ export default {
   'privacy.weekBadge': { one: '{count} Tracker diese Woche entfernt', other: '{count} Tracker diese Woche entfernt' }, // review: new
   'display.grove': 'Grove', // review: new
   'domains.membersTitle': 'Adressen für andere Personen', // review: new
-  'domains.membersIntro': 'Geben Sie jemand anderem, der hier ein Konto hat, eine Adresse bei {domain}. E-Mails an diese Adresse landen in dessen Postfach, nicht in Ihrem, und die Person kann von ihr senden. Nur Sie können die Domain ändern.', // review: new
-  'domains.addressesUsed': '{used} von {max} Adressen vergeben, Ihre eigenen eingeschlossen.', // review: new
+  'domains.membersIntro': 'Bieten Sie jemand anderem, der hier ein Konto hat, eine Adresse bei {domain} an. Sie gehört der Person, sobald sie die Einladung in ihren eigenen Einstellungen annimmt: Dann landen E-Mails an diese Adresse in deren Postfach, nicht in Ihrem, und die Person kann von ihr senden. Nur Sie können die Domain ändern.', // review: new
+  'domains.addressesUsed': '{used} von {max} Adressen vergeben, Ihre eigenen und offene Einladungen eingeschlossen.', // review: new
   'domains.memberFor': 'für {account}', // review: new
   'domains.memberNamePlaceholder': 'sam', // review: new
   'domains.memberNewAddress': 'Die neue Adresse der Person bei {domain}', // review: new
   'domains.memberAccountPlaceholder': 'sam@{domain}', // review: new
   'domains.memberAccountLabel': 'Die Adresse, mit der sich die Person anmeldet, bei {domain}', // review: new
-  'domains.giveAddress': 'Adresse vergeben', // review: new
+  'domains.invite': 'Einladen', // review: new
   'domains.takeBack': '{email} zurücknehmen', // review: new
   'domains.takeBackTitle': '{email} von {account} zurücknehmen?', // review: new
   'domains.takeBackBody': 'E-Mails an diese Adresse werden zurückgewiesen, und sie kann nie wieder an jemanden vergeben werden. Bereits empfangene E-Mails bleiben bei der Person.', // review: new
@@ -317,6 +317,16 @@ export default {
   'domains.giveUpTitle': '{email} aufgeben?', // review: new
   'domains.giveUpBody': 'E-Mails an diese Adresse werden zurückgewiesen, und sie kann nicht wiederhergestellt werden, weder von Ihnen noch von anderen.', // review: new
   'domains.giveUpConfirm': 'Adresse aufgeben', // review: new
+  'domains.invitedWaiting': 'Eingeladen, Antwort steht aus bis {date}', // review: new
+  'domains.withdraw': 'Zurückziehen', // review: new
+  'domains.withdrawLabel': 'Einladung zu {email} zurückziehen', // review: new
+  'domains.invitesTitle': 'Einladungen', // review: new
+  'domains.invitesIntro': 'Der Inhaber einer Domain bietet Ihnen diese Adressen an. Wenn Sie eine annehmen, kommen E-Mails an sie hier an, und Sie können sie beim Schreiben unter „Von“ wählen. Bis Sie annehmen, ändert sich nichts.', // review: new
+  'domains.inviteAnswerBy': 'Antwort bis {date}', // review: new
+  'domains.accept': 'Annehmen', // review: new
+  'domains.decline': 'Ablehnen', // review: new
+  'domains.acceptLabel': '{email} annehmen', // review: new
+  'domains.declineLabel': '{email} ablehnen', // review: new
   'admin.tabAudit': 'Audit-Protokoll', // review: new
   'admin.domainMembers': { one: 'einige für {count} anderes Konto', other: 'einige für {count} andere Konten' }, // review: new
   'admin.auditHelp': 'Jede Änderung, die in dieser Konsole vorgenommen wurde: wer sie vorgenommen hat, was es war, wen oder was sie betraf und ob sie durchgeführt wurde. Neueste zuerst. Passwörter und der Inhalt von Nachrichten werden nie aufgezeichnet.', // review: new
