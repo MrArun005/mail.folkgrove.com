@@ -254,14 +254,14 @@ function CsvImport({ client, done }: { client: Jmap; done: () => void }) {
       </div>
       {checks && <>
         <table className="admin-table">
-          <thead><tr><th>{t('admin.colAccount')}</th><th>{t('admin.colDisplayName')}</th><th>{t('admin.colPassword')}</th><th className="n">{t('admin.colStorage')}</th><th>{t('admin.colStatus')}</th></tr></thead>
+          <thead><tr><th>{t('admin.colAccount')}</th><th>{t('admin.colDisplayName')}</th><th>{t('admin.colPassword')}</th><th className="n">{t('admin.storageGb')}</th><th>{t('admin.colStatus')}</th></tr></thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
                 <td data-label={t('admin.colAccount')}><b>{r.name}</b></td>
                 <td data-label={t('admin.colDisplayName')}>{r.description}</td>
                 <td data-label={t('admin.colPassword')}>{r.password ? '••••••' : <span className="fine">{t('admin.importGenerated')}</span>}</td>
-                <td data-label={t('admin.colStorage')} className="n">{typeof r.quotaBytes === 'number' ? (r.quotaBytes ? size(r.quotaBytes) : t('admin.importNoLimit')) : r.quotaBytes ?? <span className="fine">{t('admin.importDefault')}</span>}</td>
+                <td data-label={t('admin.storageGb')} className="n">{typeof r.quotaBytes === 'number' ? (r.quotaBytes ? size(r.quotaBytes) : t('admin.importNoLimit')) : r.quotaBytes ?? <span className="fine">{t('admin.importDefault')}</span>}</td>
                 <td data-label={t('admin.colStatus')}>{status(checks[i] ?? { name: r.name }, t('admin.importReady'))}</td>
               </tr>
             ))}
