@@ -1000,8 +1000,11 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
 @media (min-width: 861px) { .compose:not(.min):not(.popped) { width: min(720px, calc(100vw - var(--s8))); } }
 
 /* ═══ Touch: swipe instead of hover ════════════════════ */
-/* Rows off screen aren't laid out or painted until they scroll near (long folders stay quick). */
-.row { content-visibility: auto; contain-intrinsic-size: auto 78px; }
+/* No content-visibility: auto on rows. It skipped off-screen rows, but until a row was laid out it counted as 78px,
+   and real rows are shorter or taller (density, labels, previews). As rows near the viewport were laid out, the list
+   changed height around the row you were aiming at; WebKit (Safari, every iPhone browser) didn't hold the row still,
+   so a click or tap just after a scroll landed on another row or between rows. A list grows 50 rows at a time, so
+   laying out every row costs little. */
 /* No hover on a touch screen: the floating row buttons would stick after a tap. Swipe does the same jobs. */
 @media (hover: none) {
   .row:hover { background: none; }
@@ -1014,7 +1017,7 @@ a.btn--link.btn--sm { font-size: var(--t-sm); }
 /* Swipe (Swipe.tsx): the row follows the finger; what it will do shows in the space it leaves behind. */
 .rows { overflow-x: clip; }
 .row { touch-action: pan-y; }
-.row.swiping { background: var(--list); content-visibility: visible; }
+.row.swiping { background: var(--list); }
 .row.settling { transition: translate 160ms var(--ease-out); }
 .row.swiping::after {
   position: absolute; top: 0; bottom: -1px; width: 100%; display: flex; align-items: center; padding: 0 var(--s5);
