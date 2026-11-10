@@ -606,6 +606,8 @@ export default {
   'compose.from': 'ಇವರಿಂದ',
   'compose.to': 'ಇವರಿಗೆ',
   'compose.cc': 'Cc',
+  'compose.groupExpand': '{name} ನಲ್ಲಿನ ವಿಳಾಸಗಳನ್ನು ನೋಡಿ ಮತ್ತು ಬದಲಿಸಿ',
+  'compose.groupRemove': '{name} ತೆಗೆದುಹಾಕಿ',
   'compose.bcc': 'Bcc',
   'compose.subject': 'ವಿಷಯ',
   'compose.message': 'ಸಂದೇಶ',

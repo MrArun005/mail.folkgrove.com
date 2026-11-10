@@ -1,19 +1,24 @@
 import { useId, useMemo, useState } from 'react';
 import type { Address } from './jmap';
-import { formatAddress } from './mailutil';
+import { formatAddress, withGroups } from './mailutil';
 import { t } from './i18n';
+import { Icon } from './icons';
 
-type Option = Address | { name: string; members: Address[] };
-const isGroup = (o: Option): o is { name: string; members: Address[] } => 'members' in o;
+type Group = { name: string; members: Address[] };
+type Option = Address | Group;
+const isGroup = (o: Option): o is Group => 'members' in o;
 
 /**
  * Comma-separated recipients with suggestions for the address being typed.
  * Follows the ARIA combobox pattern: arrows move, Enter/Tab picks, Esc closes.
  */
-export function RecipientInput({ value, onChange, contacts, groups = [], inputRef, label }: {
+export function RecipientInput({ value, onChange, contacts, groups = [], chips = [], onChips, inputRef, label }: {
   value: string; onChange: (v: string) => void; contacts: Address[];
-  /** Contact groups: picking one adds all its members (each an address of its own, editable like any other). */
-  groups?: { name: string; members: Address[] }[];
+  /** Contact groups offered as suggestions. */
+  groups?: Group[];
+  /** Groups picked so far, each one chip "Name (N)": removed in one go, or expanded into its members' addresses to
+   *  edit them. Without onChips, picking a group adds its members as addresses straight away. */
+  chips?: Group[]; onChips?: (g: Group[]) => void;
   inputRef?: React.Ref<HTMLInputElement>; label: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -32,6 +37,11 @@ export function RecipientInput({ value, onChange, contacts, groups = [], inputRe
   const show = open && matches.length > 0;
 
   function pick(o: Option) {
+    if (isGroup(o) && onChips) {
+      if (!chips.some((g) => g.name === o.name)) onChips([...chips, o]);
+      onChange(head ? `${head} ` : '');
+      return setOpen(false);
+    }
     const add = isGroup(o) ? o.members.filter((m) => !already.has(m.email.toLowerCase())) : [o];
     onChange(`${head}${head ? ' ' : ''}${add.map(formatAddress).join(', ')}, `);
     setOpen(false);
@@ -39,6 +49,15 @@ export function RecipientInput({ value, onChange, contacts, groups = [], inputRe
 
   return (
     <span className="recipients">
+      {chips.map((g) => (
+        <span key={g.name} className="chip group-chip">
+          <button type="button" className="fname" title={g.members.map(formatAddress).join(', ')} aria-label={t('compose.groupExpand', { name: g.name })}
+            onClick={() => { onChange(`${withGroups(value, [g])}, `); onChips?.(chips.filter((x) => x !== g)); }}>{g.name} ({g.members.length})</button>
+          <button type="button" className="btn" aria-label={t('compose.groupRemove', { name: g.name })} onClick={() => onChips?.(chips.filter((x) => x !== g))}>
+            <Icon name="close" size={14} />
+          </button>
+        </span>
+      ))}
       <input ref={inputRef} value={value} aria-label={label} spellCheck={false} autoComplete="off"
         role="combobox" aria-expanded={show} aria-controls={listId} aria-autocomplete="list"
         aria-activedescendant={show ? `${listId}-${active}` : undefined}

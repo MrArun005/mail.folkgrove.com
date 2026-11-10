@@ -17,6 +17,13 @@ export function parseAddresses(input: string): { list: Address[]; invalid: strin
 
 export const formatAddress = (a: Address) => (a.name ? `${a.name} <${a.email}>` : a.email);
 export const formatAddresses = (as: Address[] | null) => (as ?? []).map(formatAddress).join(', ');
+/** Typed recipients plus contact groups picked as one chip: the groups' members appended, each address once. What
+ *  gets sent or saved in a draft is always plain addresses, so other mail apps read it. */
+export function withGroups(typed: string, groups: { members: Address[] }[]): string {
+  const seen = new Set(parseAddresses(typed).list.map((a) => a.email.toLowerCase()));
+  const add = groups.flatMap((g) => g.members).filter((m) => !seen.has(m.email.toLowerCase()) && !!seen.add(m.email.toLowerCase()));
+  return [typed.trim().replace(/[,;]$/, ''), ...add.map(formatAddress)].filter(Boolean).join(', ');
+}
 export const displayName = (a: Address | undefined, me?: string) =>
   a && me && a.email.toLowerCase() === me.toLowerCase() ? t('mailutil.me') : a?.name || a?.email || t('mailutil.unknownSender');
 

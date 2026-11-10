@@ -606,6 +606,8 @@ export default {
   'compose.from': 'भेजने वाला',
   'compose.to': 'पाने वाला',
   'compose.cc': 'Cc',
+  'compose.groupExpand': '{name} के पते देखें और बदलें',
+  'compose.groupRemove': '{name} हटाएँ',
   'compose.bcc': 'Bcc',
   'compose.subject': 'विषय',
   'compose.message': 'मैसेज',

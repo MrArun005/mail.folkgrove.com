@@ -533,6 +533,8 @@ export const en = {
   'compose.from': 'From',
   'compose.to': 'To',
   'compose.cc': 'Cc',
+  'compose.groupExpand': 'Show and edit the addresses in {name}',
+  'compose.groupRemove': 'Remove {name}',
   'compose.bcc': 'Bcc',
   'compose.subject': 'Subject',
   'compose.message': 'Message',

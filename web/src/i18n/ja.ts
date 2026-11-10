@@ -604,6 +604,8 @@ export default {
   'compose.from': '差出人',
   'compose.to': '宛先',
   'compose.cc': 'Cc',
+  'compose.groupExpand': '{name} のアドレスを表示して編集',
+  'compose.groupRemove': '{name} を削除',
   'compose.bcc': 'Bcc',
   'compose.subject': '件名',
   'compose.message': '本文',

@@ -607,6 +607,8 @@ export default {
   'compose.from': 'அனுப்புநர்',
   'compose.to': 'பெறுநர்',
   'compose.cc': 'Cc',
+  'compose.groupExpand': '{name} இல் உள்ள முகவரிகளைப் பார்த்துத் திருத்து',
+  'compose.groupRemove': '{name} ஐ நீக்கு',
   'compose.bcc': 'Bcc',
   'compose.subject': 'பொருள்',
   'compose.message': 'மின்னஞ்சல்',

@@ -606,6 +606,8 @@ export default {
   'compose.from': 'Von',
   'compose.to': 'An',
   'compose.cc': 'Cc',
+  'compose.groupExpand': 'Adressen in {name} anzeigen und bearbeiten',
+  'compose.groupRemove': '{name} entfernen',
   'compose.bcc': 'Bcc',
   'compose.subject': 'Betreff',
   'compose.message': 'Nachricht',

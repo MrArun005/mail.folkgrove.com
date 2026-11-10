@@ -371,7 +371,10 @@ a.chip:hover { background: var(--hover); border-color: var(--muted); }
 .field > span:first-child { width: 52px; flex: none; }
 .field input { flex: 1; min-width: 0; height: var(--h-lg); border: 0; background: none; outline: none; color: var(--ink); }
 .from-select { flex: 1; min-width: 0; height: var(--h-lg); border: 0; background: none; color: var(--ink); font: inherit; outline: none; cursor: pointer; }
-.recipients { flex: 1; min-width: 0; position: relative; display: flex; }
+.recipients { flex: 1; min-width: 0; position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); }
+.recipients input { min-width: 8em; }
+.group-chip { flex: none; height: auto; padding-block: 2px; }
+.group-chip button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; display: inline-flex; }
 .suggestions {
   position: absolute; top: calc(100% + 2px); inset-inline-start: calc(-1 * var(--s2)); inset-inline-end: 0; z-index: 3; padding: var(--s1);
   background: var(--paper); border: 1px solid var(--rule); border-radius: var(--r-md); box-shadow: var(--lift);
