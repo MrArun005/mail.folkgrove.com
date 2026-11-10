@@ -10,7 +10,8 @@ import { callerOf } from './aliases.mjs';
 import { retireNames } from './account.mjs';
 import { forgetFiles } from './files.mjs';
 import { checkUsername } from './lib.mjs';
-import { isHeld, policyStore, retentionAdmin } from './retention.mjs';
+import { HOLD, isHeld, policyStore, retentionAdmin } from './retention.mjs';
+import { SEND } from './abuse.mjs';
 import { adminDomainList } from './domains.mjs';
 import { auditLog } from './audit.mjs';
 
@@ -69,6 +70,12 @@ export const HELPDESK_ROUTES = new Set(['GET overview', 'GET users', 'PATCH user
 // ...and of PATCH users/:id only these (sending: true only: lift a suspension, never impose one).
 const HELPDESK_PATCH = ['enabled', 'resetPassword', 'sending'];
 
+/** Permissions as this console leaves them: inherited, or only its own switches off (sign-in, sending, legal hold).
+ *  Anything else (a right granted, or one taken away by hand) was set deliberately in Stalwart's own admin.
+ *  The list is built per call: abuse.mjs imports this file, so SEND may not exist yet while it loads. */
+export const plainPerms = (p) => !p || p['@type'] === 'Inherit' || (p['@type'] === 'Merge' && !Object.keys(p.enabledPermissions ?? {}).length
+  && Object.keys(p.disabledPermissions ?? {}).every((k) => ['authenticate', ...SEND, ...HOLD].includes(k)));
+
 const password = () => randomBytes(12).toString('base64url'); // 16 characters, about 96 bits
 
 export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, RateLimiter, ipOf, abuse, hold = null, retention = policyStore(null) }) {
@@ -80,6 +87,9 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
   const isAdmin = (a) => a.roles?.['@type'] !== 'User' || admins.has(String(a.name).toLowerCase());
   const caller = callerOf({ cfg, jmap, getDomainId });
   const badAuth = new RateLimiter(20, 15 * 60e3); // failed sign-ins per network, as for /api/aliases
+  // Changes per helpdesk account an hour: every one is an audit line, and a bounded log must not be flushable by
+  // the lower role (10,000 lines would take 100 hours of nothing else).
+  const deskWrites = new RateLimiter(100, 3600e3);
   const audit = cfg.audit ?? auditLog(cfg.auditFile, { max: cfg.auditMax || undefined });
 
   const set = async (type, args) => {
@@ -96,6 +106,16 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     return (await get('x:MemoryLookupKey', ids)).filter((k) => k.namespace === NEW);
   };
   const account = async (id) => (await get('x:Account', [id], USER_PROPS))[0];
+  // The helpdesk may only act on a plain account, or a password reset could take over one with extra rights: the
+  // User role, plain permissions, and only in plain team mailboxes (a group's roles and permissions pass to its
+  // members, as in PATCH groups/:id). Deny by default: anything unknown or missing is not plain.
+  const plainAccount = async (id) => {
+    const [u] = await get('x:Account', [id], ['roles', 'permissions', 'memberGroupIds']);
+    if (u?.roles?.['@type'] !== 'User' || !plainPerms(u.permissions)) return false;
+    const ids = Object.keys(u.memberGroupIds ?? {});
+    const groups = await get('x:Account', ids, ['roles', 'permissions', 'memberGroupIds']);
+    return groups.length === ids.length && groups.every((g) => g.roles?.['@type'] === 'Default' && g.permissions?.['@type'] === 'Inherit' && !Object.keys(g.memberGroupIds ?? {}).length);
+  };
 
   const handlers = {
     'GET overview': async (_req, _url, _id, who) => { // the console's first call, so it also tells the UI the caller's role
@@ -148,7 +168,7 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
         typeof body.enabled === 'boolean' && (body.enabled ? 'enable' : 'disable'),
         'quotaBytes' in body && `quota:${body.quotaBytes === null ? 'none' : Number(body.quotaBytes) || 0}`, body.resetPassword === true && 'password_reset'].filter(Boolean));
       if (isAdmin(a)) return [403, 'protected', 'Administrator accounts are managed in Stalwart’s own admin.'];
-      if (who.role === 'helpdesk' && (helpdesk.has(String(a.name).toLowerCase()) || body.sending === false || Object.keys(body).some((k) => !HELPDESK_PATCH.includes(k))))
+      if (who.role === 'helpdesk' && (helpdesk.has(String(a.name).toLowerCase()) || body.sending === false || Object.keys(body).some((k) => !HELPDESK_PATCH.includes(k)) || !(await plainAccount(id))))
         return [403, 'not_allowed', 'The helpdesk can’t make that change. Ask an administrator.'];
       if (typeof body.sending === 'boolean' && abuse) { // suspend or allow sending, with the reason kept (abuse.mjs)
         if (body.sending) await abuse.liftAccount(a, who.name); else await abuse.suspendAccount(a, 'An administrator suspended sending.', who.name);
@@ -370,6 +390,9 @@ export function adminRoutes({ cfg, jmap, getDomainId, send, fail, readJson, Rate
     // Not recorded: reads (GET), and requests refused before this point. Anyone signed in can earn a 403 here, and
     // letting them write lines would let them push the real ones out of a bounded log.
     const entry = AUDITED[key] ? { at: new Date().toISOString(), admin: who.name, role: who.role, ip, action: AUDITED[key], target: m[2] ?? null } : null;
+    // Refused before this point (role, route, rate): not recorded. A helpdesk account's changes are capped per hour.
+    const wait = entry && who.role === 'helpdesk' && deskWrites.take(who.name);
+    if (wait) return fail(res, 429, 'rate_limited', 'Too many changes. Try again later.', { retryAfter: wait }), true;
     const note = (target, ...detail) => { if (entry && target) entry.target = String(target); if (entry && detail.length) entry.detail = [...(entry.detail ?? []), ...detail.map(String)]; };
     const done = (outcome) => { if (entry) audit.record({ ...entry, outcome }); };
     let out;

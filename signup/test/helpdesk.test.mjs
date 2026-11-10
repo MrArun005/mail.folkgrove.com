@@ -26,11 +26,18 @@ test('helpdesk: support actions only, never on admin or helpdesk accounts', { sk
   const domainId = (await jmap([['x:Domain/get', { ids: null, properties: ['name'] }, 'd']])).list.find((d) => d.name === 'openmail.test').id;
   const tag = Math.random().toString(36).slice(2, 8);
   const pass = `throwaway pass ${tag} river`;
-  const mk = async (name) => (await jmap([['x:Account/set', { create: { n: { '@type': 'User', name, domainId, credentials: { 0: { '@type': 'Password', secret: pass } } } } }, 'c']])).created.n.id;
+  const mk = async (name, extra = {}, type = 'User') => (await jmap([['x:Account/set', { create: { n: { '@type': type, name, domainId,
+    ...(type === 'User' && { credentials: { 0: { '@type': 'Password', secret: pass } } }), ...extra } } }, 'c']])).created.n.id;
+  // Rights beyond the User role, given directly or through a group: a password reset there would be a takeover.
+  const grant = { permissions: { '@type': 'Merge', enabledPermissions: { impersonate: true }, disabledPermissions: {} } };
+  const [richTeam, plainTeam] = [await mk(`t-hd-${tag}-g1`, grant, 'Group'), await mk(`t-hd-${tag}-g2`, {}, 'Group')];
   const boss = `t-hd-${tag}-a`, desk = `t-hd-${tag}-h`, desk2 = `t-hd-${tag}-h2`, plain = `t-hd-${tag}-p`, nobody = `t-hd-${tag}-n`;
-  const made = await Promise.all([boss, desk, desk2, plain, nobody].map(mk));
+  const made = await Promise.all([boss, desk, desk2, plain, nobody].map((n) => mk(n)));
   const [bossId, , desk2Id, plainId] = made;
-  t.after(async () => { await jmap([['x:Account/set', { destroy: made }, 'x']]).catch(() => {}); });
+  const granted = await mk(`t-hd-${tag}-x1`, grant), viaGroup = await mk(`t-hd-${tag}-x2`, { memberGroupIds: { [richTeam]: true } });
+  const teamMember = await mk(`t-hd-${tag}-x3`, { memberGroupIds: { [plainTeam]: true } });
+  made.push(granted, viaGroup, teamMember);
+  t.after(async () => { await jmap([['x:Account/set', { destroy: made }, 'x']]).catch(() => {}); await jmap([['x:Account/set', { destroy: [richTeam, plainTeam] }, 'x']]).catch(() => {}); });
 
   const app = createApp({ stalwartUrl: STALWART, admin, domain: 'openmail.test', inviteRequired: false, invites: new Invites({ text: '' }), turnstileSecret: null,
     quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], allowBasicAuth: true, admins: [boss], helpdesk: [desk, desk2] });
@@ -69,10 +76,22 @@ test('helpdesk: support actions only, never on admin or helpdesk accounts', { sk
     assert.equal((await call(path, method, body)).status, 403, `${method ?? 'GET'} ${path} ${JSON.stringify(body ?? '')}`);
   }
   assert.ok(!(await call(`users?q=${tag}`)).users.some((u) => u.name === `t-hd-${tag}-x`)); // nothing was created
+  // Accounts with rights of their own or from a group are off limits; a plain team mailbox member is not.
+  for (const id of [granted, viaGroup]) for (const body of [{ resetPassword: true }, { enabled: false }, { sending: true }])
+    assert.equal((await call(`users/${id}`, 'PATCH', body)).status, 403, `${id} ${JSON.stringify(body)}`);
+  assert.equal((await call(`users/${teamMember}`, 'PATCH', { resetPassword: true })).status, 200);
+  assert.equal((await call(`users/${granted}`, 'PATCH', { resetPassword: true }, boss)).status, 200); // admins still can
 
   // The audit log says who acted in which role; helpdesk names are reserved at sign-up like admin names.
   const log = (await call('audit?limit=200')).entries.filter((e) => e.admin === desk);
   assert.ok(log.length >= 4 && log.every((e) => e.role === 'helpdesk'), JSON.stringify(log));
   assert.ok((await call('audit?limit=200')).entries.some((e) => e.admin === boss && e.role === 'admin'));
   assert.equal((await fetch(`${base}/api/username-available?u=${desk2}`).then((r) => r.json())).available, false);
+
+  // Changes per helpdesk account are capped (each is an audit line): the 101st in the hour is refused, unrecorded.
+  let last, tries = 0;
+  do last = await call(`users/${bossId}`, 'PATCH', { enabled: true }); while (last.status === 403 && ++tries < 200);
+  assert.equal(last.status, 429);
+  assert.equal((await call('audit?limit=200')).entries.filter((e) => e.admin === desk).length, 100);
+  assert.equal((await call(`users/${plainId}`, 'PATCH', { enabled: true }, boss)).status, 200); // admins aren't capped
 });
