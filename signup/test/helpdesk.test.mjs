@@ -31,16 +31,17 @@ test('helpdesk: support actions only, never on admin or helpdesk accounts', { sk
   // Rights beyond the User role, given directly or through a group: a password reset there would be a takeover.
   const grant = { permissions: { '@type': 'Merge', enabledPermissions: { impersonate: true }, disabledPermissions: {} } };
   const [richTeam, plainTeam] = [await mk(`t-hd-${tag}-g1`, grant, 'Group'), await mk(`t-hd-${tag}-g2`, {}, 'Group')];
-  const boss = `t-hd-${tag}-a`, desk = `t-hd-${tag}-h`, desk2 = `t-hd-${tag}-h2`, plain = `t-hd-${tag}-p`, nobody = `t-hd-${tag}-n`;
-  const made = await Promise.all([boss, desk, desk2, plain, nobody].map((n) => mk(n)));
-  const [bossId, , desk2Id, plainId] = made;
+  const boss = `t-hd-${tag}-a`, desk = `t-hd-${tag}-h`, desk2 = `t-hd-${tag}-h2`, plain = `t-hd-${tag}-p`, nobody = `t-hd-${tag}-n`, system = `t-hd-${tag}-s`;
+  const made = await Promise.all([boss, desk, desk2, plain, nobody, system].map((n) => mk(n)));
+  const [bossId, , desk2Id, plainId, , systemId] = made;
   const granted = await mk(`t-hd-${tag}-x1`, grant), viaGroup = await mk(`t-hd-${tag}-x2`, { memberGroupIds: { [richTeam]: true } });
   const teamMember = await mk(`t-hd-${tag}-x3`, { memberGroupIds: { [plainTeam]: true } });
   made.push(granted, viaGroup, teamMember);
   t.after(async () => { await jmap([['x:Account/set', { destroy: made }, 'x']]).catch(() => {}); await jmap([['x:Account/set', { destroy: [richTeam, plainTeam] }, 'x']]).catch(() => {}); });
 
   const app = createApp({ stalwartUrl: STALWART, admin, domain: 'openmail.test', inviteRequired: false, invites: new Invites({ text: '' }), turnstileSecret: null,
-    quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], allowBasicAuth: true, admins: [boss], helpdesk: [desk, desk2] });
+    quotaBytes: 0, signupsPerHour: 10, checksPerMinute: 10, clientIpHeader: null, extraReserved: [], allowBasicAuth: true, admins: [boss], helpdesk: [desk, desk2],
+    systemMail: { user: `${system}@openmail.test` } }); // the system sender (noreply@): a reset there would let anyone send as the server
   await new Promise((r) => app.listen(0, '127.0.0.1', r));
   t.after(() => app.close());
   const base = `http://127.0.0.1:${app.address().port}`;
@@ -72,7 +73,7 @@ test('helpdesk: support actions only, never on admin or helpdesk accounts', { sk
     [`users/${plainId}`, 'PATCH', { sending: false }], [`users/${plainId}`, 'PATCH', { enabled: true, quotaBytes: null }], ['groups'], ['groups', 'POST', { name: `t-hd-${tag}-g` }],
     ['blocked'], ['blocked/x', 'DELETE'], ['new-accounts'], ['new-accounts', 'POST', { address: plain }], ['queue'], ['domains'], ['inactive'],
     ['retention'], ['retention', 'PUT', { trashJunkDays: 30 }], [`retention/${plainId}`, 'PATCH', { hold: true }],
-    [`users/${desk2Id}`, 'PATCH', { resetPassword: true }], [`users/${bossId}`, 'PATCH', { enabled: false }]]) {
+    [`users/${desk2Id}`, 'PATCH', { resetPassword: true }], [`users/${bossId}`, 'PATCH', { enabled: false }], [`users/${systemId}`, 'PATCH', { resetPassword: true }]]) {
     assert.equal((await call(path, method, body)).status, 403, `${method ?? 'GET'} ${path} ${JSON.stringify(body ?? '')}`);
   }
   assert.ok(!(await call(`users?q=${tag}`)).users.some((u) => u.name === `t-hd-${tag}-x`)); // nothing was created
@@ -81,6 +82,7 @@ test('helpdesk: support actions only, never on admin or helpdesk accounts', { sk
     assert.equal((await call(`users/${id}`, 'PATCH', body)).status, 403, `${id} ${JSON.stringify(body)}`);
   assert.equal((await call(`users/${teamMember}`, 'PATCH', { resetPassword: true })).status, 200);
   assert.equal((await call(`users/${granted}`, 'PATCH', { resetPassword: true }, boss)).status, 200); // admins still can
+  assert.equal((await call(`users/${systemId}`, 'PATCH', { resetPassword: true }, boss)).status, 403); // not the system sender's, from here
 
   // The audit log says who acted in which role; helpdesk names are reserved at sign-up like admin names.
   const log = (await call('audit?limit=200')).entries.filter((e) => e.admin === desk);
